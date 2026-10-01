@@ -35,6 +35,15 @@ def _apply_caller_relation(state: Any, rt: Any) -> None:
     s = state
     s.identity.holder_clarify_open = False
     s.identity.holder_clarify_asked = False
+    # The same answer often CORRECTS the name: live 2026-09-30 the caller said „Ne, mano vardu
+    # Giedrius" and heard „Gedriau" for the rest of the call — the name question was already
+    # closed, so nothing was listening. A name given here wins over what was misheard.
+    from ...perceive.caller import extract_caller_name
+
+    corrected = extract_caller_name(state.dialog.last_heard or "")
+    if corrected and corrected != s.identity.caller_name:
+        rt.tracer.emit("caller_intro", name=corrected, was=s.identity.caller_name, corrected=True)
+        s.identity.caller_name = corrected
     if relation != "unknown":
         s.identity.caller_relation = relation
         rt.tracer.emit(

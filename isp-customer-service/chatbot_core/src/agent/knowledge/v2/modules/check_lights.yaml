@@ -5,6 +5,9 @@ kind: ask
 params:
   device: {required: true}
   light: {}                         # INTERNET | POWER | LOS | … tuščia = visos
+# Lemputės patvirtina arba paneigia hipotezę (gyva dėžutė ar ne), ir linija to nemato — todėl
+# šis klausimas neperšokamas net tada, kai klientas jau nuėjo į priekį (2026-09-30).
+confirms: true
 detector: lights          # nedega / dega / mirksi — reikšmę duoda įrangos katalogas
 goal: "what the {device} lights show right now"
 text: "equipment:{device}.lights"

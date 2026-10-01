@@ -113,6 +113,41 @@ class TestTheCaseWalksTheCall:
         assert plan.rule == "case.resolved"
         assert plan.action.type == "close" and plan.action.name == "resolved"
 
+    def test_a_done_report_inside_a_question_still_moves_the_step(self, call):
+        """Live 2026-09-28 (C1): „Tai padariau. Ką tik padariau? Kas toliau?" was read as a
+        QUESTION (the mark wins in `detect_turn_intent`), so the step never moved and the same
+        reboot instruction came back six times. A past-tense report of doing it counts even
+        when a question rides along."""
+        state, rt = call
+        record_telemetry(state, rt, BASE)
+        said(state, rt, "fail_scope", "all")
+        case_rule.plan(state, rt)  # reach
+        said(state, rt, "reachable", "yes")
+        case_rule.plan(state, rt)  # reboot instruction given
+        state.dialog.turn_count += 1
+        state.dialog.last_intent = "question"
+        state.dialog.last_heard = "Tai padariau. Ką tik padariau? Kas toliau?"
+
+        plan = case_rule.plan(state, rt)
+
+        assert plan.rule == "case.verify", "the line is read instead of repeating the step"
+
+    def test_a_question_without_a_done_word_does_not_move_the_step(self, call):
+        """The other side of the same coin: asking about the step is not doing it."""
+        state, rt = call
+        record_telemetry(state, rt, BASE)
+        said(state, rt, "fail_scope", "all")
+        case_rule.plan(state, rt)
+        said(state, rt, "reachable", "yes")
+        case_rule.plan(state, rt)
+        state.dialog.turn_count += 1
+        state.dialog.last_intent = "question"
+        state.dialog.last_heard = "O ar reikia ištraukti ir maitinimo laidą?"
+
+        plan = case_rule.plan(state, rt)
+
+        assert plan.rule == "case.reboot"
+
 
 class TestWhenTheFixDoesNotWork:
     def test_a_reboot_nobody_saw_is_retried_once_with_the_card_s_wording(self, call):
@@ -333,7 +368,17 @@ class TestACardWhoseFixIsWritten:
         state, rt = make_state("+37060020106"), make_runtime()
         state.identity.customer_id = "CUST106"
         record_telemetry(state, rt, {**BASE, "dhcp_status": "no_requests", "traffic": "flowing"})
+        # Wave 6: the walk is offered first and has its own tests below; these ones are about
+        # what happens once the caller has agreed to it.
+        record_client(state, rt, "guide_agreed", "yes")
         return state, rt
+
+    @staticmethod
+    def _guide_index(fault: str = "dhcp_silent") -> int:
+        from agent.contract import cards
+
+        steps = cards.card(fault).solution[0].steps
+        return next(i for i, call in enumerate(steps) if call.module == "guide")
 
     def test_the_finding_is_told_before_anything_is_asked(self, silent_router):
         state, rt = silent_router
@@ -352,7 +397,7 @@ class TestACardWhoseFixIsWritten:
 
         assert state.case.fault == "dhcp_silent"
         assert plan.rule == "case.guide" and state.ticket.stage != "phone"
-        assert "prisijungti" in plan.say.text.lower()  # the document's first step
+        assert "prijungti kompiuter" in plan.say.text.lower()  # the document's first ACTION
 
     def test_a_step_nobody_heard_cannot_be_finished(self, silent_router):
         """The mark is set where the reply is built, so a plan that never spoke leaves the
@@ -366,30 +411,41 @@ class TestACardWhoseFixIsWritten:
 
         assert state.case.guide_step == 0
 
-    def test_once_said_the_next_answer_moves_one_step(self, silent_router):
+    def test_once_said_the_next_answer_moves_one_action(self, silent_router):
+        """One ACTION per turn, not one document step (wave 6).
+
+        A written step holds several numbered points; live 2026-09-30 only the first of the
+        three was ever spoken, so the caller never heard the address or the password.
+        """
         state, rt = silent_router
         state.case.facts["reachable"] = "yes"
         case_rule.plan(state, rt)
-        state.case.guide_said = 0  # the reply carried step 1 (speak/context_card.py does this)
+        state.case.guide_said = 0  # the reply carried the first action
         state.dialog.turn_count += 1
         state.dialog.last_heard = "padariau"
 
         plan = case_rule.plan(state, rt)
 
         assert state.case.guide_step == 1
-        assert plan.rule == "case.guide" and "WAN" in plan.say.text
+        assert plan.rule == "case.guide"
+        assert "192.168.0.1" in plan.say.text, "the document's own address, not the model's"
 
     def test_the_document_ends_and_the_card_verifies(self, silent_router):
         state, rt = silent_router
         state.case.facts["reachable"] = "yes"
-        state.case.fault, state.case.solution, state.case.step = "dhcp_silent", 0, 1
-        state.case.guide_step, state.case.guide_said = 1, 1
+        from agent.contract import cards
+        from agent.modules import guide_length
+
+        at = self._guide_index()
+        state.case.fault, state.case.solution, state.case.step = "dhcp_silent", 0, at
+        last = guide_length(cards.card("dhcp_silent").solution[0].steps[at]) - 1
+        state.case.guide_step, state.case.guide_said = last, last
         state.dialog.turn_count += 1
         state.dialog.last_heard = "padariau"
 
         plan = case_rule.plan(state, rt)
 
-        assert state.case.step == 2  # past the guide
+        assert state.case.step == at + 1  # past the guide
         assert plan.rule == "case.verify"
 
 
@@ -421,3 +477,365 @@ class TestWhatTheFindingSays:
 
         assert "FINDINGS MOMENT" in lines or "OPEN THE REPLY" in lines
         assert "Do NOT ask them to do anything yet" in lines or "before anything else" in lines
+
+
+class TestWhenTheCallerWalksAhead:
+    """Wave 6, from the live calls of 2026-09-29/30.
+
+    Andrius: *„kartais padaryti veiksmai iš karto peršoka būseną… jei peršoko svarbius
+    žingsnius, turėtų grįžti ir paprašyti padaryti tai pažingsniui, bet būtinai paaiškinti
+    klientui, kodėl prašo kartoti."*
+    """
+
+    def test_a_reboot_reported_while_we_ask_about_reaching_is_not_asked_for_again(self, call):
+        """Live: „Galiu perkrauti routerį. Tuoj perkrausiu… Perkraunu dabar routerį" — the
+        engine closed only `reach` and then told them to pull the power lead."""
+        state, rt = call
+        record_telemetry(state, rt, BASE)
+        said(state, rt, "fail_scope", "all")
+        case_rule.plan(state, rt)  # reach: can you get to the router
+        state.dialog.turn_count += 1
+        state.dialog.last_heard = "Galiu prieiti, jau išjungiau iš elektros ir perkraunu."
+
+        plan = case_rule.plan(state, rt)
+
+        assert plan.rule != "case.reboot", "they said they are doing it"
+        assert state.case.step >= 2, "the reboot step is behind us, not ahead"
+
+    def test_the_lights_question_is_not_skipped_on_the_way(self, call):
+        """The hypothesis stands on the lights: a jump may pass an instruction, never a
+        question only the caller can answer (dead-router card, live 2026-09-30)."""
+        state, rt = call
+        dead = {**BASE, "device_seen": False}
+        record_telemetry(state, rt, dead)
+        record_client(state, rt, "has_computer", "yes")
+        record_client(state, rt, "reachable", "yes")  # prie routerio jau nuėjo (`reach` žingsnis)
+        state.case.fault, state.case.solution, state.case.step = "no_mac_observed", 0, 0
+        state.dialog.turn_count += 1
+        state.dialog.last_heard = "Jau įkišau laidą į kompiuterį."
+
+        plan = case_rule.plan(state, rt)
+
+        assert plan.rule == "case.check_lights", "the lights question comes first"
+        assert state.case.step == 1, "`reach` is behind us, the lights question is not"
+
+    def test_a_lights_answer_from_the_line_does_not_count_as_the_callers(self, call):
+        """`check_lights` waits for `wan_link`, which telemetry also produces — and that is
+        how the whole lights / power conversation was skipped on 2026-09-30."""
+        from agent.decide.rules.case_rule import _client_said
+
+        state, rt = call
+        record_telemetry(state, rt, {**BASE, "device_seen": False, "wan_link": "down"})
+
+        assert _client_said(state, "wan_link") is False, "the line said it, not the caller"
+
+        # A fact the line cannot produce: once THEY say it, the question is answered.
+        record_client(state, rt, "lights", "off")
+        assert _client_said(state, "lights") is True
+
+
+class TestTheDeadRouterAsksBeforeItConcludes:
+    """Wave 6, from the live call of 2026-09-30.
+
+    Andrius: *„jei nėra įrenginio, turėjo išsiaiškinti ar jis tikrai pajungtas, kaip lemputės
+    dega, ir tuomet diagnozuoti routerio sugedimą… routerio gedimui nustatyti reikia lempučių
+    ir ar elektra pasiekia įrenginį."*
+    """
+
+    def test_lights_off_leads_to_the_power_check_not_to_the_cable(self, call):
+        state, rt = call
+        record_telemetry(state, rt, {**BASE, "device_seen": False})
+        record_client(state, rt, "has_computer", "yes")
+        record_client(state, rt, "reachable", "yes")  # prie routerio jau nuėjo (`reach` žingsnis)
+        state.case.fault, state.case.solution, state.case.step = "no_mac_observed", 0, 0
+        case_rule.plan(state, rt)  # the lights question
+        said(state, rt, "lights", "off")
+
+        plan = case_rule.plan(state, rt)
+
+        assert plan.rule == "case.check_power", "power before concluding the box is dead"
+
+    def test_the_bridge_is_offered_before_anything_is_unplugged(self, call):
+        state, rt = call
+        record_telemetry(state, rt, {**BASE, "device_seen": False})
+        record_client(state, rt, "has_computer", "yes")
+        record_client(state, rt, "reachable", "yes")  # prie routerio jau nuėjo (`reach` žingsnis)
+        state.case.fault, state.case.solution, state.case.step = "no_mac_observed", 0, 0
+        case_rule.plan(state, rt)
+        said(state, rt, "lights", "off")
+        case_rule.plan(state, rt)
+        said(state, rt, "power_cable", "plugged")
+
+        plan = case_rule.plan(state, rt)
+
+        assert plan.rule == "case.offer_bridge", "asked, not imposed"
+
+    def test_a_refused_offer_goes_to_the_technician_without_the_cable(self, call):
+        state, rt = call
+        record_telemetry(state, rt, {**BASE, "device_seen": False})
+        record_client(state, rt, "has_computer", "yes")
+        record_client(state, rt, "reachable", "yes")  # prie routerio jau nuėjo (`reach` žingsnis)
+        state.case.fault, state.case.solution, state.case.step = "no_mac_observed", 0, 0
+        case_rule.plan(state, rt)
+        said(state, rt, "lights", "off")
+        case_rule.plan(state, rt)
+        said(state, rt, "power_cable", "plugged")
+        case_rule.plan(state, rt)
+        said(state, rt, "bridge_agreed", "no")
+
+        plan = case_rule.plan(state, rt)
+
+        assert plan.rule == "case.escalate", "no cable, no bind — straight to the ticket"
+
+    def test_a_dead_router_is_a_replacement_ticket(self):
+        """The technician has to know they are bringing a device, not a screwdriver."""
+        from agent import ticket_types
+
+        assert ticket_types.fault_type("no_mac_observed") == "equipment_replacement"
+        assert ticket_types.fault_type("router_hung") == "fault_technician"
+
+
+class TestTheWrittenFixIsOfferedNotImposed:
+    """Wave 6, from the dhcp_silent call of 2026-09-30.
+
+    Andrius: *„jei klientas sutinka, galime vesti — nes ne visi klientai supranta ir nori tai
+    daryti, nereikia prievartauti"*, and *„dabar galite naršyklėje suvesti adresą… klientas
+    suveda ir sako suvedžiau, agentas pasiklausia ką matote"*.
+    """
+
+    @pytest.fixture
+    def silent(self, make_state, make_runtime):
+        state, rt = make_state("+37060020106"), make_runtime()
+        state.identity.customer_id = "CUST106"
+        record_telemetry(state, rt, {**BASE, "dhcp_status": "no_requests", "traffic": "flowing"})
+        state.case.facts["reachable"] = "yes"
+        return state, rt
+
+    def test_the_walk_is_offered_before_it_starts(self, silent):
+        state, rt = silent
+
+        plan = case_rule.plan(state, rt)
+
+        assert plan.rule == "case.offer_guide"
+
+    def test_a_refusal_goes_to_the_technician_instead_of_walking(self, silent):
+        state, rt = silent
+        case_rule.plan(state, rt)
+        said(state, rt, "guide_agreed", "no")
+
+        plan = case_rule.plan(state, rt)
+
+        assert plan.rule != "case.guide", "not walked against their will"
+        assert state.ticket.stage or plan.action is not None
+
+    def test_one_action_per_turn_carries_the_documents_own_details(self, silent):
+        """The address and the password are separate actions — live they were merged away and
+        the model invented an address the document does not give."""
+        state, rt = silent
+        case_rule.plan(state, rt)
+        said(state, rt, "guide_agreed", "yes")
+        first = case_rule.plan(state, rt)
+        state.case.guide_said = 0
+        state.dialog.turn_count += 1
+        state.dialog.last_heard = "padariau"
+        second = case_rule.plan(state, rt)
+
+        assert first.rule == "case.guide" and "prijungti kompiuter" in first.say.text.lower()
+        assert second.rule == "case.guide" and "192.168.0.1" in second.say.text
+
+
+class TestWhenTheFactsTurnTheCardWrong:
+    """Wave 6 (G4), live 2026-09-28: the caller plugged a computer into the line mid-fix,
+    `device_registered=foreign` landed — which `router_hung` lists in `rules_out` — and the
+    engine kept rebooting a router that was no longer the device on the line."""
+
+    def test_a_disqualifying_fact_reopens_the_case(self, call):
+        state, rt = call
+        record_telemetry(state, rt, BASE)
+        said(state, rt, "fail_scope", "all")
+        case_rule.plan(state, rt)  # router_hung is being worked on
+        assert state.case.fault == "router_hung"
+
+        # A different MAC on the line is what „the caller plugged their computer in" looks
+        # like to telemetry (`device_registered` is derived, not reported).
+        record_telemetry(state, rt, {**BASE, "observed_mac": "11:22:33:44:55:66"})
+        case_rule.plan(state, rt)
+
+        assert state.case.fault != "router_hung", "the card ruled itself out"
+
+    def test_a_card_whose_conditions_still_hold_is_not_disturbed(self, call):
+        state, rt = call
+        record_telemetry(state, rt, BASE)
+        said(state, rt, "fail_scope", "all")
+        case_rule.plan(state, rt)
+
+        case_rule.plan(state, rt)
+
+        assert state.case.fault == "router_hung"
+
+
+class TestThePowerQuestionIsAlwaysAsked:
+    """Wave 6: „ar ateina elektra" is part of the diagnosis, not an optional extra.
+
+    (The re-read of the line after a lead was found unplugged — G26 — was tried as a
+    `verify` step and taken out again: a failed verification spends the whole card, so the
+    caller lost the offer of a temporary line just because the router had not come back yet.
+    It needs a read that does not close the card; it stays in FIX_PLAN §6.)
+    """
+
+    def _dead(self, call):
+        state, rt = call
+        record_telemetry(state, rt, {**BASE, "device_seen": False})
+        record_client(state, rt, "has_computer", "yes")
+        record_client(state, rt, "reachable", "yes")  # prie routerio jau nuėjo (`reach` žingsnis)
+        state.case.fault, state.case.solution, state.case.step = "no_mac_observed", 0, 0
+        case_rule.plan(state, rt)  # lights
+        said(state, rt, "lights", "off")
+        return state, rt
+
+    def test_lights_off_is_followed_by_the_power_question(self, call):
+        state, rt = self._dead(call)
+
+        assert case_rule.plan(state, rt).rule == "case.check_power"
+
+    def test_and_then_the_offer_whatever_the_power_answer_was(self, call):
+        state, rt = self._dead(call)
+        case_rule.plan(state, rt)
+        said(state, rt, "power_cable", "unplugged")
+
+        assert case_rule.plan(state, rt).rule == "case.offer_bridge"
+
+
+class TestAnUnclearAnswerIsNotAnAnswer:
+    """Wave 6, from the live call of 2026-10-01.
+
+    Andrius: *„apie lemputes paklausė, bet apie jas nesuprato atsakymo — ėjo toliau prie
+    maitinimo klausimo ir gedimo registravimo."* A question the hypothesis stands on
+    (`confirms: true`) is settled by what the CALLER says about it — never by „taip,
+    padariau", never by the line, never by a general „gerai".
+    """
+
+    def _at_the_lights_question(self, call):
+        state, rt = call
+        record_telemetry(state, rt, {**BASE, "device_seen": False})
+        record_client(state, rt, "has_computer", "yes")
+        record_client(state, rt, "reachable", "yes")
+        state.case.fault, state.case.solution, state.case.step = "no_mac_observed", 0, 0
+        plan = case_rule.plan(state, rt)
+        assert plan.rule == "case.check_lights"
+        state.case.step_said = state.case.step  # the question actually went out
+        return state, rt
+
+    def test_a_done_report_does_not_settle_what_the_caller_sees(self, call):
+        state, rt = self._at_the_lights_question(call)
+        state.dialog.turn_count += 1
+        state.dialog.last_heard = "Taip, padariau."
+
+        plan = case_rule.plan(state, rt)
+
+        assert plan.rule == "case.check_lights", "the lights question still stands"
+        assert state.case.facts.get("lights") is None, "nothing was invented from a yes"
+        assert state.case.unclear == state.case.step, "so the reply asks it plainly"
+
+    def test_the_caller_s_own_words_do_settle_it(self, call):
+        state, rt = self._at_the_lights_question(call)
+        state.dialog.turn_count += 1
+        state.dialog.last_heard = "Nedega nė viena lemputė."
+
+        plan = case_rule.plan(state, rt)
+
+        assert plan.rule == "case.check_power"
+        assert state.case.unclear == -1, "the mark is lifted once we were told"
+
+
+class TestAStepThatKeepsBeingRepeated:
+    """Wave 6 (G2): live 2026-09-28 the same reboot instruction went out six times, because
+    nothing counted how often a step had been said."""
+
+    def test_after_the_limit_the_card_gets_its_one_retry(self, call):
+        state, rt = call
+        record_telemetry(state, rt, BASE)
+        said(state, rt, "fail_scope", "all")
+        case_rule.plan(state, rt)
+        said(state, rt, "reachable", "yes")
+
+        rules = [case_rule.plan(state, rt).rule for _ in range(4)]
+
+        assert rules[0] == "case.reboot"
+        assert "case.retry" in rules, f"the card's own second attempt never came: {rules}"
+
+    def test_with_nothing_left_to_try_it_ends_honestly(self, call):
+        state, rt = call
+        record_telemetry(state, rt, {**BASE, "device_seen": False})
+        record_client(state, rt, "has_computer", "no")
+        record_client(state, rt, "reachable", "yes")
+        state.case.fault, state.case.solution, state.case.step = "no_mac_observed", 0, 0
+
+        rules = [case_rule.plan(state, rt).rule for _ in range(5)]
+
+        assert rules[0] == "case.check_lights"
+        assert any(r.startswith("ticket.") or r == "case.escalate" for r in rules), rules
+
+
+def test_a_step_given_up_on_does_not_send_the_call_back_into_itself(make_state, make_runtime):
+    """Wave 6 (eval X_dhcp_silent, 2026-09-30): the repeat guard gave up on the guide, the
+    escalation saw `only_after: [guide]` unfulfilled, re-entered the same branch — and the
+    call spun there until the caller hung up. Giving up on a step is also a record that it
+    was attempted."""
+    state, rt = make_state("+37060020106"), make_runtime()
+    state.identity.customer_id = "CUST106"
+    record_telemetry(state, rt, {**BASE, "dhcp_status": "no_requests", "traffic": "flowing"})
+    state.case.facts.update({"reachable": "yes", "guide_agreed": "yes"})
+
+    rules = []
+    for _ in range(8):
+        plan = case_rule.plan(state, rt)
+        rules.append(plan.rule if plan else None)
+        state.dialog.turn_count += 1
+
+    assert rules.count("case.guide") <= 4, f"the same step over and over: {rules}"
+    assert any(r and (r.startswith("ticket.") or r == "case.escalate") for r in rules), rules
+
+
+class TestIdentificationFinishesBeforeTheCaseAsks:
+    """Wave 6 (B), Andrius 2026-09-30: *„kol neįvyko identifikavimas, neturi painiotis su
+    analize… vardo pasiklausimas ir tikslinimas tai dar identifikavimo dalis."*
+
+    The Case may THINK while that happens — the line is read, the card settles, the finding
+    is held — but it may not ASK. Live that day the lights question was planned on the turn
+    the holder clarification owned, was never spoken, and the caller's answer about the
+    CONTRACT was then read as the answer about the LIGHTS.
+    """
+
+    def test_no_question_while_the_holder_clarification_is_open(self, call):
+        state, rt = call
+        record_telemetry(state, rt, {**BASE, "observed_mac": None})  # nieko linijoje
+        state.identity.holder_clarify_open = True
+        state.identity.holder_clarify_asked = False
+
+        plan = case_rule.plan(state, rt)
+
+        assert plan is None, "the Case stays silent while identification is mid-question"
+
+    def test_but_the_card_is_settled_quietly(self, call):
+        state, rt = call
+        record_telemetry(state, rt, {**BASE, "observed_mac": None})  # nieko linijoje
+        record_client(state, rt, "has_computer", "yes")  # kuri šaka — jau aišku
+        state.identity.holder_clarify_open = True
+        state.identity.holder_clarify_asked = False
+
+        case_rule.plan(state, rt)
+
+        assert state.case.fault == "no_mac_observed", "the thinking happened"
+        assert state.case.step_said == -1, "and nothing was marked as asked"
+
+    def test_once_identification_is_done_the_question_goes_out(self, call):
+        state, rt = call
+        record_telemetry(state, rt, {**BASE, "observed_mac": None})  # nieko linijoje
+        record_client(state, rt, "has_computer", "yes")
+        record_client(state, rt, "reachable", "yes")
+        state.identity.holder_clarify_open = False
+
+        plan = case_rule.plan(state, rt)
+
+        assert plan is not None and plan.rule == "case.check_lights"

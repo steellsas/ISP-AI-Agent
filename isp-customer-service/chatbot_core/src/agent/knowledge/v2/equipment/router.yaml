@@ -13,6 +13,8 @@ locate_key: equipment.router.locate
 # Ką klientas gali padaryti su šiuo įrenginiu ir kaip tai pasakoma.
 actions:
   reboot.power: equipment.router.reboot.power
+  # Tas pats veiksmas, bet kai telemetrija perkrovimo NEMATĖ — kartojama su priežastimi.
+  reboot.power.no_flap: equipment.router.reboot.power.no_flap
   cable.reseat: equipment.router.cable.reseat
   reach: equipment.router.reach
 

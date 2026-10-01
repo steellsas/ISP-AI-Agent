@@ -36,9 +36,16 @@ class TestAModuleBecomesATurn:
         assert can_offer(button, model="TP-Link Archer C6")
         assert not can_offer(button, model="Huawei HG8245")
 
-    def test_a_question_says_which_fact_it_waits_for(self):
+    def test_a_question_waits_for_the_fact_the_CALLER_owns(self):
+        """It waits for `lights`, not for `wan_link`.
+
+        What the light MEANS is the line's business (`produces: [wan_link, power]`), and
+        telemetry owns that name — it refuses the caller's word for it. So a step waiting on
+        `wan_link` could never be settled by an answer, only by a reading, and on 2026-09-30
+        the whole lights conversation was skipped because the line had filled it in (wave 6).
+        """
         lights = plan_step(_call("check_lights", device="router", light="internet"))
-        assert lights.kind == "ask" and lights.awaits == "wan_link"
+        assert lights.kind == "ask" and lights.awaits == "lights"
         assert "lemputė" in lights.text
 
     def test_an_engine_action_names_its_tool_and_asks_nothing(self):

@@ -18,6 +18,7 @@ import json
 import logging
 import os
 import sys
+import threading
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -110,6 +111,10 @@ class JsonlFileTracer:
         # of truth; sinks feed the API's WebSocket panel. Best-effort like the
         # file write — a broken sink never interrupts the conversation.
         self._sinks: list = []
+        # One writer at a time. The analyst and the background telemetry read emit from their
+        # own threads, and on 2026-09-30 a session file held half a JSON line — two appends
+        # had interleaved. A lock costs nothing next to the write itself.
+        self._write_lock = threading.Lock()
         directory = trace_dir or _default_trace_dir()
         try:
             directory.mkdir(parents=True, exist_ok=True)
@@ -150,7 +155,7 @@ class JsonlFileTracer:
                 k: (v if k in _STRUCTURAL_KEYS else self._scrub(v)) for k, v in event.items()
             }
             line = json.dumps(scrubbed, ensure_ascii=False, default=str)
-            with open(self._path, "a", encoding="utf-8") as f:
+            with self._write_lock, open(self._path, "a", encoding="utf-8") as f:
                 f.write(line + "\n")
         except Exception as e:  # pragma: no cover - defensive
             logger.warning(f"Conversation trace write failed: {e}")

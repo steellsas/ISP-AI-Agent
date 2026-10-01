@@ -99,12 +99,17 @@ def _words(spec: ModuleSpec, args: dict[str, Any], device) -> str | None:
 
 
 def _guide_written(args: dict[str, Any]) -> list[str]:
-    """The steps this call walks: the document's, cut to what the card says is the caller's."""
-    from .knowledge_base import steps
+    """The ACTIONS this call walks: the document's steps, cut to what the card says is the
+    caller's, and split into one action per turn.
 
-    written = steps(str(args.get("knowledge") or ""))
+    A written step holds several numbered points, and live (2026-09-30) only the first of
+    three was ever spoken: the caller never heard the address or the password, and the model
+    filled the gap with an address the document does not give. One point, one turn.
+    """
+    from .knowledge_base import parts
+
     count = args.get("count")
-    return written[: int(count)] if count else written
+    return parts(str(args.get("knowledge") or ""), limit=int(count) if count else None)
 
 
 def _guide_step(args: dict[str, Any]) -> str | None:
@@ -122,7 +127,11 @@ def guide_length(call: ModuleCall) -> int:
 def _action_key(spec: ModuleSpec, args: dict[str, Any]) -> str | None:
     """`reboot(method=power)` -> "reboot.power", the key the catalogue describes."""
     if spec.module == "reboot":
-        return f"reboot.{args.get('method', 'power')}"
+        # `reason` — kodėl kartojam. Katalogas tam turi savo sakinį, ir klientas išgirsta
+        # PRIEŽASTĪ, o ne tą pačią instrukciją dar kartą (G5, gyvai 2026-09-28).
+        reason = args.get("reason")
+        method = args.get("method", "power")
+        return f"reboot.{method}.{reason}" if reason else f"reboot.{method}"
     if spec.module == "cable":
         return f"cable.{args.get('action', 'reseat')}"
     if spec.module == "device_check":
@@ -132,14 +141,28 @@ def _action_key(spec: ModuleSpec, args: dict[str, Any]) -> str | None:
     return None
 
 
+# The fact a module gets from the CALLER, where that differs from what the module produces.
+# `check_lights` produces `wan_link` (what the light MEANS, from the equipment catalogue), but
+# telemetry owns that name and refuses the caller's word for it — so the step could never be
+# settled by an answer, only by a reading. What the caller actually gives is `lights`, and
+# that is what the step waits for (wave 6, live 2026-09-30).
+CLIENT_FACT = {"check_lights": "lights"}
+
+
+def client_fact(call: ModuleCall, text: str | None) -> tuple[str, str] | None:
+    """The CALLER-owned fact their answer establishes for this module, if it has one."""
+    name = CLIENT_FACT.get(call.module)
+    if not name or not text:
+        return None
+    label = _detect(name, text)
+    return (name, label) if label else None
+
+
 def _awaits(spec: ModuleSpec, args: dict[str, Any], device) -> str | None:
     """The fact this step is waiting for: what the caller must tell us, or the first fact
     the module produces."""
-    if spec.module == "check_lights":
-        light = str(args.get("light") or "internet")
-        means = (device.lights.get(light) or {}).get("means") if device else None
-        first = next(iter(means.values()), None) if means else None
-        return first.split("=", 1)[0] if first else None
+    if spec.module in CLIENT_FACT:
+        return CLIENT_FACT[spec.module]
     if spec.kind == "ask":
         return spec.produces[0] if spec.produces else None
     if spec.kind == "verify" and args.get("ask") and not args.get("evidence"):

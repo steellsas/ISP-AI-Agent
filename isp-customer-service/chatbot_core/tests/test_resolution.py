@@ -209,6 +209,21 @@ class TestRegistry:
         assert f("nesuprantu kas tas WAN") == "confused"
         assert f("") == "silence"
 
+    def test_a_done_word_is_seen_even_inside_a_question(self):
+        """The intent stays `question` — the caller really did ask something — but the Case
+        must still see that the action happened (live 2026-09-28, C1)."""
+        from agent.perceive.detectors import detect_turn_intent, says_done_action
+
+        heard = "Tai padariau. Ką tik padariau? Kas toliau?"
+
+        assert detect_turn_intent(heard) == "question"
+        assert says_done_action(heard) is True
+
+        # Asking ABOUT the action is not doing it, and neither is a loose "jau"/"viskas".
+        assert says_done_action("O ar reikia ištraukti maitinimo laidą?") is False
+        assert says_done_action("Ar jau galima?") is False
+        assert says_done_action("Ar viskas?") is False
+
     def test_still_broken_is_an_answer_not_progress(self):
         # "vis dar neveikia" is a real answer to "does it work?" — it must not be read
         # as work in progress, or the verify step would never settle.

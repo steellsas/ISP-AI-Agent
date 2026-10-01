@@ -121,7 +121,9 @@ def _said(key: str, value: str) -> str:
 
 def _pending_fact(state: Any, text: str) -> tuple[str, str] | None:
     """The evidence question that is out, answered by this short utterance."""
-    key = state.diagnosis.pending_evidence_key
+    from .evidence import unasked_pending_cleared
+
+    key = unasked_pending_cleared(state)
     if not key:
         return None
     from ..evidence import read_pending_answer, spec_for

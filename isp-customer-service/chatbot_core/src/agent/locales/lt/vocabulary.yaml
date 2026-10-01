@@ -303,6 +303,65 @@ done:
   - "gatava"
   - "viskas"
 
+# Veiksmo pranešimas BŪTUOJU laiku — „aš tai padariau". Siauresnis už `done` sąrašą:
+# be „jau", „viskas", „gatava", nes tie žodžiai kaip tik dažniausi klausime („ar jau
+# galima?", „ar viskas?"), o šis sąrašas naudojamas būtent KLAUSIMO ėjime.
+#
+# Gyvai 2026-09-28 (C1): „Tai padariau. Ką tik padariau? Kas toliau?" — ėjimo tipas tapo
+# `question` (nugalėjo klaustukas), tad variklis nelaikė to atliktu ir kartojo tą pačią
+# instrukciją šešis kartus. Klausimas lieka klausimu, bet žingsnis pajuda.
+done_actions:
+  - "padariau"
+  - "padarėme"
+  - "padareme"
+  - "atlikau"
+  - "įkišau"
+  - "ikisau"
+  - "įjungiau"
+  - "ijungiau"
+  - "išjungiau"
+  - "isjungiau"
+  - "perkroviau"
+  - "perkrovėme"
+  - "perkroveme"
+  - "perjungiau"
+  - "ištraukiau"
+  - "istraukiau"
+  - "prijungiau"
+  - "pajungiau"
+
+# Veiksmo PRANEŠIMAS moduliui (`reported:` modulio lauke): žodžiai, kuriais klientas pasako, kad
+# ŠĬ žingsnį jau atliko — net jei variklis dar jo neprašė. Gyvai 2026-09-29/30 klientas sakė
+# „išjungiau iš elektros ir persikrauna", kai dar buvo klausiama, ar jis gali prieiti prie routerio,
+# ir gaudavo nurodymą padaryti tą, ką jau padarė.
+#
+# Čia ĮEINA ir esamasis laikas („perkraunu"), nes tai irgi reiškia, kad žingsnis prasidėjo — variklis
+# tada laukia rezultato, o ne kartoja instrukciją.
+reported_reboot:
+  - "perkroviau"
+  - "perkrovėme"
+  - "perkroveme"
+  - "perkrauju"
+  - "perkraunu"
+  - "perkraunam"
+  - "išjungiau iš elektros"
+  - "isjungiau is elektros"
+  - "išjungiau iš rozetės"
+  - "isjungiau is rozetes"
+  - "ištraukiau maitinimo"
+  - "istraukiau maitinimo"
+  - "ištraukiau laidą iš rozetės"
+  - "istraukiau laida is rozetes"
+
+reported_connect_direct:
+  - "įkišau į kompiuter"
+  - "ikisau i kompiuter"
+  - "prijungiau prie kompiuter"
+  - "įjungiau į kompiuter"
+  - "ijungiau i kompiuter"
+  - "laidą į kompiuter"
+  - "laida i kompiuter"
+
 question_marks:
   - "kiek"
   - "kodėl"
@@ -334,6 +393,18 @@ consent_yes:
   - "uzregistruok"
   - "darykit"
   - "darykite"
+  # Gyvai 2026-10-01: „Nu, pabandom" ir „Esu pasiruošęs" nebuvo atsakymas — pasiūlymas kartojosi
+  # tris kartus, o trečią kartą modelis išsigalvojo žingsnį, kurio kortelėje nėra.
+  - "pabandom"
+  - "pabandykim"
+  - "pabandykime"
+  - "bandom"
+  - "bandykim"
+  - "pasiruošęs"
+  - "pasiruoses"
+  - "pasiruošusi"
+  - "galima"
+  - "einam"
   - "lauksiu"  # "lauksiu skambučio" = expects the registration — consent, not decline
   - "lauksim"
 
@@ -854,6 +925,30 @@ name_stop_words:
   - "nuomininkė"
   - "kaimynas"
   - "kaimynė"
+  # Gyvai / eval 2026-10-01: „Aišku, ačiū, lauksiu" buvo užrašyta kaip vardas „Aišku" — ir
+  # nesutapus su sutarties vardu agentas dar paklausė dėl savininko. Padėkos, supratimo ir
+  # atsisveikinimo žodžiai nėra vardai.
+  - "aišku"
+  - "aisku"
+  - "ačiū"
+  - "aciu"
+  - "lauksiu"
+  - "laukiu"
+  - "suprantu"
+  - "supratau"
+  - "puiku"
+  - "žinoma"
+  - "zinoma"
+  - "klausau"
+  - "atsiprašau"
+  - "atsiprasau"
+  - "prašau"
+  - "prasau"
+  - "viso"
+  - "gero"
+  - "sudie"
+  - "nežinau"
+  - "nezinau"
 
 name_word: "[A-ZĄČĘĖĮŠŲŪŽ][a-ząčęėįšųūž]+"
 

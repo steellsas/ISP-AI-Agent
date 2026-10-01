@@ -32,6 +32,8 @@ BANGA 3  Case + kortelė v2 + moduliai + įrangos katalogas (P-6, P-8)
 BANGA 4  lėtas internetas + TV tik failais + RAG atviriems klausimams
    │
 BANGA 5  valymas
+   │
+BANGA 6  gyvų testų radiniai: ką klientas pasakė ir ką agentas suprato
             … vėliau: 11 lokalūs modeliai (Piper, LLM, embeddings) · 12 integracija
 ```
 
@@ -46,10 +48,337 @@ BANGA 5  valymas
 | 4a | Informavimo kortelės (`news:`) + `verdict.py::decide` trynimas: kode nebėra medžio | AJ | 3 |
 | 4b | **Žinios naudojamos**: pažymėti dokumentai (`kind`/`tags`/`equipment`) + įrangos instrukcijos ir algoritmai pokalbyje. Kortelės/TV/lėtas internetas — po to | AJ, AK | 4a |
 | 5 | Valymas: vėliavos, seni keliai, pavadinimai, LT/EN raktai, testų žemėlapis | E, F5 | 4 |
+| 6 | Gyvų testų radiniai: žingsnio pabaiga, kartojimo riba, sąžiningas patvirtinimas, faktas kuris atmeta kortelę | G1–G4 | 5 |
 
 Detalus 2b–5 bangų planas rašomas kiekvienos bangos pradžioje.
 
 ---
+
+---
+
+## Banga 6 — gyvų testų radiniai (šaka `fix/wave-6-live`, 2026-09-28)
+
+Šaltinis: **C1 skambutis balsu** (`+37060020112`, pakibęs routeris), trace
+`logs/sessions/20260928-135148-398635-0001.jsonl`. Andrius: *„paspaudus mygtuką kabelis
+nesuveikė, bet kai perkroviau routerį suveikė. toliau primygtinai kartojo prieikite prie
+routerio ir ištraukite kabelį nors tuos veiksmus jau dariau ir jam sakiau."*
+
+### Struktūrinis taisymas (A ir B, 2026-09-30) — kodėl žingsniai „pjovėsi"
+
+Andrius, pažiūrėjęs paskutinį skambutį: *„supratau, kad žingsniai čia pjaunasi… kol neįvyko
+identifikavimas, neturi painiotis su analize. Vardo pasiklausimas ir tikslinimas tai dar
+identifikavimo dalis. Analizės agentas gali veikti tyliai, gauti telemetriją ir daryti
+hipotezes… kad tie stepai vėl nenusimuštų ir agentas visuomet jaustų, kur yra."*
+
+Radinys buvo ne trūkstamas mazgas, o **bendra būsena**: `decide/rules/stage.py` pirma leidžia
+Case suplanuoti žingsnį, paskui identifikacijos scenarijų — ir jei laimi identifikacija,
+Case planas išmetamas, **bet jo žymės lieka** (`awaiting`, `pending_evidence_key`,
+`delivered`). Gyvai 2026-09-30: lempučių klausimas suplanuotas ėjime, kurį pasiėmė savininko
+patikslinimas, nenuskambėjo — ir kito ėjimo atsakymas *„Ne, tai mano vardu, Giedriaus
+vardu"* buvo užrašytas kaip **`lights=no`**. Lempučių žingsnis tapo „atsakytas", ir agentas
+nušoko prie maitinimo, nieko neklausęs.
+
+| | Kas pakeista |
+|---|---|
+| **A** | Žingsnis įskaitomas tik tada, kai jo klausimas **tikrai nuskambėjo** (`case.step_said`, žymima ten, kur statomas atsakymas). Laukiamas faktas negalioja, jei klausimo nebuvo — svetimo klausimo atsakymas nebeužrašomas |
+| **B** | Kol vyksta identifikacija (vardas, savininko patikslinimas), Case **mąsto, bet neklausia**: skaito liniją, susiaurina kandidates, pasideda išvadą. Išvada nedingsta — ji nuskamba tame pačiame atsakyme, kurį stato identifikacija |
+| — | `done_when` dabar mato **šio ėjimo** faktus (po „nenoriu" nebenuskamba nurodymas kišti laidą) |
+| — | Atsisveikinimas viduryje sprendimo nebenustelbia registracijos: sargas ir telefono padėjimo tinklas dabar žino apie v2 Case (`case.in_progress`) — anksčiau klausė tik seno `resolution.procedure`, todėl mirusio routerio skambutis baigėsi **be tiketo** |
+| — | `has_computer` nebeklausiamas atskirai: tas klausimas rinko sprendimo šaką ir todėl ėjo **prieš** lemputes bei maitinimą. Tilto klausia `offer_bridge` savo vietoje, po diagnostikos |
+
+| # | Radinys | Būsena |
+|---|---|---|
+| **G1** | „Padariau… kas toliau?" neužskaitoma — nugali klaustukas | ✓ pataisyta |
+| **G2** | Ta pati instrukcija nuskambėjo **6 kartus** — nėra kartojimo ribos | ✓ pataisyta |
+| **G3** | Melagingi patvirtinimai: „Gerai, kad perkrovėte" po „Galiu?" | ✓ pataisyta (promptas) |
+| **G4** | 🔌 Kabelis registravo `device_registered=foreign`, bet kortelės `rules_out` vidury sprendimo neperskaitytas | ✓ pataisyta |
+| **G5** | Pakartojimas nepasakė KODĖL — „nematome, kad įrenginys būtų buvęs išjungtas“ liko būsenoje | ✓ pataisyta |
+| **G6** | Eskalacijos formuluotė pasenusi: po pririšimo `device_registered=match`, o sakoma „matomas kitas įrenginys“ | ✓ pataisyta |
+| **G7** | Klientas JAU daro veiksmą, o agentas liepia jį daryti | atidėta |
+| **G8** | Linija jau rodė `traffic=flowing, port_flapped=yes`, o instrukcija vis tiek nuskambėjo | atidėta |
+| **G9** | Uždaro nepaklausęs kliento: „Internetas vėl veikia“ ir sudie | atidėta |
+| **G10** | `guide` duoda dokumento žingsnį su trimis punktais — nuskamba tik pirmas, o adresas ir prisijungimas dingsta | ✓ pataisyta |
+| **G11** | Klausimas vedimo viduryje („kokį slaptažodį vesti?“) lieka neatsakytas, o konkretybė improvizuojama LLM (`192.168.1.1`) | ✓ pataisyta |
+| **G12** | Vedama be sutikimo — kortelė net reikalauja vesti prieš meistrą (`only_after: [guide]`) | ✓ pataisyta |
+| **G13** | `ask` žingsnis praleidžiamas, jei fakto vardą jau užpildė TELEMETRIJA (`check_lights` → `wan_link`) | ✓ pataisyta (0a) |
+| **G14** | Klientas peršoka į priekį („išjungiau iš elektros“), variklis pajudina tik dabartinį žingsnį | ✓ pataisyta (0b) |
+| **G15** | `has_computer=yes` įrašytas be klausimo ir be citatos — tiltas pasirinktas nepaklausus | atidėta |
+| **G16** | Išvada prieštarauja klausimui: „routeris sugedęs — telefonu neprikelsime. Ar galėtumėte perkrauti routerį?“ | ✓ pataisyta |
+| **G17** | Prieštara („bet aš sumokėjau“) atsakoma identifikacijos klausimu apie sutarties savininką | ✓ pataisyta |
+| **G18** | LLM pasakė faktą, kurio niekas nenustatė: „internetas neveikia visuose įrenginiuose“ | ✓ pataisyta |
+| **G19** | Vardas: klientas pataiso („mano vardu Giedrius“) — agentas toliau „Gedriau“; avarijos skambutyje kreipėsi sutarties savininkės vardu | ✓ pataisyta |
+| **G20** | Vienas trace failo įrašas sulūžęs (pusė JSON eilutės) — du rašytojai susikerta | ✓ pataisyta |
+| **G21** | „Lemputės nedega“ → iš karto laidas į kompiuterį: maitinimo niekas netikrino | ✓ pataisyta |
+| **G22** | `bind.announce` pririšamą kompiuterį vadino „jūsų routeriu“ — klientas taisė agentą | ✓ pataisyta |
+| **G23** | „Nesupratau gatvės“ tris kartus — prompto PAVYZDYS tapo klausimu pokalbyje | ✓ pataisyta |
+| **G24** | Miręs routeris registruojamas kaip įprastas `fault_technician`, nors reikia KEITIMO | ✓ pataisyta |
+| **G25** | Tiltas vykdomas automatiškai, nepaklausus, ar klientas to nori | ✓ pataisyta |
+| **G26** | Jei maitinimo laidas buvo ištrauktas, po įkišimo linija neperskaitoma prieš išvadą | atidėta — bandėme, žr. žemiau |
+| **G27** | Išvada pasakyta kaip faktas dar nieko nepaklausus: „routeris sugedęs — telefonu jo neprikelsime" | ✓ pataisyta |
+| **G28** | Miręs routeris: iš karto klausiama apie lemputes, nepaklausus, ar klientas gali prieiti prie routerio | ✓ pataisyta |
+| **G29** | Neaiškus atsakymas užskaitomas kaip atsakymas — „taip, padariau" uždarė lempučių klausimą | ✓ pataisyta |
+| **G30** | Vedimo punktai skaitomi kaip to paties žingsnio kartojimai → „telefonu neišspręsime" kaip tik prisijungus | ✓ pataisyta |
+| **G31** | „Pabandom", „pasiruošęs", „einam" nebuvo sutikimas — pasiūlymas kartojamas | ✓ pataisyta |
+| **G32** | Vardo patikslinimo nebuvo, nes klientas nepasakė, kad sutartis jo | ✓ pataisyta |
+| **G33** | Klientas nuėjo atlikti veiksmo — agentas nelaukia ir neklausia, ar jau priėjo | atidėta (Andrius: „dėl palaukimo dar pagalvosime") |
+
+### G1 · Klaustukas nugalėjo atliktą veiksmą
+
+`detect_turn_intent` tikrina eilės tvarka: sumišimas → **klausimas** → vyksta → atlikta.
+Sakinyje buvo abu, ir laimėjo klaustukas:
+
+| Kas pasakyta | Kaip suprasta | Kodėl |
+|---|---|---|
+| „Tai padariau. Ką tik padariau? Kas toliau?" | `question` | klaustukas prieš `padariau` |
+| „Ką tik padariu du kartus." | `answer` | ASR nukirto galūnę: `padariu` ≠ `padariau` |
+| „Mhm." / „Dar." | `answer` | nėra žymens |
+
+Kadangi `_reported_done()` grąžino `False`, žingsnis nepajudėjo, ir instrukcija nuskambėjo iš naujo.
+
+**Taisymas:** naujas `says_done_action()` ir naujas žodyno sąrašas `done_actions` — **siauresnis**
+už `done`: tik būtojo laiko veiksmai, be „jau", „viskas", „gatava" (tie klausime reiškia visai ką
+kita). Įjimo tipas nesikeičia — klausimas lieka klausimu ir gali būti atsakytas — bet žingsnis
+pajuda. Sumišimas savo kelio nepraranda: „nesuprantu, ką padariau" nėra atliktas veiksmas.
+
+**Ko tai pasiekia iš karto:** po žingsnio eina `verify`, kuris perskaito liniją ir — jei
+perkrovimo nesimato — paleidžia kortelės `on_fail` su `reason: no_flap`, t.y. žodinamą
+*„nematome, kad įrenginys būtų buvęs išjungtas"*. Tai **du iš Andriaus prašytos elgsenos
+punktai** (patikslinti iš linijos; perkrauta ir niekas nepasikeitė → gedimas), kurie kortelėje
+jau buvo aprašyti, tik iki jų niekada neprieita.
+
+### G3 · Patvirtinimas, kurio niekas nesakė
+
+Klientas pasakė „Galiu?" (ASR iš „Galiu"), supratimas — `confusion`, o atsakymas prasidėjo
+„**Gerai, kad perkrovėte.**" Toliau: „Gerai, kad radote routerį", „Aišku, kad darote", ir
+„**Gerai, kad padarėte.** Dabar ištraukite maitinimo laidą…" — vienu metu pagiria ir prieštarauja.
+
+**Taisymas:** `prompts/speak/system.md` ir `prompts/skills/instruct_step.md` — trumpa reakcija
+gali atspindėti tik tai, ką klientas **iš tikrųjų pasakė** arba ką turi kortelė; veiksmo,
+kurio niekas nepranešė, priskirti negalima. Abejojant — „Gerai" arba „Supratau" yra visa reakcija.
+
+### G5–G9 · antras ir trečias C1 skambučiai (2026-09-28 ir 09-29)
+
+Po G1/G3 taisymų C1 pakartotas du kartus. **Kas pagerėjo, matosi iš karto:** ta pati instrukcija
+nebekartojama šešis kartus (dabar — vienas `on_fail` pakartojimas), o melagingų pagyrimų
+(„Gerai, kad perkrovėte“ po „Galiu?“) nebeliko — vietoj to nuskambėjo
+„Supratau, Pauliau. Perkrauti routerį reiškia jį išjungti ir vėl įjungti.“
+
+Nauji radiniai — visi iš to paties: **variklis skaito žodžius, bet neskaito BŪSENOS.**
+
+**G5 · pakartojimas be priežasties.** `_explain_retry` priežastį paruošė (patikrinta:
+`gloss("port_flapped", "no")` grąžina pažodžiui „nematome, kad įrenginys būtų buvęs
+išjungtas“), bet iki kliento ji nenuėjo — nuskambėjo ta pati instrukcija kitais žodžiais.
+Faktas būsenoje yra, kelias nuo jo iki sakinio — ne.
+
+**G7 · „jau perkrauju“ → „ištraukite maitinimo laidą“.** Trace 2026-09-29
+(`20260929-160327-687017-0001`):
+
+```
+klientas: „Tai aš jau perkrauju routerį.“
+agentas : „Supratau, kad perkraunate. Ištraukite maitinimo laidą iš paties routerio…“
+```
+
+Sakinys uždarė `reach` žingsnį (teisingai), bet kitas žingsnis duotas taip, tarsi veiksmas dar
+neprasidėjęs. Žodyne `in_progress` yra „einu“, „tuoj“, „palauk“ — bet nėra
+„perkrauju“, „perkraunu“, „traukiu“, „darau“.
+
+**G8 · linija jau sakė gerai, o instrukcija vis tiek nuskambėjo.** Tame pačiame skambutyje faktai
+`traffic=flowing, port_flapped=yes` atėjo PRIEŠ perkrovimo instrukciją (testuotojas paspaudė 🔄
+sakydamas, kad perkrauna). Kortelės `verify` įrodymai jau galiojo, bet `reboot` žingsnis neturi
+`done_when`, tad niekas jo nepraleido.
+
+**G9 · uždaro nepaklausęs.** Andrius (2026-09-29): *„kai jis jau patikrina, kad internetas
+atsirado, turėtų pasakyti, kad po perkrovimo matau, kad srautas atsirado, internetas turėtų būti,
+ir pasiklausti kliento — o ne iš karto baigti pokalbį. Įsitikinti, ar problema išspręsta.“*
+
+Mechanizmas: `modules.step_done()` grąžina `True`, kai tik `evidence` sąlygos galioja, tad `verify`
+modulio `ask: restored` niekada nepanaudojamas, jei zondas jau sutinka. Rezultatas —
+„Puiku, Pauliau! Internetas vėl veikia“ ir sudie, be vieno klausimo.
+
+Tai **neprieštarauja D-07** (telemetrija — arbitras): linija ir toliau sprendžia, ar uždaryti;
+pridėti reikia to, ką agentas MATO, ir patikslinimo. Jei klientas sako, kad vis tiek neveikia —
+faktai pasikeitė ir atsiveria kliento pusės kortelė.
+
+**Šalutinis stebėjimas — ASR.** Tuose skambučiuose atpažinimas žargo žodžius: „Taip dėl
+šadaruso“ (= „taip, dėl šio adreso“), „nuėsiu prie routere“, „Sveikaro!“.
+Atskiras svertas (ASR nustatymai, `initial_prompt`, endpointing), ne kortelių darbas.
+
+### 0a ir 0b · kas pataisyta (2026-09-30)
+
+**0a — klausimas praleidžiamas tik tada, kai atsakė KLIENTAS.** `check_lights` laukia fakto
+`wan_link`, o tą patį fakto vardą užpildo ir telemetrija — todėl gyvai visa lempučių, maitinimo
+ir rozetės šneka buvo praleista kaip „jau žinoma“, ir agentas nuėjo prie tilto niekada
+nenustatęs, ar dėžutė gyva. Dabar kas pasakė faktą yra įrašoma (`case.said`), ir zondo užpildytas
+faktas klausimo nebeuždaro.
+
+**0b — peršokimą priimam, praleidimo — ne.** Modulis dabar gali pasakyti, kokiais žodžiais
+klientas praneša, kad ŠĪ žingsnį jau atliko (`reported:` → žodyno sąrašas). Kliento sakinys
+lyginamas su VISAIS sprendimo žingsniais; jei jis praneša vėlesnį žingsnį, variklis ten ir
+nušoka — bet sustoja prie klausimo, kuris **patvirtina hipotezę** (`confirms: true`; kol kas
+`check_lights`). Logistikos klausimas („ar galite prieiti“) nestabdo: kas ką tik išjungė
+routerį iš rozetės, tas prie jo akivaizdžiai prieina.
+
+Grįžtant atgal į privalomą klausimą, į atsakymą įdėmi tai, ką jau žinom (`_explain_retry`), kad
+klientas išgirstų, KODĖL prašoma žingsnio atgal.
+
+**Tikrinta:** 1357 passed, 1 skipped (3 nauji testai). Vienas iš jų be taisymo krinta taip, kaip
+nutiko gyvai: „Galiu prieiti, jau išjungiau iš elektros ir perkraunu“ → `case.reboot`
+(instrukcija tam, kas padaryta) vietoj `case.verify` (linijos patikros).
+
+### G10–G12 · vedimas mažais žingsniais (2026-09-30)
+
+Andrius: *„esmė, kad agentas, kai jau veda klientą kokiais nors žingsniais, turi girdėti, ką sako
+klientas ir kokioje būsenoje jis yra, ir vesti po mažą žingsnelį… klientas suveda ir sako suvedžiau,
+agentas pasiklausia, ką matote naršyklėje“*
+
+**G10 · vienas PUNKTAS per ėjimą.** Dokumento žingsnis 1 turi tris punktus — prijungti įrenginį,
+atidaryti `192.168.0.1`, prisijungti su lipduko duomenimis. `guide` duodavo visą žingsnį, o
+nuskambėdavo tik pirmas punktas: adreso ir slaptažodžio klientas taip ir neišgirsdavo. Dabar
+`knowledge_base.parts()` skaido žingsnį į atskirus veiksmus, ir kiekvienas gauna savo ėjimą su
+klausimu, ką klientas mato.
+
+**G11 · klausimas vedimo viduryje — iš TO PATIES dokumento.** „Kokį slaptažodį čia reikėtų
+vesti?“ liko neatsakytas, nors dokumente rašo: prisijungimo vardas ir slaptažodis ant lipduko,
+dažnai admin/admin. Dabar, kol klientas vedamas, žinių paieška pirmiausia eina į tą patį dokumentą.
+Kartu dingsta ir improvizacija: adresas dabar ateina iš dokumento teksto, o ne iš modelio
+(gyvai nuskambėjo `192.168.1.1`, kai dokumente — `192.168.0.1`).
+
+**Ir vienas dalykas, kurio be gyvo paleidimo nebuvome matę:** žingsnis pajudėdavo tik išgirdus
+„padariau“. Klientas sako „radau tą skiltį“, „pasirinkau“, „atsidarė langas“ — ir agentas tą patį veiksmą perpasakodavo kitais žodžiais, o
+kartais nuklysdavo į išgalvotą („ieškokite Internet Connection ir pasirinkite Reconnect“ — dokumente tokio nieko nėra). Dabar rašytinį veiksmą uždaro BET KOKS turiningas atsakymas;
+klausimas ar sumišimas — ne, tie atsakomi iš to paties dokumento.
+
+**G12 · sutikimas prieš vedimą.** Naujas `offer_guide` klausimas: *„galime pabandyti susigrąžinti
+kartu — aš pasakysiu po vieną žingsnį. Ar norite pabandyti, ar geriau iš karto užregistruoti
+specialistą?“* Atsisakius praleidžiami visi vedimo žingsniai, o `escalate.only_after` nebereikalauja
+to, ko klientas nenorėjo.
+
+### G16 · išvada, kuri pati sugalvoja kitą žingsnį
+
+Išvada dažnai ateina ant kitos taisyklės ėjimo (vardo klausimo, tiketo įvado), ir tada tas ėjimas savo
+žingsnio neturi. Modelis tylą užpildydavo tuo, kas dažniausia —  *„Ar galėtumėte perkrauti
+routerį?“* — net `dhcp_silent` kortelei, kuri perkrovimo žingsnio iš viso neturi (jos sprendimas
+yra rašytinis algoritmas), ir mirusiam routeriui, apie kurį tame pačiame sakinyje ką tik pasakė,
+kad telefonu jo neprikels.
+
+Dabar nurodyme įrašomas KORTELĖS savas kitas žingsnis: jei atsakymas baigiasi kuo nors, ką
+klientas turi daryti, tai turi būti **būtent tas** žingsnis — o jei kortelė šiam ėjimui žingsnio
+neturi, išvada pasakoma ir sustojama.
+
+### G21–G25 · mirusio routerio kelias (2026-09-30, antras skambutis)
+
+Lemputės jau buvo klausiamos (0a suveikė), bet toliau viskas subyrėjo. Andrius: *„kai
+lemputės visos nedega, iš karto pasakė perkišti kabelį į kompiuterį… turėjo pasitikrinti maitinimas
+ar ateina į routerį… kai jau nusprendė, kad routerio gedimas, turėjo eiti išvada, kad routeris
+manomai sugedęs, reikia jį pasikeisti.“*
+
+Kortelės kelias dabar seka diagnostiką, ne patogumą:
+
+```
+lemputės  →  maitinimas  →  [pasiūlymas: laikinas internetas]  →  meistras DĖL KEITIMO
+```
+
+| Kas pasikeitė | Kur |
+|---|---|
+| Naujas `check_power` žingsnis (`confirms: true`) | `modules/check_power.yaml` |
+| Tiltas tapo PASIŪLYMU (`offer_bridge`), o atsisakius — visi jo žingsniai praleidžiami | `modules/offer_bridge.yaml`, kortelė |
+| Miręs routeris → tiketo tipas **`equipment_replacement`** | `ticket_types.yaml` (`by_verdict`), `ticket_types.py`, DB schema |
+| `bind.announce` nebevardija įrenginio | `phrases.yaml` |
+| Prompto pavyzdys „nesupratau gatvės“ → bevardis | `speak/context_card.py` |
+
+Pakeliui išlindo dar vienas dalykas, kurį 0a būtų pavertęs amžinu klausimu: `check_lights` laukė
+fakto `wan_link`, kurį **valdo telemetrija** — ji kliento žodžio tam vardui nepriima. Tad klausimo
+nebebūtų buvę kaip uždaryti. Dabar žingsnis laukia to, ką klientas iš tiesų turi — `lights` — o ką
+lemputė REIŠKIA, lieka linijos reikalas.
+
+**G26 (atidėta):** jei paaiškėja, kad maitinimo laidas buvo ištrauktas, po įkišimo reikia
+perskaityti liniją prieš darant išvadą — dabar einama tolyn tarsi niekas nepasikeitę.
+
+### G2, G4–G6, G17–G20 · likusieji (2026-09-30)
+
+| # | Kas padaryta |
+|---|---|
+| **G5** | Pakartojimas turi savo sakinį kataloge (`reboot.power.no_flap`): *„Linijoje nematome, kad routeris būtų buvęs išjungtas — galbūt perkrautas ne tas įrenginys arba tik mygtuku…“* Priežastis eina kartu su prašymu, ne atskirai |
+| **G6** | `_fix_was_tried` dabar mato, ką Case iš tikrųjų **padarė** (`case.did`) — po pririšimo eskalacija sako *„reikalingas naujas maršrutizatorius“*, o ne *„įtariama, kad linijoje nematoma jokio įrenginio“* |
+| **G17** | Savininko patikslinimas neklausiamas ėjime, kuris yra **prieštara ar klausimas** — ginčas atsakomas pirmas |
+| **G18** | Promptas: negalima teigti fakto apie kliento situaciją, kurio kortelėje nėra |
+| **G19** | Kliento pataisytas vardas perimamas (`extract_caller_name` atsakyme į savininko klausimą); kortelėje savininko vardas pažymėtas kaip **sutarties**, ne skambinančiojo |
+| **G4** | `rules_out` perskaitomas **kiekvieną ėjimą**: faktas, atmetantis dabartinę kortelę, ją uždaro ir Case atsiveria iš naujo |
+| **G2** | `step_repeat_max: 3` → kortelės `on_fail` (su priežastimi), o jo nėra — sąžiningas meistras |
+| **G20** | Trace rašymas per užraktą (analitikas ir fono telemetrija rašo iš savo gijų) |
+
+**Trys defektai, kuriuos įvešiau pats ir kuriuos pagavo eval'as** — verta užrašyti, nes visi trys
+yra ta pati klaida (sargas be išėjimo):
+
+1. **G26 kaip `verify` žingsnis** išnaudodavo visą kortelę (`fix_failed`), ir klientas netekdavo
+   laikino interneto pasiūlymo vien dėl to, kad linija dar tyli. Išimta; reikia perskaitymo,
+   kuris kortelės neuždaro.
+2. **Pasiūlymai skaitė `yes_no`**, o „Gerai“ tam skaitytuvui nėra atsakymas — agentas kartojo
+   pasiūlymą, kol pasidavė. Dabar skaito sutikimą (`ticket_consent`), kaip ir tiketo klausimas.
+3. **Kartojimo riba sukūrė ciklą**: sargas pasakydavo „gana“ → eskalacija matydavo
+   `only_after: [guide]` neįvykdytą → grąžindavo į tą patį žingsnį. Dabar pasidavimas įrašomas kaip
+   bandymas (`case.did`).
+
+**Tikrinta:** 1371 passed, 1 skipped; eval **195/195**.
+
+### Diagnostikos principas (Andrius, 2026-09-30)
+
+> „Žingsniai, kurių negalima praleisti — tie, kurie PATVIRTINA hipotezę. Routerio gedimui
+> nustatyti reikia lempučių ir ar elektra pasiekia įreńginį: jei srovė ateina, o lemputės nedega —
+> įrenginys neveikia. Jei perkrovus telemetrijoje niekas nepasikeičia, agentas priežasties tiksliai
+> nenustatė ir turi tai pasakyti. Tai svarbu VISIEMS gedimams: gedimas arba išsprendžiamas, arba
+> perduodamas meistrams — o jiems reikia aprašyti, KOKS tai gedimas.“
+
+Iš to seka trys taisyklės, kurios galioja visoms kortelėms:
+
+1. **Faktas, kurį žino tik klientas, negali būti praleistas** dėl to, kad telemetrija užpildė tą patį
+   fakto vardą. Linija nemato, ar dėžutė išjungta iš rozetės (→ **0a**).
+2. **Peršokimą galima priimti, praleidimą — ne.** Kliento žodis gali uždaryti vėlesnį `instruct`
+   žingsnį (tą linija patikrins pati), bet ne `ask` žingsnį, kurio atsakymo linija neturi (→ **0b**).
+3. **Nenustatė — pasako.** Jei po veiksmo telemetrijoje niekas nepasikeitė, tai ne „išspręsta“
+   ir ne „neaišku“, o įvardijama būsena, kuri keliauja į tiketą.
+
+### G2, G4–G9 — kodėl atidėta
+
+Abu yra kortelės vykdytojo darbas, ir juos verta daryti kartu su tuo, ko Andrius paprašė
+2026-09-28 — tai ta pati vieta:
+
+> 1. „Jau perkroviau vakar" → **išgirsti**: „taip, jūs perkrovėte — pabandykim dar kartą dabar,
+>    ištraukus maitinimo laidą iš rozėtės."
+> 2. „Padariau, kas toliau?" → **pasitikslinti iš linijos**: ar routeris buvo dingęs ir grįžo.
+> 3. Buvo perkrautas, bet niekas nepasikeitė → **konstatuoti routerio gedimą** (meistras su
+>    prirašu „perkrauta, neatsistatė").
+> 4. Atsirado kas kita (kitas MAC) → **nauja diagnozė**, ne ta pati kortelė.
+> 5. Visa tai — **žmogiškai**: girdi klientą ir paaiškina, ką matė ir ką tai reiškia.
+
+Punktai 2 ir 3 po G1 jau veikia (žr. aukščiau). Lieka: **1** (laikas — „vakar" nėra „ką tik"),
+**4** (= G4) ir **kartojimo riba** (= G2).
+
+**Tikrinta:** 1354 passed, 1 skipped (3 nauji testai; vienas iš jų be taisymo krinta —
+`case.reboot` vietoj `case.verify`, t.y. tiksliai tai, kas nutiko gyvai).
+
+### G27–G33 · gyvi skambučiai 2026-10-01 (miręs routeris ir DHCP)
+
+Šaltinis: du skambučiai balsu — `logs/sessions/20261001-090139-050659-0001.jsonl` (miręs
+routeris) ir `…-0002.jsonl` (DHCP tyla). Andrius: *„pirmame su mirusiu pasirodė, kad per greitai
+diagnozuoja ir iš karto klausia apie lemputes — turėjo paprašyti, ar gali prieiti prie routerio.
+Apie lemputes paklausė, bet apie jas nesuprato atsakymo, ėjo toliau maitinimo klausimo ir gedimo
+registravimo. Antrame DHCP kaip ir pradėjo vykdyti, bet kai prisijungiau — sako, mes to
+nepadarysime, registruoju meistrą. Taip pat pasimetė vardo patikslinimas."*
+
+| # | Kas pakeista | Kur |
+|---|---|---|
+| **G27** | Kortelės išvada yra **hipotezė**, kol nepaklausta: *„linijoje jūsų įrenginio nematome — gali būti, kad jis be maitinimo arba sugedęs."* Tikra išvada (*„lemputės nedega, o maitinimas tvarkoje — routeris tikėtinai sugedęs"*) nuskamba tik tilto pasiūlyme, t. y. **po** lempučių ir maitinimo | `locales/lt/phrases.yaml` |
+| **G28** | `no_mac_observed` vėl pradedamas nuo `reach` — pirmas klausimas yra *„ar galite prieiti prie routerio"*, ne apie lemputes | `cards/no_mac_observed.yaml` |
+| **G29** | **Neaiškus atsakymas ≠ atsakymas.** Hipotezę patvirtinantį klausimą (`confirms: true`) užskaito tik tai, ką pasako pats klientas: nei „taip, padariau", nei linija, nei bendras „gerai". Žingsnis stovi, o atsakymas perklausiamas dviem pasirinkimais („dega ar nedega?") | `case_rule.py` (`_confirms_hypothesis`, `_answer_was_unclear`), `context_card.py` |
+| **G30** | Kartojimų raktas įtraukia **vedimo punktą** (`fault.step.guide_step`) — anksčiau kiekvienas atsakytas punktas didino tą patį skaitliuką, ir po trečio agentas pasidavė kaip tik tada, kai klientas jau buvo routerio skydelyje | `case_rule.py` (`_repeat_guard`) |
+| **G31** | Sutikimo žodynas: „pabandom", „pabandykim", „bandom", „pasiruošęs", „galima", „einam" | `locales/lt/vocabulary.yaml` |
+| **G32** | Vardo patikslinimas klausiamas ir tada, kai klientas **nieko nesakė** apie sutartį (`caller_relation == "unknown"`), o vardas nesutampa. Jei jis jau paaiškino (šeimos narys, nuomininkas, „ne aš") — neklausiama; DB vardas niekada negarsinamas | `decide/rules/head.py` |
+| **G32b** | Toks patikslinimas **nepasiima ėjimo**: jis prisideda prie to atsakymo, kurį stato kita taisyklė. Eval'as tai pagavo iš karto — S8, S10 ir R2 liko be savo žinios (avarija, „televizijos paslaugos sutartyje nėra", atviras tiketas), nes klausimas atėmė visą atsakymą. Sakinys duodamas **tiksliai**, nes sutarties vardo garsinti negalima | `graph_v2/state.py` (`holder_clarify_soft`), `reply.py`, `context_card.py` |
+| **G32c** | „Aišku, ačiū, lauksiu" buvo užrašyta kaip **vardas „Aišku"** (seniau — tyliai, dabar būtų dar ir patikslinimo klausimas). Padėkos, supratimo ir atsisveikinimo žodžiai įtraukti į `name_stop_words` | `locales/lt/vocabulary.yaml` |
+| **G33** | Atidėta Andriaus sprendimu: *„dėl palaukimo dar pagalvosime, kaip tai geriau būtų agentui."* Dabar agentas po nurodymo nelaukia žmogiškai („ar jau priėjote? ar radote dėžutę?"), o tiesiog klausia toliau | — |
+
+**Tikrinta:** 1382 passed, 1 skipped; eval 195/195 (G32 pataisą — patikslinimą, atėmusį visą atsakymą — pagavo pats eval'as).
 
 ## Banga 5 — valymas (šaka `fix/wave-5`, 2026-09-28)
 

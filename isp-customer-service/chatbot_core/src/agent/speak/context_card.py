@@ -120,13 +120,22 @@ def _kb_answer(state, rt) -> str:
         except Exception:  # pragma: no cover - skaitliukai niekada nelaužia atsakymo
             pass
         return ""
-    found = _in_routed_document(need, routed) or find(
-        need.words,
-        equipment=need.equipment,
-        problem=need.problem,
-        # Klientas įvardino telefoną ar kompiuterį: pirmumas TO įrenginio instrukcijai.
-        prefer=device_markers(need.device),
-        limit=2,
+    # Klausimas VEDIMO viduryje atsakomas iš TO PATIES dokumento, per kurį klientas vedamas.
+    # Gyvai 2026-09-30 (dhcp_silent): „prisijungiu prie naršyklės, išmetė langą — kokį slaptažodį
+    # vesti?" liko neatsakytas, nors dokumente parašyta: prisijungimo vardas ir slaptažodis ant
+    # lipduko, dažnai admin/admin.
+    guided = _guide_document(state)
+    found = (
+        (find(need.words, source=guided, limit=2) if guided else [])
+        or _in_routed_document(need, routed)
+        or find(
+            need.words,
+            equipment=need.equipment,
+            problem=need.problem,
+            # Klientas įvardino telefoną ar kompiuterį: pirmumas TO įrenginio instrukcijai.
+            prefer=device_markers(need.device),
+            limit=2,
+        )
     )
     if rt is not None and getattr(rt, "tracer", None) is not None:
         rt.tracer.emit(
@@ -151,6 +160,27 @@ def _kb_answer(state, rt) -> str:
         # Iki E1 tokiu atveju būdavo grąžinama NIEKO, o modelis improvizuodavo.
         return f"(NOT SURE this answers the question, say so and ask to rephrase) {said}"
     return said
+
+
+def _guide_document(state) -> str | None:
+    """The document the caller is being walked through right now, if any.
+
+    A question asked in the middle of a written procedure belongs to THAT procedure: the
+    password the panel is asking for is written two lines below the address they were just
+    given (live 2026-09-30).
+    """
+    from ..contract import cards as catalog
+
+    card = catalog.card(getattr(state.case, "fault", None))
+    solution = getattr(state.case, "solution", None)
+    if card is None or solution is None:
+        return None
+    steps = card.solution[solution].steps
+    index = getattr(state.case, "step", 0)
+    if not 0 <= index < len(steps):
+        return None
+    call = steps[index]
+    return str(call.args.get("knowledge") or "") or None if call.module == "guide" else None
 
 
 def _in_routed_document(need, routed: str | None):
@@ -191,15 +221,19 @@ def _service_of(state) -> str | None:
 
 
 def _mark_written_step_said(state) -> None:
-    """A written step counts as SAID when a reply is actually being built for it.
+    """A step counts as SAID when a reply is actually being built for it.
 
     Marking it when the plan was built was wrong: on a turn the identification rule owned, the
     guide plan existed, was never spoken, and the caller's next words finished a step they had
-    never heard (2026-09-23).
+    never heard (2026-09-23). The same holds for every card step — a step whose question was
+    never asked must not have its readers applied to somebody else's answer (2026-09-30).
     """
-    if str((state.turn.plan or {}).get("rule") or "") != "case.guide":
+    rule = str((state.turn.plan or {}).get("rule") or "")
+    if not rule.startswith("case."):
         return
-    state.case.guide_said = state.case.guide_step
+    state.case.step_said = state.case.step
+    if rule == "case.guide":
+        state.case.guide_said = state.case.guide_step
 
 
 def _asked_how(state, rt) -> list[str]:
@@ -462,8 +496,10 @@ def _just_heard(state, rt) -> list[str]:
     if understood and third_person:
         out.append(
             "ACKNOWLEDGE in half a sentence IN YOUR OWN WORDS, addressing the caller in the "
-            "SECOND person („Gerai, kad padarėte…“, „Aišku, darote…“) — never quote an "
-            "internal summary and never speak about the caller in the third person."
+            "SECOND person („Supratau…“, „Gerai…“) — never quote an internal summary and "
+            "never speak about the caller in the third person. Reflect only what they SAID; "
+            "do not credit them with an action nobody reported (live 2026-09-28: the caller "
+            "said „Galiu?“ and heard „Gerai, kad perkrovėte“)."
         )
     elif understood:
         out.append(
@@ -588,7 +624,13 @@ def _case_facts(state, rt) -> list[str]:
     if s.identity.customer_id:
         out.append(f"Customer ID: {s.identity.customer_id}")
     if s.identity.customer_name:
-        out.append(f"Customer name: {s.identity.customer_name}")
+        # Live 2026-09-30: the caller said the contract was in his wife's name, and the agent
+        # greeted him „Malonu, Rasa!" — the holder's name from the CRM. Whoever is calling is
+        # `caller_name`; this one is the contract's.
+        out.append(
+            f"Contract holder (the CUSTOMER on the contract — NOT necessarily who is calling, "
+            f"never address the caller by this name): {s.identity.customer_name}"
+        )
     if s.identity.customer_address:
         out.append(f"Address: {s.identity.customer_address}")
     if s.intake.problem_type:
@@ -690,6 +732,7 @@ def _dialogue_state(state, rt) -> list[str]:
             "understand / will wait — say goodbye; the engine closes the call."
         )
     out += _awaiting(state, rt)
+    out += _unclear_case_answer(state)
     if s.dialog.clarity_level == "basic" and not s.closing.case_closed:
         out.append(
             "PLAIN WORDS: the caller said they do not follow technical words. Speak "
@@ -728,13 +771,20 @@ def _stuck(state, rt) -> list[str]:
     )
     if s.dialog.last_heard:
         # We DID hear them — we just could not use it. Never say „neišgirdau“ here.
+        #
+        # The example used to end in „nesupratau GATVĖS“, and on 2026-09-30 the model said
+        # exactly that three times — while the caller was unplugging a router and later
+        # dictating a phone number, with the address long since confirmed. An example in a
+        # directive becomes a sentence in the call, so it names nothing concrete now: what
+        # was unclear is THIS turn's own question.
         return [
             f"DID NOT UNDERSTAND (but heard!): the caller just said „{s.dialog.last_heard}“ "
             "and it did not give what is needed. Do NOT say „neišgirdau“ — say what you heard "
-            "and what was unclear, and ask them to repeat ONLY that part: „Girdžiu „…“, bet "
-            "nesupratau gatvės — pakartokite ją, prašau.“ If the caller is actually talking "
-            "ABOUT SOMETHING ELSE (asking, clarifying) — answer THAT instead of repeating "
-            "your question." + extra
+            "and name, IN YOUR OWN WORDS, the part of YOUR OWN LAST QUESTION that is still "
+            "missing, then ask only for that. Never ask for something you did not ask for "
+            "this turn (an address that is already confirmed, a name you already have). If "
+            "the caller is actually talking ABOUT SOMETHING ELSE (asking, clarifying) — "
+            "answer THAT instead of repeating your question." + extra
         ]
     # Silence. They may be listening or thinking, so do not apologise at them —
     # „neišgirdau“ after they said nothing reads as if THEY failed.
@@ -742,6 +792,25 @@ def _stuck(state, rt) -> list[str]:
         "SILENCE (the caller said nothing): do NOT say „neišgirdau“ — they may just be "
         "listening or thinking. Calmly, without apologising, ask for what is needed (e.g. "
         "the street), or check in with „Ar mane girdite?“. Do not rush." + extra
+    ]
+
+
+def _unclear_case_answer(state) -> list[str]:
+    """Hipotezę patvirtinantis klausimas negavo atsakymo — perklausiama paprastai.
+
+    Gyvai 2026-10-01: į „ar interneto lemputė dega?" klientas atsakė ne apie lemputę, o
+    agentas tai užskaitė ir nuėjo prie maitinimo laido — gedimas tuomet konstatuotas be to,
+    ką hipotezė turėjo patvirtinti. Dabar žingsnis stovi, o atsakymas perklausiamas dviem
+    pasirinkimais, kad klientui būtų lengva atsakyti.
+    """
+    if state.case.unclear != state.case.step or state.closing.case_closed:
+        return []
+    return [
+        "ANSWER WAS NOT CLEAR (and this question is the one the diagnosis stands on): the "
+        "caller said something, but NOT what you asked. Do NOT move on, do NOT conclude "
+        "anything from it, do NOT repeat the same sentence. Say what you heard, then ask the "
+        "SAME thing as a simple choice of two („Tai lemputė dega ar nedega?“) so it is easy "
+        "to answer. If they are asking something instead — answer that first, then ask again."
     ]
 
 
@@ -812,6 +881,7 @@ def _plan_goal(state, rt) -> list[str]:
     out += _goal_caller_intro(state, rt)
     out += _goal_identification(state, rt)
     out += _goal_ticket(state, rt)
+    out += _goal_holder_clarify(state, rt)
     _mark_written_step_said(state)
     out += _asked_how(state, rt)
     out += _goal_recap_and_findings(state, rt)
@@ -937,6 +1007,34 @@ def _goal_identification(state, rt) -> list[str]:
     return out
 
 
+def _goal_holder_clarify(state, rt) -> list[str]:
+    """Vardas nesutampa su sutarties vardu, o klientas apie sutartį nieko nesakė.
+
+    Andrius (2026-10-01): *„pasimetė vardo patikslinimas."* Patikslinimas čia PRISIDEDA prie
+    šio ėjimo atsakymo, o ne jį pakeičia: eval'e tas pats klausimas kaip atskiras atsakymas
+    atėmė avarijos žinią, „televizijos paslaugos sutartyje nėra" ir atvirą tiketą. Sakinys
+    duodamas tiksliai — sutarties vardas NIEKADA negarsinamas, todėl formuluotė nėra laisva.
+    """
+    s = state
+    if not (s.identity.holder_clarify_open and s.identity.holder_clarify_soft):
+        return []
+    if s.identity.holder_clarify_asked or s.closing.case_closed:
+        return []
+    from ..contract.locale import phrase
+
+    s.identity.holder_clarify_asked = True
+    from ..decide.question import register as _q_register
+
+    _q_register(state, rt, "ident", "holder_clarify")
+    rt.tracer.emit("decision", intent="holder_name", action="clarify_ask", soft=True)
+    return [
+        "ALSO ADD ONE QUESTION AT THE END (the name does not match the contract): say it WORD "
+        f"FOR WORD — „{phrase('identification.holder_mismatch_clarify')}“ — after whatever this "
+        "reply is about. NEVER say the name that is in our system, and do not drop what this "
+        "reply had to say."
+    ]
+
+
 def _goal_ticket(state, rt) -> list[str]:
     """The ticket dialogue's question moments — the engine owns the stages and the capture;
     only the WORDING is free."""
@@ -971,6 +1069,24 @@ def _goal_ticket(state, rt) -> list[str]:
         f"PLAN GOAL — TICKET STEP: {goal}. The registration has NOT happened — say "
         f"„užregistruosiu“, never „užregistravau“. (Backup: „{td['fallback']}“)"
     ]
+
+
+def _next_step_words(state) -> str:
+    """The card's OWN next step, worded for this caller — or "" when there is none."""
+    from .. import modules
+    from ..contract import cards as catalog
+
+    card = catalog.card(getattr(state.case, "fault", None))
+    solution = getattr(state.case, "solution", None)
+    if card is None or solution is None:
+        return ""
+    steps = card.solution[solution].steps
+    index = getattr(state.case, "step", 0)
+    if not 0 <= index < len(steps):
+        return ""
+    call = steps[index]
+    plan = modules.plan_step(call)
+    return (modules.question_of(call) or (plan.text if plan else "") or "").strip()
 
 
 def _instruction_turn(state) -> bool:
@@ -1022,10 +1138,35 @@ def _goal_recap_and_findings(state, rt) -> list[str]:
             if instructing or not pending.get("prielaida")
             else f" We could not check this together: {pending['prielaida']}."
         )
+        # When this turn has no instruction of its own, the reply must STOP after the
+        # finding. Live 2026-09-30 (dhcp_silent): the finding landed on the name turn, the
+        # turn had no goal, and the model filled the silence with „perkraukite routerį" —
+        # a step this card does not have at all (its fix is the written procedure).
+        # Live 2026-09-30 (dhcp_silent): the finding landed on the name turn, the turn had no
+        # step of its own, and the model filled the silence with „perkraukite routerį" — a step
+        # this card does not have at all (its fix is a written procedure). So either the
+        # card's OWN next step is named here, or nothing is.
+        nxt = _next_step_words(state)
+        nothing_yet = (
+            ""
+            if instructing
+            else (
+                f" If you end with something for the caller to do, it must be THIS and nothing "
+                f"else: „{nxt}“."
+                if nxt
+                else " This turn has NO step of its own: say what we found and STOP — do not "
+                "ask them to do anything, and do not invent a next step."
+            )
+        )
+        tail = (
+            " Then this turn's own goal — that is the part the caller must act on, so it must "
+            "survive: keep the whole reply to two sentences."
+            if instructing
+            else ""
+        )
         out.append(
             f"PLAN GOAL — OPEN THE REPLY WITH THIS, in ONE short clause, before anything "
-            f"else: {head}.{unchecked} Then this turn's own goal — that is the part the "
-            f"caller must act on, so it must survive: keep the whole reply to two sentences."
+            f"else: {head}.{unchecked}{nothing_yet}{tail}"
         )
     if fd:
         state.case.finding = None

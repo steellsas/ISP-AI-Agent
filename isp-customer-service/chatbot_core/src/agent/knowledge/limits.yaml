@@ -11,6 +11,8 @@ solver_cycles_max: 3                # more turns than this on the same step -> b
 solver_internal_hops_max: 2         # silent actions in a row before a caller-facing action is forced
 solver_max_tokens: 400
 
+step_repeat_max: 3                  # kiek kartų tas pats žingsnis gali nuskambėti; paskui — kortelės `on_fail` arba meistras
+
 # --- Problem gate and identification ----------------------------------------------
 problem_gate_max_turns: {value: 5, env: GATE_MAX_TURNS}  # fruitless exchanges before a polite close
 problem_gate_scripted_asks: 2       # scripted "what is the problem?" asks before the narrator takes over

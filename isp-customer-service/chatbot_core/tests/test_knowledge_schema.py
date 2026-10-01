@@ -220,6 +220,8 @@ def test_every_vocabulary_name_in_code_exists_with_its_type():
         for need in card.needs.values()
         for name in need.answers.values()
     }
+    # Wave 6: a MODULE names the vocabulary that recognises "I already did this step".
+    from_knowledge |= {spec.reported for spec in v2.modules().values() if spec.reported}
     unused = sorted(set(vocabulary) - {name for _w, _f, name in uses} - from_knowledge)
     assert unused == []
 

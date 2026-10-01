@@ -98,6 +98,12 @@ class IdentityState(BaseModel):
     # Holder-name clarification (privacy: the DB name is never spoken).
     holder_clarify_open: bool = False
     holder_clarify_asked: bool = False
+    # Patikslinimas, kuris NEPASIIMA ėjimo: klientas nesakė, kad sutartis jo — tik vardas
+    # nesutampa. Tokiu atveju klausimas prisideda prie to atsakymo, kurį stato kita taisyklė
+    # (avarijos žinia, „televizijos paslaugos sutartyje nėra", atviras tiketas), o ne jį
+    # pakeičia. Eval 2026-10-01: scenarijai S8, S10 ir R2 liko be savo žinios būtent todėl,
+    # kad patikslinimas atėmė visą atsakymą (wave 6).
+    holder_clarify_soft: bool = False
     # The caller just introduced themselves — accept warmly, once.
     caller_name_heard: bool = False
 
@@ -424,10 +430,19 @@ class CaseState(BaseModel):
     # Facts we tried to get and could not (an unanswered question, a probe that is down):
     # never asked twice, so a call cannot loop on a dead end.
     unavailable: list[str] = Field(default_factory=list)
+    # Facts the CALLER told us, as opposed to the ones a probe filled in. The distinction
+    # decides whether a question may be passed over: `check_lights` waits for `wan_link`,
+    # which the line also produces, and on 2026-09-30 that skipped the whole lights / power
+    # conversation — the agent never established that the router was alive (wave 6).
+    said: list[str] = Field(default_factory=list)
     # The fault whose solution is running, and where in it.
     fault: str | None = None
     solution: int | None = None
     step: int = 0
+    # How many times each step's own words went out. A step that keeps being re-said is a
+    # step that is not working: after the limit the card's `on_fail` runs, and failing that,
+    # a technician — live 2026-09-28 the same reboot instruction went out six times (wave 6).
+    repeats: dict[str, int] = Field(default_factory=dict)
     # How many times each step has been attempted (a retry is declared by the card).
     attempts: dict[str, int] = Field(default_factory=dict)
     # The step is waiting for this fact before the solution may move on.
@@ -478,6 +493,29 @@ class CaseState(BaseModel):
     # step they never heard: the first step of the WAN procedure was skipped exactly so
     # (2026-09-23), because "taip, esu prie routerio" read as a done-report.
     guide_said: int = -1
+    step_said: int = -1
+    # Kuris žingsnis gavo NEAIŠKŲ atsakymą. Hipotezę patvirtinantis klausimas („ar lemputė
+    # dega?") užskaitomas tik tada, kai klientas iš tikrųjų pasako, ką mato: „taip, padariau"
+    # ar bendras „gerai" nėra atsakymas, o 2026-10-01 gyvai kaip tik taip buvo peršokta prie
+    # maitinimo klausimo. Čia pažymėta, kad atsakymas būtų perklaustas paprastai — „dega ar
+    # nedega?" — o ne užskaitytas (wave 6).
+    unclear: int = -1
+
+    @property
+    def in_progress(self) -> bool:
+        """Ar ŠIUO METU vyksta gedimo sprendimas.
+
+        v1 to klausdavo per `resolution.procedure`, o v2 Case jo nebepildo — todėl atsisveikinimo
+        sargas ir telefono padėjimo tinklas 2026-09-30 nematė, kad skambutis dar viduryje:
+        klientas atsisveikino, kai kortelė jau buvo pasakiusi „routeris sugedęs", ir skambutis
+        baigėsi BE TIKETO (wave 6).
+        """
+        return bool(self.fault) and self.solution is not None
+
+    # Kuris kortelės žingsnis iš tikrųjų NUSKAMBĖJO. Planas gali būti sudarytas ir neatsakytas —
+    # tą ėjimą paėmus identifikacijai ar tiketui — o jo skaitytuvai tada perskaito visai kito
+    # klausimo atsakymą: gyvai 2026-09-30 „Ne, tai mano vardu…" tapo `lights=off`, lempučių
+    # klausimas praleistas kaip " jau atsakytas" ir agentas nušoko prie maitinimo (wave 6).
     # The modules that actually RAN in this call, in order. It answers two questions nothing
     # else could: has the phone work been done before a technician is sent (`only_after`), and
     # what does the technician need to know we already tried.

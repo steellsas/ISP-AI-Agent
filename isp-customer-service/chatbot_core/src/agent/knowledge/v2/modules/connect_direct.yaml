@@ -6,5 +6,7 @@ params:
 goal: "the caller's computer connected straight to the line cable"
 text: "equipment:{to}.connect_direct"
 produces: [device_seen, traffic]
+# Klientas gali tai padaryti anksčiau, nei paprašoma — tada instrukcija nebekartojama.
+reported: reported_connect_direct
 simulate: simulate_bridge_connect
 simulate_env: SIMULATE_BRIDGE

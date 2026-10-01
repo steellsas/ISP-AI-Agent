@@ -56,7 +56,17 @@ def reply_plan(state: Any, rt: Any, user_input: str | None) -> TurnPlan | None:
     # and confirmed „Jūs, Petrai, esate savininkas"; the privacy rule is too
     # important to improvise). The DB name is NOT in the phrase; the answer next
     # turn updates the relation (prefill).
-    if state.identity.holder_clarify_open and not state.identity.holder_clarify_asked:
+    # … but NOT on a turn where the caller just contradicted us or asked something. Live
+    # 2026-09-29 (debt): „Bet aš sumokėjau" was answered with „Sutartis registruota kitu vardu
+    # — gal šeimos nario?" The dispute is what the caller is waiting for; the clarification
+    # keeps until a turn that is not about something else.
+    _turn_type = str((getattr(state.turn, "understanding", None) or {}).get("type") or "")
+    if (
+        state.identity.holder_clarify_open
+        and not state.identity.holder_clarify_asked
+        and not state.identity.holder_clarify_soft
+        and _turn_type not in ("contradiction", "question")
+    ):
         state.identity.holder_clarify_asked = True
         from ..question import register as _q_register
 

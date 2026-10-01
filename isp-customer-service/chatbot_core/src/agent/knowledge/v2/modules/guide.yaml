@@ -16,7 +16,7 @@ params:
   # patikra (kortelės `verify`), tad kortelė pasako, kur baigiasi vedimas.
   count: {}
 goal: >-
-  this ONE written step, WHOLE, in one or two spoken sentences: merge its sub-points into a
-  single instruction (a caller cannot hold a list), leave out the step heading, never split
-  it across turns, then ask them to say when it is done
+  this ONE written action, in one spoken sentence: say exactly what it says (an address, a
+  menu name and a password are the point — never replace them with your own), leave out the
+  step heading and the numbering, then ask what they see or to say when it is done
 produces: []

@@ -24,6 +24,7 @@ def _catalog() -> dict[str, Any]:
 
 def reload() -> None:
     _catalog.cache_clear()
+    _by_verdict.cache_clear()
 
 
 def known(ticket_type: str | None) -> bool:
@@ -35,6 +36,22 @@ def priority(ticket_type: str | None) -> str:
 
 
 def fault_type(verdict: str | None) -> str:
-    """The ticket a fault becomes: a fault no pack could explain is `fault_unclear`,
-    every other one needs a technician."""
-    return "fault_unclear" if verdict == "unclear_fault" else "fault_technician"
+    """The ticket a fault becomes.
+
+    A fault no card could explain is `fault_unclear`; a verdict the catalogue maps by name
+    gets that type (a dead router is an EQUIPMENT REPLACEMENT, and the technician has to
+    know before loading the van — Andrius, 2026-09-30); everything else needs a technician.
+    """
+    if verdict == "unclear_fault":
+        return "fault_unclear"
+    mapped = _by_verdict().get(verdict or "")
+    return str(mapped) if mapped and known(str(mapped)) else "fault_technician"
+
+
+@lru_cache(maxsize=1)
+def _by_verdict() -> dict[str, str]:
+    from .contract.loader import read_yaml
+
+    data = read_yaml(_PATH) or {}
+    mapping = data.get("by_verdict") if isinstance(data, dict) else None
+    return mapping if isinstance(mapping, dict) else {}

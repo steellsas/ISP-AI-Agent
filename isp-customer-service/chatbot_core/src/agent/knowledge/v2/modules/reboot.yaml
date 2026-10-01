@@ -10,6 +10,10 @@ params:
 goal: "the {device} power-cycled at its own socket, about five seconds, plugged back"
 text: "equipment:{device}.reboot.{method}"
 produces: [port_flapped, traffic]
+# Klientas dažnai perkrauna anksčiau, nei jo paprašoma („išjungiau iš elektros ir persikrauna“,
+# kai dar tik klausiama, ar gali prieiti). Tie žodžiai uždaro ŠĮ žingsnį, kad instrukcija
+# nebūtų duodama tam, kas jau padaryta (gyvai 2026-09-29 ir 09-30).
+reported: reported_reboot
 # Demo: kliento fizinis veiksmas atsispindi sėdintoje DB (eval/demo; produkcijoje išjungta).
 simulate: simulate_router_reboot
 simulate_env: SIMULATE_REBOOT

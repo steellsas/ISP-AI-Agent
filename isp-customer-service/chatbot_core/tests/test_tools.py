@@ -167,12 +167,15 @@ class TestCreateTicket:
     ):
         """A type outside knowledge/ticket_types.yaml must not crash the INSERT on the
         CHECK constraint (observed live database_error) — it is registered as an unclear
-        fault and the original wording stays in the details."""
+        fault and the original wording stays in the details.
+
+        (The example used to be `equipment_replacement`, which wave 6 made a real type for a
+        dead router — so the unknown one here is a name nothing declares.)"""
         from agent.tools import create_ticket
 
         result = create_ticket(
             customer_id=sample_customer_id,
-            ticket_type="equipment_replacement",
+            ticket_type="router_swap_please",
             problem_description="Sugedęs routeris, reikia keisti",
         )
         assert result["success"] is True
@@ -184,7 +187,7 @@ class TestCreateTicket:
             row = dict(cursor.fetchone())
         assert row["ticket_type"] == "fault_unclear"
         assert row["priority"] == "medium"  # the type's own priority
-        assert row["details"].startswith("[equipment_replacement]")
+        assert row["details"].startswith("[router_swap_please]")
 
     def test_the_types_priority_is_used_when_none_is_given(self, db_connection, sample_customer_id):
         from agent import ticket_types
