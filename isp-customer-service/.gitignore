@@ -58,6 +58,8 @@ htmlcov/
 *.db
 *.db-journal
 database/isp_database.db
+# Testu / eval'o / demo bazes (`DATABASE_PATH`, 5-1): generuojamos, ne saugomos
+database/*.sqlite
 
 # Logs
 *.log

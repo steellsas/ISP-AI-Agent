@@ -399,6 +399,75 @@ class TestHolderNameCheck:
         assert reply and "kitu vardu" in reply  # scripted, deterministinis
         assert "Giedri" not in reply  # DB vardas NIEKADA negarsinamas
 
+    def test_a_name_that_does_not_match_is_clarified_even_unasked(self, db_connection):
+        """Wave 6 (Andrius 2026-10-01: *„pasimetė vardo patikslinimas"*): the caller never
+        claims the contract is theirs — they just give a name, and it is not the holder's.
+        That is enough for ONE polite clarification; the DB name still stays unsaid."""
+        from agent.decide.rules.head import caller_intro
+
+        agent = _agent()
+        agent.state.identity.customer_id = "CUST009"
+        agent.state.identity.customer_name = "Giedrius Giedraitis"
+        agent.state.identity.result_pending = True
+
+        caller_intro(agent.state, agent.runtime, "Darius.")
+
+        assert agent.state.identity.caller_name == "Darius"
+        assert agent.state.identity.caller_relation == "unknown"  # jis nieko nesakė apie sutartį
+        assert agent.state.identity.holder_clarify_open is True
+        assert agent.state.identity.holder_clarify_soft is True  # klausimas prisideda, nepakeičia
+
+    def test_a_caller_who_said_who_they_are_is_not_quizzed(self, db_connection):
+        """„Žmonos vardu sudaryta" already explains the mismatch — asking again is noise."""
+        from agent.decide.rules.head import caller_intro
+
+        agent = _agent()
+        agent.state.identity.customer_id = "CUST009"
+        agent.state.identity.customer_name = "Giedrius Giedraitis"
+        agent.state.identity.result_pending = True
+
+        caller_intro(agent.state, agent.runtime, "Darius, sutartis žmonos vardu.")
+
+        assert agent.state.identity.caller_relation == "family"
+        assert agent.state.identity.holder_clarify_open is False
+
+    def test_a_thank_you_is_not_a_name(self, db_connection):
+        """Eval 2026-10-01: „Aišku, ačiū, lauksiu" buvo užrašyta kaip vardas „Aišku" — ir dar
+        paklausta dėl sutarties savininko. Padėka nėra vardas, tad ir patikslinimo nėra."""
+        from agent.decide.rules.head import caller_intro
+
+        agent = _agent()
+        agent.state.identity.customer_id = "CUST009"
+        agent.state.identity.customer_name = "Giedrius Giedraitis"
+        agent.state.identity.result_pending = True
+
+        caller_intro(agent.state, agent.runtime, "Aišku, ačiū, lauksiu")
+
+        assert agent.state.identity.caller_name == "nenurodyta"
+        assert agent.state.identity.holder_clarify_open is False
+
+    def test_the_soft_clarification_rides_along_instead_of_taking_the_turn(self, db_connection):
+        """Eval 2026-10-01: kaip atskiras atsakymas patikslinimas atėmė avarijos žinią, „TV
+        paslaugos sutartyje nėra" ir atvirą tiketą. Dabar jis — šio ėjimo priedas."""
+        from agent.decide.rules.reply import scripted_words
+        from agent.speak.context_card import _goal_holder_clarify
+
+        agent = _agent()
+        agent.state.identity.customer_id = "CUST009"
+        agent.state.identity.customer_name = "Giedrius Giedraitis"
+        agent.state.identity.caller_name = "Tomas"
+        agent.state.identity.holder_clarify_open = True
+        agent.state.identity.holder_clarify_soft = True
+
+        assert scripted_words(agent.state, agent.runtime, "Tomas") is None  # ėjimo nepasiima
+
+        said = _goal_holder_clarify(agent.state, agent.runtime)
+
+        assert said and "kitu vardu" in said[0]
+        assert "Giedri" not in said[0]  # DB vardas NIEKADA negarsinamas
+        assert agent.state.identity.holder_clarify_asked is True
+        assert _goal_holder_clarify(agent.state, agent.runtime) == []  # vieną kartą
+
     def test_clarify_answer_updates_relation(self, db_connection):
         from tests.calls import hear
 

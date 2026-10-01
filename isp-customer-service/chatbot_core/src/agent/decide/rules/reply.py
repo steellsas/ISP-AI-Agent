@@ -64,6 +64,7 @@ def reply_plan(state: Any, rt: Any, user_input: str | None) -> TurnPlan | None:
     if (
         state.identity.holder_clarify_open
         and not state.identity.holder_clarify_asked
+        and not state.identity.holder_clarify_soft
         and _turn_type not in ("contradiction", "question")
     ):
         state.identity.holder_clarify_asked = True

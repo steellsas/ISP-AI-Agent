@@ -577,6 +577,13 @@ def _absorb(state: Any, rt: Any, facts: dict[str, str]) -> str:
             ledger.record_client(state, rt, own[0], own[1])
             facts = ledger.facts_of(state)
     awaited = state.case.awaiting
+    confirming = _confirms_hypothesis(call)
+    if confirming and awaited and not _client_said(state, awaited):
+        # Hipotezę patvirtinantį klausimą užskaito TIK paties kliento atsakymas. Nei „taip,
+        # padariau", nei linijos duomenys, nei bendras „gerai" nepasako, ar lemputė dega —
+        # 2026-10-01 gyvai tokiu neaiškiu atsakymu buvo peršokta prie maitinimo klausimo, o
+        # paskui gedimas konstatuotas be lempučių. Perklausiame paprastai.
+        return _answer_was_unclear(state, rt, call)
     if awaited and awaited in facts:
         if awaited == "restored" and facts[awaited] == "no":
             # Their own answer says it did not work: the card decides what that means.
@@ -588,6 +595,8 @@ def _absorb(state: Any, rt: Any, facts: dict[str, str]) -> str:
         # waiting for the word "padariau" left the agent re-wording the same line while the
         # caller was already two actions ahead (live 2026-09-30).
         return _advance(state, rt, by_words=True)
+    if confirming:
+        return _answer_was_unclear(state, rt, call)
     if _reported_done(state) or _reported_outcome(state, call):
         # They DID it. That answers any question about being able to (live S6: "ištraukiau
         # iš routerio ir įkišau atgal" against "can you get to it now" — the engine waited
@@ -599,6 +608,35 @@ def _absorb(state: Any, rt: Any, facts: dict[str, str]) -> str:
 
 
 # --- what the caller has actually told us, and where they have walked to -------------------
+
+
+def _confirms_hypothesis(call: Any) -> bool:
+    """Ar šis žingsnis yra klausimas, kuriuo laikosi hipotezė (`confirms: true`)?
+
+    Andrius (2026-09-30): *„žingsniai, kurių negalima praleisti — tie, kurie patvirtina
+    hipotezę."* Tokio klausimo negalima nei praleisti (`_jumped_ahead`), nei užskaityti iš
+    netiesioginio atsakymo (čia).
+    """
+    spec = catalog.module(call.module)
+    if spec is None or spec.kind != "ask":
+        return False
+    return bool(getattr(spec, "confirms", False))
+
+
+def _answer_was_unclear(state: Any, rt: Any, call: Any) -> str:
+    """Klausimas lieka stovėti, o atsakymas pažymimas neaiškiu — kad atsakymas būtų
+    perklaustas paprastai („dega ar nedega?"), o ne tas pats klausimas tais pačiais žodžiais.
+    Pakartojimų sargas (`_repeat_guard`) ir toliau neleidžia klausti be galo."""
+    if state.dialog.last_heard and _step_was_asked(state):
+        state.case.unclear = state.case.step
+        rt.tracer.emit(
+            "case",
+            move="unclear",
+            fault=state.case.fault,
+            step=state.case.step,
+            module=call.module,
+        )
+    return "waiting"
 
 
 def _client_said(state: Any, fact: str | None) -> bool:
@@ -830,6 +868,7 @@ def _advance(state: Any, rt: Any, *, by_words: bool = False) -> str:
     if by_words:
         state.case.moved_on_turn = state.dialog.turn_count
     state.case.retrying = False
+    state.case.unclear = -1
     done = _current(state)
     if _more_guide_steps(state, done):
         # A written procedure is walked one step per turn: the card step is not finished until
@@ -905,7 +944,13 @@ def _repeat_guard(state: Any, rt: Any, call: Any) -> TurnPlan | None:
     """
     from ...contract import limits
 
+    # Vedimas yra VIENAS kortelės žingsnis, einamas per daug punktų — tad raktas turi įtraukti ir
+    # punktą. Gyvai 2026-10-01: kiekvienas atsakytas punktas didino tą patį skaitliuką, ir po
+    # trečio agentas pasakė „telefonu neišspręsime, registruoju meistrą" — kaip tik tada, kai klientas
+    # jau buvo prisijungęs prie routerio skydelio.
     key = f"{state.case.fault}.{state.case.step}"
+    if call.module == "guide":
+        key = f"{key}.{state.case.guide_step}"
     seen = state.case.repeats.get(key, 0)
     if seen < limits.get("step_repeat_max"):
         state.case.repeats[key] = seen + 1

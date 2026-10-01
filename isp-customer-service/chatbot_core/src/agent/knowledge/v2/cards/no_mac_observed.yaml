@@ -69,7 +69,12 @@ solution:
 # (Andrius, 2026-09-30): lemputės -> maitinimas -> IŠVADA -> keitimas, o laikinas internetas
 # yra PASIŪLYMAS pakeliui, ne žingsnis, kurį klientas gauna nepaklaustas.
 - steps:
-  # 1. Ar dėžutė gyva. Šito linija nemato, tad `confirms: true` — neperšokama.
+  # 0. Pirma — ar klientas apskritai gali prieiti. Gyvai 2026-10-01 agentas iš karto klausė apie
+  #    lemputes, nors klientas dar tik ėjo prie routerio („Tuoj palauk, kad aš prieisiu…").
+  - module: reach
+    args: {device: router}
+    done_when: [reachable=yes]
+  # 1. Ar dėžutė gyva. Šito linija nemato, tad `confirms: true` — nepersokama.  # 1. Ar dėžutė gyva. Šito linija nemato, tad `confirms: true` — neperšokama.
   - module: check_lights
     args: {device: router}
     knowledge_need: priekine panele lemputes reiskia

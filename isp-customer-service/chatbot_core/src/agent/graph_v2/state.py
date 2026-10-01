@@ -98,6 +98,12 @@ class IdentityState(BaseModel):
     # Holder-name clarification (privacy: the DB name is never spoken).
     holder_clarify_open: bool = False
     holder_clarify_asked: bool = False
+    # Patikslinimas, kuris NEPASIIMA ėjimo: klientas nesakė, kad sutartis jo — tik vardas
+    # nesutampa. Tokiu atveju klausimas prisideda prie to atsakymo, kurį stato kita taisyklė
+    # (avarijos žinia, „televizijos paslaugos sutartyje nėra", atviras tiketas), o ne jį
+    # pakeičia. Eval 2026-10-01: scenarijai S8, S10 ir R2 liko be savo žinios būtent todėl,
+    # kad patikslinimas atėmė visą atsakymą (wave 6).
+    holder_clarify_soft: bool = False
     # The caller just introduced themselves — accept warmly, once.
     caller_name_heard: bool = False
 
@@ -488,6 +494,12 @@ class CaseState(BaseModel):
     # (2026-09-23), because "taip, esu prie routerio" read as a done-report.
     guide_said: int = -1
     step_said: int = -1
+    # Kuris žingsnis gavo NEAIŠKŲ atsakymą. Hipotezę patvirtinantis klausimas („ar lemputė
+    # dega?") užskaitomas tik tada, kai klientas iš tikrųjų pasako, ką mato: „taip, padariau"
+    # ar bendras „gerai" nėra atsakymas, o 2026-10-01 gyvai kaip tik taip buvo peršokta prie
+    # maitinimo klausimo. Čia pažymėta, kad atsakymas būtų perklaustas paprastai — „dega ar
+    # nedega?" — o ne užskaitytas (wave 6).
+    unclear: int = -1
 
     @property
     def in_progress(self) -> bool:

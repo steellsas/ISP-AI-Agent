@@ -219,7 +219,11 @@ veda po VIENĄ veiksmą ir klausia, ką matai.**
 - ✅ **konkretybės iš dokumento:** `192.168.0.1` ir admin/admin, o ne išgalvotas adresas;
 - ✅ tavo „radau" / „pasirinkau" **pajudina** į priekį — nebereikia sakyti „padariau";
 - ✅ klausimas vedimo viduryje („kokį slaptažodį vesti?") atsakomas iš to paties dokumento;
-- ✅ be žargono: nei „DHCP tyli", nei „gamyklinis atstatymas" (F-8).
+- ✅ be žargono: nei „DHCP tyli", nei „gamyklinis atstatymas" (F-8);
+- ✅ **vedimas nenutrūksta per vidurį**: kiekvienas atsakytas punktas nebelaikomas to paties
+  žingsnio kartojimu, tad agentas nebepasako „telefonu neišspręsime, registruoju meistrą" kaip
+  tik tada, kai jau esi routerio skydelyje (G30, gyvai 2026-10-01);
+- ✅ **sutikimo žodžiai**: „pabandom", „pasiruošęs", „einam", „galima" — taip pat sutikimas.
 
 ### B. TV neveikia, o internetas tvarkoje
 **Telefonas:** `+37060020110` · **Kęstutis, Šiaulių r., Bubių k., Aušros g. 8** (internetas + IPTV, linija sveika)
@@ -314,7 +318,9 @@ kartoja instrukciją **vieną** kartą kitais žodžiais, ne tais pačiais.
 | Tu | Agentas turi |
 |---|---|
 | „Neveikia internetas" | adresas → vardas |
-| „Giedrius" | pasakyti, kad linijoje jokio įrenginio nematyti, ir **paklausti lempučių** |
+| „Giedrius" | pasakyti **hipoteze**, ne faktu: *„linijoje jūsų įrenginio nematome — gali būti, kad jis be maitinimo arba sugedęs"*, ir paklausti, **ar galite prieiti** prie routerio |
+| „Galiu, priėjau" | **paklausti lempučių** |
+| **„Taip, padariau"** (atsakymas ne į tą klausimą) | **neužskaityti**: perklausti paprastai — *„tai lemputė dega ar nedega?"* |
 | „Nedega nė viena" | **maitinimo patikra:** ar laidas tvirtai įkištas į routerį ir į rozetę; jei taip — kita rozetė |
 | „Įkištas, bandžiau kitą rozetę" | **išvada:** routeris tikėtinai sugedęs, jį reikia **pakeisti** |
 | (agentas siūlo) | **pasiūlyti** laikiną internetą per kompiuterį — klausimu, ne nurodymu |
@@ -327,7 +333,14 @@ kartoja instrukciją **vieną** kartą kitais žodžiais, ne tais pačiais.
 - ✅ tiltas — **pasiūlymas**: atsisakius nurodymų kišti laidą nėra;
 - ✅ agentas nevadina kompiuterio „jūsų routeriu";
 - ✅ tiketas — **routerio keitimas** (`equipment_replacement`), ne bendras meistras;
-- ✅ **nepaspaudus 🔌** agentas neapsimeta, kad pavyko.
+- ✅ **nepaspaudus 🔌** agentas neapsimeta, kad pavyko;
+- ✅ **neaiškus atsakymas nėra atsakymas**: hipotezę patvirtinantis klausimas (lemputės,
+  maitinimas) perklausiamas dviem pasirinkimais, o ne užskaitomas iš „taip, padariau";
+- ✅ jei vardas **nesutampa** su sutarties vardu — vienas mandagus patikslinimas (*„sutartis
+  registruota kitu vardu — gal ji sudaryta šeimos nario?"*), net jei klientas nieko nesakė apie
+  sutartį; pasakius „sutartis žmonos vardu" — **neklausiama**;
+- ⏸ **palaukimas** (*„ar jau priėjote?"*) dar nepadarytas — Andrius: *„dėl palaukimo dar
+  pagalvosime"*; kol kas agentas po nurodymo tiesiog klausia toliau.
 
 ### G. „Negaliu dabar prieiti" → namų darbas ir perskambinimas
 **Telefonas:** bet kuris gedimo scenarijus (D, F arba `+37060020104`).

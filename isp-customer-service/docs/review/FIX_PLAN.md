@@ -114,6 +114,13 @@ nušoko prie maitinimo, nieko neklausęs.
 | **G24** | Miręs routeris registruojamas kaip įprastas `fault_technician`, nors reikia KEITIMO | ✓ pataisyta |
 | **G25** | Tiltas vykdomas automatiškai, nepaklausus, ar klientas to nori | ✓ pataisyta |
 | **G26** | Jei maitinimo laidas buvo ištrauktas, po įkišimo linija neperskaitoma prieš išvadą | atidėta — bandėme, žr. žemiau |
+| **G27** | Išvada pasakyta kaip faktas dar nieko nepaklausus: „routeris sugedęs — telefonu jo neprikelsime" | ✓ pataisyta |
+| **G28** | Miręs routeris: iš karto klausiama apie lemputes, nepaklausus, ar klientas gali prieiti prie routerio | ✓ pataisyta |
+| **G29** | Neaiškus atsakymas užskaitomas kaip atsakymas — „taip, padariau" uždarė lempučių klausimą | ✓ pataisyta |
+| **G30** | Vedimo punktai skaitomi kaip to paties žingsnio kartojimai → „telefonu neišspręsime" kaip tik prisijungus | ✓ pataisyta |
+| **G31** | „Pabandom", „pasiruošęs", „einam" nebuvo sutikimas — pasiūlymas kartojamas | ✓ pataisyta |
+| **G32** | Vardo patikslinimo nebuvo, nes klientas nepasakė, kad sutartis jo | ✓ pataisyta |
+| **G33** | Klientas nuėjo atlikti veiksmo — agentas nelaukia ir neklausia, ar jau priėjo | atidėta (Andrius: „dėl palaukimo dar pagalvosime") |
 
 ### G1 · Klaustukas nugalėjo atliktą veiksmą
 
@@ -349,6 +356,29 @@ Punktai 2 ir 3 po G1 jau veikia (žr. aukščiau). Lieka: **1** (laikas — „v
 
 **Tikrinta:** 1354 passed, 1 skipped (3 nauji testai; vienas iš jų be taisymo krinta —
 `case.reboot` vietoj `case.verify`, t.y. tiksliai tai, kas nutiko gyvai).
+
+### G27–G33 · gyvi skambučiai 2026-10-01 (miręs routeris ir DHCP)
+
+Šaltinis: du skambučiai balsu — `logs/sessions/20261001-090139-050659-0001.jsonl` (miręs
+routeris) ir `…-0002.jsonl` (DHCP tyla). Andrius: *„pirmame su mirusiu pasirodė, kad per greitai
+diagnozuoja ir iš karto klausia apie lemputes — turėjo paprašyti, ar gali prieiti prie routerio.
+Apie lemputes paklausė, bet apie jas nesuprato atsakymo, ėjo toliau maitinimo klausimo ir gedimo
+registravimo. Antrame DHCP kaip ir pradėjo vykdyti, bet kai prisijungiau — sako, mes to
+nepadarysime, registruoju meistrą. Taip pat pasimetė vardo patikslinimas."*
+
+| # | Kas pakeista | Kur |
+|---|---|---|
+| **G27** | Kortelės išvada yra **hipotezė**, kol nepaklausta: *„linijoje jūsų įrenginio nematome — gali būti, kad jis be maitinimo arba sugedęs."* Tikra išvada (*„lemputės nedega, o maitinimas tvarkoje — routeris tikėtinai sugedęs"*) nuskamba tik tilto pasiūlyme, t. y. **po** lempučių ir maitinimo | `locales/lt/phrases.yaml` |
+| **G28** | `no_mac_observed` vėl pradedamas nuo `reach` — pirmas klausimas yra *„ar galite prieiti prie routerio"*, ne apie lemputes | `cards/no_mac_observed.yaml` |
+| **G29** | **Neaiškus atsakymas ≠ atsakymas.** Hipotezę patvirtinantį klausimą (`confirms: true`) užskaito tik tai, ką pasako pats klientas: nei „taip, padariau", nei linija, nei bendras „gerai". Žingsnis stovi, o atsakymas perklausiamas dviem pasirinkimais („dega ar nedega?") | `case_rule.py` (`_confirms_hypothesis`, `_answer_was_unclear`), `context_card.py` |
+| **G30** | Kartojimų raktas įtraukia **vedimo punktą** (`fault.step.guide_step`) — anksčiau kiekvienas atsakytas punktas didino tą patį skaitliuką, ir po trečio agentas pasidavė kaip tik tada, kai klientas jau buvo routerio skydelyje | `case_rule.py` (`_repeat_guard`) |
+| **G31** | Sutikimo žodynas: „pabandom", „pabandykim", „bandom", „pasiruošęs", „galima", „einam" | `locales/lt/vocabulary.yaml` |
+| **G32** | Vardo patikslinimas klausiamas ir tada, kai klientas **nieko nesakė** apie sutartį (`caller_relation == "unknown"`), o vardas nesutampa. Jei jis jau paaiškino (šeimos narys, nuomininkas, „ne aš") — neklausiama; DB vardas niekada negarsinamas | `decide/rules/head.py` |
+| **G32b** | Toks patikslinimas **nepasiima ėjimo**: jis prisideda prie to atsakymo, kurį stato kita taisyklė. Eval'as tai pagavo iš karto — S8, S10 ir R2 liko be savo žinios (avarija, „televizijos paslaugos sutartyje nėra", atviras tiketas), nes klausimas atėmė visą atsakymą. Sakinys duodamas **tiksliai**, nes sutarties vardo garsinti negalima | `graph_v2/state.py` (`holder_clarify_soft`), `reply.py`, `context_card.py` |
+| **G32c** | „Aišku, ačiū, lauksiu" buvo užrašyta kaip **vardas „Aišku"** (seniau — tyliai, dabar būtų dar ir patikslinimo klausimas). Padėkos, supratimo ir atsisveikinimo žodžiai įtraukti į `name_stop_words` | `locales/lt/vocabulary.yaml` |
+| **G33** | Atidėta Andriaus sprendimu: *„dėl palaukimo dar pagalvosime, kaip tai geriau būtų agentui."* Dabar agentas po nurodymo nelaukia žmogiškai („ar jau priėjote? ar radote dėžutę?"), o tiesiog klausia toliau | — |
+
+**Tikrinta:** 1382 passed, 1 skipped; eval 195/195 (G32 pataisą — patikslinimą, atėmusį visą atsakymą — pagavo pats eval'as).
 
 ## Banga 5 — valymas (šaka `fix/wave-5`, 2026-09-28)
 

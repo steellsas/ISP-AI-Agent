@@ -509,6 +509,7 @@ class TestWhenTheCallerWalksAhead:
         dead = {**BASE, "device_seen": False}
         record_telemetry(state, rt, dead)
         record_client(state, rt, "has_computer", "yes")
+        record_client(state, rt, "reachable", "yes")  # prie routerio jau nuėjo (`reach` žingsnis)
         state.case.fault, state.case.solution, state.case.step = "no_mac_observed", 0, 0
         state.dialog.turn_count += 1
         state.dialog.last_heard = "Jau įkišau laidą į kompiuterį."
@@ -516,7 +517,7 @@ class TestWhenTheCallerWalksAhead:
         plan = case_rule.plan(state, rt)
 
         assert plan.rule == "case.check_lights", "the lights question comes first"
-        assert state.case.step == 0
+        assert state.case.step == 1, "`reach` is behind us, the lights question is not"
 
     def test_a_lights_answer_from_the_line_does_not_count_as_the_callers(self, call):
         """`check_lights` waits for `wan_link`, which telemetry also produces — and that is
@@ -545,6 +546,7 @@ class TestTheDeadRouterAsksBeforeItConcludes:
         state, rt = call
         record_telemetry(state, rt, {**BASE, "device_seen": False})
         record_client(state, rt, "has_computer", "yes")
+        record_client(state, rt, "reachable", "yes")  # prie routerio jau nuėjo (`reach` žingsnis)
         state.case.fault, state.case.solution, state.case.step = "no_mac_observed", 0, 0
         case_rule.plan(state, rt)  # the lights question
         said(state, rt, "lights", "off")
@@ -557,6 +559,7 @@ class TestTheDeadRouterAsksBeforeItConcludes:
         state, rt = call
         record_telemetry(state, rt, {**BASE, "device_seen": False})
         record_client(state, rt, "has_computer", "yes")
+        record_client(state, rt, "reachable", "yes")  # prie routerio jau nuėjo (`reach` žingsnis)
         state.case.fault, state.case.solution, state.case.step = "no_mac_observed", 0, 0
         case_rule.plan(state, rt)
         said(state, rt, "lights", "off")
@@ -571,6 +574,7 @@ class TestTheDeadRouterAsksBeforeItConcludes:
         state, rt = call
         record_telemetry(state, rt, {**BASE, "device_seen": False})
         record_client(state, rt, "has_computer", "yes")
+        record_client(state, rt, "reachable", "yes")  # prie routerio jau nuėjo (`reach` žingsnis)
         state.case.fault, state.case.solution, state.case.step = "no_mac_observed", 0, 0
         case_rule.plan(state, rt)
         said(state, rt, "lights", "off")
@@ -683,6 +687,7 @@ class TestThePowerQuestionIsAlwaysAsked:
         state, rt = call
         record_telemetry(state, rt, {**BASE, "device_seen": False})
         record_client(state, rt, "has_computer", "yes")
+        record_client(state, rt, "reachable", "yes")  # prie routerio jau nuėjo (`reach` žingsnis)
         state.case.fault, state.case.solution, state.case.step = "no_mac_observed", 0, 0
         case_rule.plan(state, rt)  # lights
         said(state, rt, "lights", "off")
@@ -699,6 +704,48 @@ class TestThePowerQuestionIsAlwaysAsked:
         said(state, rt, "power_cable", "unplugged")
 
         assert case_rule.plan(state, rt).rule == "case.offer_bridge"
+
+
+class TestAnUnclearAnswerIsNotAnAnswer:
+    """Wave 6, from the live call of 2026-10-01.
+
+    Andrius: *„apie lemputes paklausė, bet apie jas nesuprato atsakymo — ėjo toliau prie
+    maitinimo klausimo ir gedimo registravimo."* A question the hypothesis stands on
+    (`confirms: true`) is settled by what the CALLER says about it — never by „taip,
+    padariau", never by the line, never by a general „gerai".
+    """
+
+    def _at_the_lights_question(self, call):
+        state, rt = call
+        record_telemetry(state, rt, {**BASE, "device_seen": False})
+        record_client(state, rt, "has_computer", "yes")
+        record_client(state, rt, "reachable", "yes")
+        state.case.fault, state.case.solution, state.case.step = "no_mac_observed", 0, 0
+        plan = case_rule.plan(state, rt)
+        assert plan.rule == "case.check_lights"
+        state.case.step_said = state.case.step  # the question actually went out
+        return state, rt
+
+    def test_a_done_report_does_not_settle_what_the_caller_sees(self, call):
+        state, rt = self._at_the_lights_question(call)
+        state.dialog.turn_count += 1
+        state.dialog.last_heard = "Taip, padariau."
+
+        plan = case_rule.plan(state, rt)
+
+        assert plan.rule == "case.check_lights", "the lights question still stands"
+        assert state.case.facts.get("lights") is None, "nothing was invented from a yes"
+        assert state.case.unclear == state.case.step, "so the reply asks it plainly"
+
+    def test_the_caller_s_own_words_do_settle_it(self, call):
+        state, rt = self._at_the_lights_question(call)
+        state.dialog.turn_count += 1
+        state.dialog.last_heard = "Nedega nė viena lemputė."
+
+        plan = case_rule.plan(state, rt)
+
+        assert plan.rule == "case.check_power"
+        assert state.case.unclear == -1, "the mark is lifted once we were told"
 
 
 class TestAStepThatKeepsBeingRepeated:
@@ -721,6 +768,7 @@ class TestAStepThatKeepsBeingRepeated:
         state, rt = call
         record_telemetry(state, rt, {**BASE, "device_seen": False})
         record_client(state, rt, "has_computer", "no")
+        record_client(state, rt, "reachable", "yes")
         state.case.fault, state.case.solution, state.case.step = "no_mac_observed", 0, 0
 
         rules = [case_rule.plan(state, rt).rule for _ in range(5)]
@@ -785,6 +833,7 @@ class TestIdentificationFinishesBeforeTheCaseAsks:
         state, rt = call
         record_telemetry(state, rt, {**BASE, "observed_mac": None})  # nieko linijoje
         record_client(state, rt, "has_computer", "yes")
+        record_client(state, rt, "reachable", "yes")
         state.identity.holder_clarify_open = False
 
         plan = case_rule.plan(state, rt)

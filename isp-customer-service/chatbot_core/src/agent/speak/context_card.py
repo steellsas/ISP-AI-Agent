@@ -732,6 +732,7 @@ def _dialogue_state(state, rt) -> list[str]:
             "understand / will wait — say goodbye; the engine closes the call."
         )
     out += _awaiting(state, rt)
+    out += _unclear_case_answer(state)
     if s.dialog.clarity_level == "basic" and not s.closing.case_closed:
         out.append(
             "PLAIN WORDS: the caller said they do not follow technical words. Speak "
@@ -791,6 +792,25 @@ def _stuck(state, rt) -> list[str]:
         "SILENCE (the caller said nothing): do NOT say „neišgirdau“ — they may just be "
         "listening or thinking. Calmly, without apologising, ask for what is needed (e.g. "
         "the street), or check in with „Ar mane girdite?“. Do not rush." + extra
+    ]
+
+
+def _unclear_case_answer(state) -> list[str]:
+    """Hipotezę patvirtinantis klausimas negavo atsakymo — perklausiama paprastai.
+
+    Gyvai 2026-10-01: į „ar interneto lemputė dega?" klientas atsakė ne apie lemputę, o
+    agentas tai užskaitė ir nuėjo prie maitinimo laido — gedimas tuomet konstatuotas be to,
+    ką hipotezė turėjo patvirtinti. Dabar žingsnis stovi, o atsakymas perklausiamas dviem
+    pasirinkimais, kad klientui būtų lengva atsakyti.
+    """
+    if state.case.unclear != state.case.step or state.closing.case_closed:
+        return []
+    return [
+        "ANSWER WAS NOT CLEAR (and this question is the one the diagnosis stands on): the "
+        "caller said something, but NOT what you asked. Do NOT move on, do NOT conclude "
+        "anything from it, do NOT repeat the same sentence. Say what you heard, then ask the "
+        "SAME thing as a simple choice of two („Tai lemputė dega ar nedega?“) so it is easy "
+        "to answer. If they are asking something instead — answer that first, then ask again."
     ]
 
 
@@ -861,6 +881,7 @@ def _plan_goal(state, rt) -> list[str]:
     out += _goal_caller_intro(state, rt)
     out += _goal_identification(state, rt)
     out += _goal_ticket(state, rt)
+    out += _goal_holder_clarify(state, rt)
     _mark_written_step_said(state)
     out += _asked_how(state, rt)
     out += _goal_recap_and_findings(state, rt)
@@ -984,6 +1005,34 @@ def _goal_identification(state, rt) -> list[str]:
             f"address, and ask ONLY for the address. (Backup: „{idd['fallback']}“)"
         )
     return out
+
+
+def _goal_holder_clarify(state, rt) -> list[str]:
+    """Vardas nesutampa su sutarties vardu, o klientas apie sutartį nieko nesakė.
+
+    Andrius (2026-10-01): *„pasimetė vardo patikslinimas."* Patikslinimas čia PRISIDEDA prie
+    šio ėjimo atsakymo, o ne jį pakeičia: eval'e tas pats klausimas kaip atskiras atsakymas
+    atėmė avarijos žinią, „televizijos paslaugos sutartyje nėra" ir atvirą tiketą. Sakinys
+    duodamas tiksliai — sutarties vardas NIEKADA negarsinamas, todėl formuluotė nėra laisva.
+    """
+    s = state
+    if not (s.identity.holder_clarify_open and s.identity.holder_clarify_soft):
+        return []
+    if s.identity.holder_clarify_asked or s.closing.case_closed:
+        return []
+    from ..contract.locale import phrase
+
+    s.identity.holder_clarify_asked = True
+    from ..decide.question import register as _q_register
+
+    _q_register(state, rt, "ident", "holder_clarify")
+    rt.tracer.emit("decision", intent="holder_name", action="clarify_ask", soft=True)
+    return [
+        "ALSO ADD ONE QUESTION AT THE END (the name does not match the contract): say it WORD "
+        f"FOR WORD — „{phrase('identification.holder_mismatch_clarify')}“ — after whatever this "
+        "reply is about. NEVER say the name that is in our system, and do not drop what this "
+        "reply had to say."
+    ]
 
 
 def _goal_ticket(state, rt) -> list[str]:

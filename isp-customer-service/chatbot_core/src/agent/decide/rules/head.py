@@ -262,14 +262,29 @@ def caller_intro(state: Any, rt: Any, user_input: str) -> bool:
             # but the name does not match the DB contract name — one polite
             # clarification WITHOUT saying the DB name (privacy boundary). Fuzzy: for
             # STT garbling („Andrijus" ~ „Andrius") a 4-letter prefix match is enough.
-            if s.identity.caller_relation == "holder" and s.identity.caller_name not in (
+            # Wave 6 (Andrius 2026-10-01): *„pasimetė vardo patikslinimas"* — ir tada, kai
+            # klientas NESAKO, kad sutartis jo. Vardas nesutampa su sutarties vardu — to
+            # užtenka vienam mandagiam patikslinimui; jo nereikia tik tada, kai klientas jau
+            # pats pasakė, kas jis (šeimos narys, nuomininkas, pagalbininkas, „ne aš").
+            if s.identity.caller_relation in (
+                "holder",
+                "unknown",
+            ) and s.identity.caller_name not in (
                 None,
                 "nenurodyta",
             ):
                 if not holder_name_matches(state, rt, s.identity.caller_name):
                     state.identity.holder_clarify_open = True
                     state.identity.holder_clarify_asked = False
-                    rt.tracer.emit("decision", intent="holder_name", action="mismatch_clarify")
+                    # Pasakė, kad sutartis jo → patikslinimas yra atsakymas (scenarijus).
+                    # Nieko nesakė → klausimas tik prisideda prie šio ėjimo atsakymo.
+                    state.identity.holder_clarify_soft = s.identity.caller_relation != "holder"
+                    rt.tracer.emit(
+                        "decision",
+                        intent="holder_name",
+                        action="mismatch_clarify",
+                        soft=state.identity.holder_clarify_soft,
+                    )
         return True
     return False
 

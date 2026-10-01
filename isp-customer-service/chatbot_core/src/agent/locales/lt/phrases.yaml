@@ -318,7 +318,9 @@ pack:
     bridge_failed:
       notice: "Įrenginio linijoje vis dar nesimato — gali būti problema ir su ateinančiu kabeliu. Telefonu to nebeišspręsime."
       ticket_note: "Laikinai pajungti internetą per kompiuterį NEPAVYKO (kompiuterio LAN: {lan}) — įrenginio linijoje nesimato, galima atvedimo kabelio problema."
-    conclusion: "routeris sugedęs — telefonu jo neprikelsime"
+    # Gyvai 2026-10-01: ši išvada nuskambėdavo PRIEŠ lemputes ir maitinimą — linija žino tik tiek,
+    # kad įrenginio nematyti, o ar jis miręs, ar be srovės, dar neaišku. Todėl čia — hipotezė.
+    conclusion: "linijoje jūsų įrenginio nematome — gali būti, kad jis be maitinimo arba sugedęs"
     solution:
       s1: "laikinai paleisti internetą per kompiuterį, kol gausite naują routerį"
       s2: "registruoti meistrą, kuris atveš ir pajungs naują routerį"
@@ -589,7 +591,8 @@ modules:
   offer_guide:
     question: "Panašu, kad routeryje pasimetę interneto nustatymai. Galime pabandyti juos susigrąžinti kartu — aš pasakysiu po vieną žingsnį. Ar norite pabandyti, ar geriau iš karto užregistruoti specialistą?"
   offer_bridge:
-    question: "Kol routerį pakeisime, galiu laikinai paleisti internetą į vieną įrenginį — jei turite kompiuterį, įkišim linijos laidą tiesiai į jį. Ar norite pabandyti?"
+    # Po lempučių ir maitinimo patikros išvada jau PAGRĪSTA — ir ji pasakoma garsiai, prieš pasiūlymą.
+    question: "Lemputės nedega, o maitinimas tvarkoje — routeris tikėtinai sugedęs, jį reikės pakeisti. Kol kas galiu laikinai paleisti internetą į vieną įrenginį: jei turite kompiuterį, įkišim linijos laidą tiesiai į jį. Ar norite pabandyti?"
   port_reset:
     announce: "Perkrauju jūsų prievadą, kad naujas įrenginys gautų adresą — užtruks kelias sekundes."
 
