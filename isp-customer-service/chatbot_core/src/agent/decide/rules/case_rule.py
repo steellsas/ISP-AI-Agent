@@ -564,7 +564,11 @@ def _absorb(state: Any, rt: Any, facts: dict[str, str]) -> str:
     # different question: live 2026-09-30 „Ne, tai mano vardu, Giedriaus vardu" was read as
     # `lights=no`, the lights question counted as answered, and the agent jumped to the power
     # lead without ever asking what the caller saw.
-    if _step_was_asked(state):
+    if _step_was_asked(state) and not _model_says_not_an_answer(state):
+        # Kontekstą turintis skaitymas viršesnis už bekontekstį: jei jis sako, kad klientas dar
+        # daro arba klausia atgal, tai nei žodynas, nei euristikos žingsnio nejudina. „Einu
+        # pasižiūrėti, ar tas kompiuteris veikia" žodynui atrodo „turi kompiuterį" (paminėtas ir
+        # nepaneigtas), bet tai dar ne atsakymas (7b banga).
         read = modules.read_answer(call, state.dialog.last_heard, device=_device(state))
         if read is not None:
             fact, value = read
@@ -576,6 +580,18 @@ def _absorb(state: Any, rt: Any, facts: dict[str, str]) -> str:
         if own is not None:
             ledger.record_client(state, rt, own[0], own[1])
             facts = ledger.facts_of(state)
+        # Antra eilė po žodyno (7 banga): tą patį sakinį to paties ėjimo supratimo kvietimas
+        # perskaitė ŽINODAMAS, ko paklausėme, ir grąžino etiketę iš UŽDARO šio modulio sąrašo.
+        # Žodynas lieka pirmas (jis nemokamas ir tikslus), bet jo tyla nebėra aklavietė:
+        # 2026-10-01 „Neturiu." ir „tik telefonas" žodynui nereiškė nieko, ir klausimas
+        # kartojosi tris kartus.
+        if state.case.awaiting and state.case.awaiting not in facts:
+            model = _model_read(state, rt, call)
+            if model is not None:
+                ledger.record_client(state, rt, model[0], model[1])
+                facts = ledger.facts_of(state)
+            else:
+                _note_reader_silent(state, rt, call)
     awaited = state.case.awaiting
     confirming = _confirms_hypothesis(call)
     if confirming and awaited and not _client_said(state, awaited):
@@ -597,6 +613,11 @@ def _absorb(state: Any, rt: Any, facts: dict[str, str]) -> str:
         return _advance(state, rt, by_words=True)
     if confirming:
         return _answer_was_unclear(state, rt, call)
+    if _model_says_not_an_answer(state):
+        # Kontekstą turintis skaitymas pasakė, kad klientas dar daro arba klausia atgal. Tada
+        # bekontekstės euristikos („veikia" sakinyje = rezultatas) nebeturi teisės pajudinti
+        # žingsnio: „Einu pasižiūrėti, ar tas kompiuteris veikia" nėra sutikimas su tiltu.
+        return "waiting"
     if _reported_done(state) or _reported_outcome(state, call):
         # They DID it. That answers any question about being able to (live S6: "ištraukiau
         # iš routerio ir įkišau atgal" against "can you get to it now" — the engine waited
@@ -608,6 +629,81 @@ def _absorb(state: Any, rt: Any, facts: dict[str, str]) -> str:
 
 
 # --- what the caller has actually told us, and where they have walked to -------------------
+
+
+def _model_read(state: Any, rt: Any, call: Any) -> tuple[str, str] | None:
+    """Atsakymas į ŠĮ klausimą, perskaitytas to paties ėjimo supratimo kvietime.
+
+    Tai ne naujas kvietimas: `perceive` kiekvieną ėjimą paduoda modeliui šio žingsnio
+    variantus (`perceive/evidence.py::_case_step_options`) ir gauna
+    `{label, is_answer, internally_inconsistent, confidence}`. Čia tik nusprendžiama, ar tuo
+    pasitikėti, ir etiketė verčiama faktu modulio taisyklėmis.
+
+    Trys atsisakymo atvejai, kurie NĖRA „nesupratau": `label="unclear"` (modelis sąžiningai
+    nepriskyrė), `is_answer=false` (klientas dar daro arba klausia atgal) ir sakinys, kuris
+    pats sau prieštarauja.
+    """
+    from ...contract import limits
+
+    read = (state.turn.perception or {}).get("step") or {}
+    label = str(read.get("label") or "")
+    if not label or label == "unclear" or not read.get("is_answer"):
+        return None
+    if read.get("internally_inconsistent"):
+        return None
+    confidence = float(read.get("confidence") or 0.0)
+    if confidence < limits.get("reading_confirm_confidence"):
+        return None
+    answer = modules.answer_from_label(call, label, device=_device(state))
+    if answer is None:
+        return None
+    if confidence < limits.get("reading_accept_confidence"):
+        # Vidutinis pasitikėjimas: užskaitom, bet atsakyme pakeliui patvirtinam — kad klientas
+        # galėtų pataisyti, o ne kad agentas apsimestų tikras.
+        from ...evidence import gloss_label, gloss_value
+
+        said = f"{gloss_label(answer[0])} {gloss_value(answer[1], answer[0])}".strip()
+        state.turn.confirm_reading = said or None
+    rt.tracer.emit(
+        "case",
+        move="read_by_model",
+        module=call.module,
+        label=label,
+        confidence=round(confidence, 2),
+        sets=f"{answer[0]}={answer[1]}",
+    )
+    return answer
+
+
+def _model_says_not_an_answer(state: Any) -> bool:
+    """Ar šio ėjimo skaitymas (su ŠIO klausimo variantais) pasakė, kad tai ne atsakymas?
+
+    `is_answer=false` reiškia „dar daro / klausia atgal / nesupranta" — ne „nesupratau aš".
+    Tai vienintelis signalas, kuris žino KLAUSIMĄ, tad jis viršesnis už bekontekstes
+    euristikas (7 banga).
+    """
+    read = (state.turn.perception or {}).get("step") or {}
+    return "is_answer" in read and not read.get("is_answer")
+
+
+def _note_reader_silent(state: Any, rt: Any, call: Any) -> None:
+    """Niekas nesuprato atsakymo į klausimą, kurį uždavėme — ir tai turi būti MATOMA.
+
+    Be šito „kitais žodžiais" radiniai ateina tik iš gyvų skambučių ir tik tada, kai agentas
+    jau užsiciklino. Dabar po testų sesijos trace'e yra sąrašas, ko žodynai ir modelis
+    nesuprato — iš jo auga žodynai ir parafrazių testai (7 banga).
+    """
+    spec = catalog.module(call.module)
+    if spec is None or spec.kind != "ask" or not state.dialog.last_heard:
+        return
+    rt.tracer.emit(
+        "reader_silent",
+        module=call.module,
+        detector=spec.detector,
+        fact=state.case.awaiting,
+        heard=state.dialog.last_heard,
+        turn=state.dialog.turn_count,
+    )
 
 
 def _confirms_hypothesis(call: Any) -> bool:

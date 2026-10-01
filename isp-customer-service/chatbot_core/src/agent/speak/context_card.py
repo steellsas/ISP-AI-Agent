@@ -733,6 +733,7 @@ def _dialogue_state(state, rt) -> list[str]:
         )
     out += _awaiting(state, rt)
     out += _unclear_case_answer(state)
+    out += _reading_to_confirm(state)
     if s.dialog.clarity_level == "basic" and not s.closing.case_closed:
         out.append(
             "PLAIN WORDS: the caller said they do not follow technical words. Speak "
@@ -792,6 +793,24 @@ def _stuck(state, rt) -> list[str]:
         "SILENCE (the caller said nothing): do NOT say „neišgirdau“ — they may just be "
         "listening or thinking. Calmly, without apologising, ask for what is needed (e.g. "
         "the street), or check in with „Ar mane girdite?“. Do not rush." + extra
+    ]
+
+
+def _reading_to_confirm(state) -> list[str]:
+    """Atsakymą perskaitė modelis vidutiniu pasitikėjimu — pasakom, ką supratom.
+
+    Tai ne papildomas klausimas: patvirtinimas įsiterpia į tą patį atsakymą („Supratau —
+    lemputės nedega. Tada patikrinkim maitinimą…"), kad klientas galėtų pataisyti, o agentas
+    neapsimestų tikras. Slenksčiai — `limits.yaml` (7 banga).
+    """
+    said = getattr(state.turn, "confirm_reading", None)
+    if not said or state.closing.case_closed:
+        return []
+    return [
+        f"SAY WHAT YOU UNDERSTOOD FIRST: you read their answer as „{said}“, but not with full "
+        "certainty — open the reply by naming it in your own words („Supratau — {said}.“) so "
+        "they can correct you, then go on with what this reply is for. If they correct it, the "
+        "correction wins.".replace("{said}", said)
     ]
 
 

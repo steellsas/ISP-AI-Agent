@@ -28,6 +28,9 @@ naujas gedimas dažniausiai yra naujas failas, ne naujas kodas.
 | Patikrinama | 1391 unit testas + 36 scenarijų eval (195 tikrinimai) | per eval'o tekstų tikrinimus (`reply_any` / `reply_none`) |
 | Laikas | **~10 ms** per ėjimą | ~1,4–1,9 s per kvietimą |
 
+Nuo 7b bangos modelis turi ir trečią darbą: **perskaityti atsakymą į klausimą, kurį ką tik
+uždavėme** — bet tik iš uždaro sąrašo, kurį deklaruoja tas žingsnis (žr. 10 skyrių).
+
 Esminė riba: **modelis nerašo faktų ir nekviečia įrankių.** Jei modelis „išgirsta" faktą, jis
 privalo pateikti **kliento citatą**, ir kodas tikrina, ar tie žodžiai tikrai yra tame sakinyje
 (`perceive/perception.py`). Tikrame skambutyje tai matosi:
@@ -278,23 +281,53 @@ Ką jau turim kaip apsaugą: citatų tikrinimas (`fact_ungrounded`), telemetrija
 žodį, `confirms: true` neleidžia užskaityti neaiškaus atsakymo, pakartojimų riba, ir eval'as,
 kuris tokius dalykus pagauna (G32 pataisą pagavo būtent eval'as).
 
-**Kas vis dar neapsaugota — ir ką siūlau:**
+### Kaip tai sprendžiama nuo 7b bangos: trys sluoksniai
 
-1. **Skaitytuvo „nesupratau" nėra matomas.** Jei skaitytuvas grąžina `None`, variklis tiesiog
-   laukia. Siūlau trace'e įvardinti `reader_silent` (modulis, skaitytuvas, kliento žodžiai) —
-   tada po kiekvienos testų sesijos matome **sąrašą, ko žodynai nesuprato**, be spėjimų.
-   *(maža, ~15 eil.)*
-2. **Antra eilė po žodyno — modelis.** Kai `confirms: true` klausimo skaitytuvas tyli du
-   ėjimus, paklausti modelio „ar šis atsakymas yra `yes` / `no` / nežinia šiam klausimui" — jis
-   jau kviečiamas kiekvieną ėjimą, tad tai ne naujas kvietimas, o papildomas laukas `understand`
-   schemoje. Taip „kitais žodžiais" nebelieka aklavietė. *(vidutinė)*
-3. **Žodynų kryžminis testas.** Testas, kuris praeina visus `consent_yes` / `consent_no` /
-   `no_device` / `ticket_demand` įrašus per VISUS skaitytuvus ir reikalauja, kad tas pats žodis
-   nereikštų dviejų skirtingų dalykų. „noriu" šiandien būtų nukritęs iš karto. *(maža)*
-4. **Reikšmių domenai vienoje vietoje.** `understand.py::_ALLOWED` ir kortelių `needs.values`
-   šiandien yra du sąrašai; `lights=no` gimė būtent iš to. Siūlau `_ALLOWED` generuoti iš
-   kortelių. *(maža, bet reikia atsargumo)*
-5. **Frazių sargas kaip testas** — jau padarytas 7 bangoje: visos `modules.*.question` frazės
+Radinys, nuo kurio viskas pasikeitė: **kontekstinis skaitymas buvo parašytas ir atjungtas.**
+`prompts/sensors/perception_step.md` moka tam pačiam sakiniui duoti ŠIO žingsnio variantus ir
+grąžinti `{label, is_answer, internally_inconsistent, confidence}` — ir tai sulieta į tą patį
+kvietimą, kuris vyksta kiekvieną ėjimą. Bet `step_perception_options` klausė **v1**
+`resolution.procedure`, kurio v2 Case nebepildo, tad kortelės žingsniui variantai visada buvo
+`None`. Skaitytuvas buvo `f(tekstas)`, nors variklis žinojo, kad ką tik paklausė „ar turite
+kompiuterį?". Iš to gimė visi trys šios savaitės radiniai.
+
+```
+klientas atsakė
+  ├─ 0. žodynas (detect_*)             0 ms   aiški reikšmė -> priimam
+  ├─ 1. modelis su ŠIO klausimo        0 ms   label iš UŽDARO modulio sąrašo + is_answer
+  │     variantais (tas pats kvietimas)       >= 0,75 -> priimam
+  │                                           0,45-0,75 -> priimam IR pasakom pakeliui
+  │                                           < 0,45 / unclear -> žemiau
+  └─ 2. perklausiam dviem pasirinkimais       „dega ar nedega?" (6 banga)
+         + `reader_silent` trace'e            kad nesupratimas būtų MATOMAS
+```
+
+Trys taisyklės, kurių nelaužiam:
+
+1. **Modelis nesprendžia fakto** — jis renkasi etiketę iš uždaro sąrašo (`spec.answers`), o
+   etiketę faktu verčia modulis (`modules.answer_from_label`). Naujas gedimas nereikalauja
+   promptų inžinerijos.
+2. **`is_answer=false` ≠ `unclear`.** „Einu pasižiūrėti, ar kompiuteris veikia" yra „dar daro",
+   ir tai **blokuoja** bekontekstes euristikas — anksčiau žodis „veikia" tokiame sakinyje per
+   `detect_restored` tapdavo sutikimu su tiltu.
+3. **Slenksčiai gyvena `limits.yaml`** (`reading_accept_confidence`, `reading_confirm_confidence`),
+   ne kode.
+
+Matomumas: `scripts/reader_silent.py` po testų sesijos surenka, ko nė vienas sluoksnis nesuprato
+(modulis, skaitytuvas, faktas, kliento žodžiai) — iš to sąrašo auga žodynai ir parafrazių testas
+`tests/test_answer_reading.py` (20 tikrų formuluočių per skaitytuvus, 6 per raktinių žodžių
+sluoksnį, plus atskiras sąrašas to, kas sąmoningai paliekama modeliui).
+
+**Kas dar lieka:**
+
+1. **Žodynų kryžminis testas** — tas pats žodis neturi reikšti dviejų dalykų dviejuose žodynuose
+   („noriu" būtų nukritęs iš karto). *(maža)*
+2. **Reikšmių domenai vienoje vietoje** — `understand.py::_ALLOWED` ir kortelių `needs.values`
+   yra du sąrašai; `lights=no` gimė būtent iš to. *(maža, reikia atsargumo)*
+3. **T2 semantinis maršrutizatorius** — vietiniai embedding'ai (`multilingual-e5-small` jau
+   įdiegtas, **19,5 ms** vienam sakiniui) kaip tarpinis sluoksnis, jei `reader_silent` parodys,
+   kad T1 neuždengia. *(vidutinė)*
+4. **Frazių sargas kaip testas** — jau padarytas: visos `modules.*.question` frazės
    praleidžiamos per srauto sargą ir tikrinama, ar klaustukas išliko.
 
 ---
@@ -338,13 +371,13 @@ klientui atėjo akivaizdžiai greičiau.
 
 ## 12. Ką siūlau toliau (prioritetas)
 
-| # | Darbas | Kodėl | Kaina |
+| # | Darbas | Kodėl | Būsena / kaina |
 |---|---|---|---|
-| 1 | `reader_silent` trace'e (10 sk., 1 p.) | be jo „kitais žodžiais" radiniai ateina tik iš gyvų skambučių | maža |
-| 2 | Žodynų kryžminis testas (10 sk., 3 p.) | „noriu" tipo klaidos pagaunamos prieš skambutį | maža |
+| 1 | `reader_silent` + parafrazių testas | be jų „kitais žodžiais" radiniai ateina tik iš gyvų skambučių | ✅ 7b banga |
+| 2 | Klausimo apimties skaitymas (T1) + slenksčiai | panaikina aklavietes neatpažintiems atsakymams, 0 ms | ✅ 7b banga |
 | 3 | Fast path išplėtimas (11 sk., 3 p.) | ~1,4 s kas antram ėjimui, be kainos LLM'ui | vidutinė |
-| 4 | Antra eilė po žodyno — modelio perskaitymas (10 sk., 2 p.) | panaikina aklavietes neatpažintiems atsakymams | vidutinė |
-| 5 | Reikšmių domenai iš kortelių (10 sk., 4 p.) | `lights=no` klasės klaidos nebeįmanomos | maža |
+| 4 | Žodynų kryžminis testas | „noriu" tipo klaidos pagaunamos prieš skambutį | maža |
+| 5 | Reikšmių domenai iš kortelių | `lights=no` klasės klaidos nebeįmanomos | maža |
 | 6 | Laukimo elgsena („ar jau priėjote?") | atidėtas punktas; tai pokalbio politika, ne gedimas | vidutinė |
 
 ---
@@ -366,4 +399,8 @@ agent/
   speak/                     context_card.py (direktyvos modeliui), skill.py (9 įgūdžiai),
                              guard.py (vienas klausimas, trumpi atsakymai), postprocess.py
   execute/                   įrankių vartai, tiketas, uždarymas
+  prompts/sensors/           ką modelis skaito: perception, perception_step (klausimo variantai),
+                             knowledge_route, problem_classifier, ticket_reader_*
+scripts/reader_silent.py     ko nesuprato nė vienas sluoksnis — suvestinė po testų sesijos
+tests/test_answer_reading.py parafrazės, kurias privalo suprasti žodynas; ką skaito modelis
 ```

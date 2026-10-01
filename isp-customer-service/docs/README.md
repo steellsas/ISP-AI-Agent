@@ -39,6 +39,7 @@
 | `uv run uvicorn --app-dir chatbot_core src.app.main:app --port 8080` | The service and the dashboard |
 | `uv run pytest` | Unit and integration tests |
 | `uv run python chatbot_core/src/agent/eval/run_eval.py [--only ID] [--json out.json]` | Scripted calls, scored |
+| `uv run python scripts/reader_silent.py [--days N] [--module M]` | What no reader understood: the `reader_silent` summary from call traces (feeds the vocabulary and `tests/test_answer_reading.py`) |
 | `uv run python scripts/prune_logs.py [--days N] [--keep N] [--apply]` | Logs janitor: old call traces and audio past its retention date (dry run without `--apply`) |
 
 ## Planned

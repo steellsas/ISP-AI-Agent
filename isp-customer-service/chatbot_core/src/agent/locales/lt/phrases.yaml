@@ -820,6 +820,12 @@ detector:
   ticket_consent:
     "yes": "sutinka, kad užregistruotume gedimą (pritaria, sako gerai/tinka, arba laukia skambučio — 'lauksiu skambučio' irgi yra sutikimas)"
     "no": "AIŠKIAI atsisako registracijos — NE šiaip nerišlus atsakymas"
+  bridge_consent:
+    "yes": "sutinka pabandyti laikiną internetą IR turi kompiuterį, kurį galima pajungti laidu"
+    "no": "nesutinka ARBA nėra ko jungti ('neturiu', 'tik telefonas') ARBA prašo iš karto registruoti gedimą / meistrą"
+  panel_device:
+    "yes": "turi kompiuterį, telefoną ar planšetę, prijungtą prie to routerio — nustatymus bus kuo atidaryti"
+    "no": "neturi jokio įrenginio su naršykle tame routeryje"
 
 anamnesis:
   # How the caller's anamnesis reads in Lithuanian (the state keeps the codes).

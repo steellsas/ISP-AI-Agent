@@ -384,6 +384,9 @@ class TurnScratch(BaseModel):
     # The same reading in its own shape (wave 2a): source, turn type, facts + quotes.
     perception: dict[str, Any] | None = None
     perception_step: dict[str, Any] | None = None
+    # Atsakymas, kurį perskaitė modelis VIDUTINIU pasitikėjimu: užskaitom, bet atsakyme
+    # pakeliui patvirtinam, kad klientas galėtų pataisyti („Supratau — lemputės nedega.").
+    confirm_reading: str | None = None
     # The evidence key the caller reported as done this turn.
     done_report_key: str | None = None
     directives: TurnDirectives = Field(default_factory=TurnDirectives)

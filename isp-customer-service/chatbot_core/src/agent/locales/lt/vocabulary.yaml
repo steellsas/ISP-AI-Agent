@@ -206,6 +206,18 @@ device_yes:
   - "prijung"
 
 usable_device: ["kompiuter", "nešiojam", "nesiojam", "laptop", "router", "kompas"]
+# Kai TILTUI nėra ko jungti. Sąmoningai be nuogo „netur-" kamieno (jį turi `no_device`): gyvai
+# ir eval'e (S4) „Neturiu kito routerio, tik kompiuterį" yra TAIP — kompiuteris ir yra tai, ko
+# tiltui reikia. Telefonas netinka, nes nėra kur kišti kabelio.
+no_bridge_device:
+  - "tik telefon"
+  - "vien telefon"
+  - "tik su telefon"
+  - "nėra kompiuter"
+  - "nera kompiuter"
+  - "negaliu prijungti"
+  - "negaliu pasijungti"
+
 # Įrenginiai, kuriais galima atidaryti routerio nustatymus naršyklėje — čia telefonas TINKA
 # (tiltui jis netinka, nes nėra kur kišti laido).
 browser_device: ["kompiuter", "nešiojam", "nesiojam", "laptop", "kompas", "telefon", "planšet", "planset"]

@@ -228,6 +228,19 @@ def read_answer(call: ModuleCall, text: str | None, *, device=None) -> tuple[str
     label = _detect(spec.detector, text)
     if label is None:
         return None
+    return answer_from_label(call, label, device=device)
+
+
+def answer_from_label(call: ModuleCall, label: str, *, device=None) -> tuple[str, str] | None:
+    """Ką šio modulio atsakymo ETIKETĖ reiškia faktais, kaip ("fact", "value").
+
+    Atskirta nuo `read_answer`, nes etiketę gali atnešti ne tik žodynas: tą patį sakinį to
+    paties ėjimo supratimo kvietimas perskaito ŽINODAMAS klausimą (7 banga), ir jo etiketė
+    turi virsti faktu lygiai taip pat — vertimas yra modulio, ne skaitytuvo dalykas.
+    """
+    spec = catalog.module(call.module)
+    if spec is None or not label:
+        return None
     if spec.module == "check_lights" and device is not None:
         light = str(_with_defaults(spec, call).get("light") or "internet")
         return device.fact_from_light(light, label)

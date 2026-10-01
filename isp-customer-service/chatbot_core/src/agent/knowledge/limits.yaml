@@ -32,6 +32,11 @@ speak_max_tokens: 150               # generation cap for a spoken reply (~2 shor
 # 3 = the longest honest chain one turn can need (wave 3): reflect the caller's action,
 # read the line, then say what it showed. Each hop is a deterministic decide pass, no LLM.
 plan_redecide_max: 3
+# Kiek pasitikėti supratimo kvietimo perskaitytu atsakymu į ŠĮ klausimą (7 banga). Žemiau
+# `reading_confirm_confidence` atsakymas neužskaitomas — perklausiama dviem pasirinkimais.
+# Tarp jų: užskaitoma, bet atsakyme pakeliui patvirtinama („Supratau — lemputės nedega.").
+reading_accept_confidence: 0.75
+reading_confirm_confidence: 0.45
 reply_stop_chars: 200               # past this, a streamed reply ends at its next sentence end
 side_topic_streak_max: 3            # side-topic turns in a row before the fixed "back to the issue" reply
 wrap_content_turns_max: 2           # content turns in the inform wrap-up that still get an LLM reaction

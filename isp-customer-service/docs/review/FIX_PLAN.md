@@ -425,6 +425,65 @@ vienas pilnas eval paleidimas ≈ **0,10 USD**; 09-28…10-01 eval'ai sudarė **
 ~95 % visos sumos. Tad pilnas eval'as leidžiamas kartą po pakeitimų paketo, o tarpiniam
 tikrinimui — `--only <scenarijus>` ir unit testai.
 
+## Banga 7b — supratimo kopėčios (šaka `fix/wave-7-bridge`, 2026-10-01)
+
+Andrius po 7 bangos: *„padiskutuokime apie tai, kur didžiausia rizika — kaip sprendžiam
+supratimo problemą… ar tai galima atiduoti SLM ar kokiam greitam dalykui."* Diskusijos radinys
+pasirodė svarbesnis už patį sprendimą.
+
+### Radinys: kontekstinis skaitymas buvo parašytas ir ATJUNGTAS
+
+`prompts/sensors/perception_step.md` daro būtent tai, ko reikia: tam pačiam sakiniui duoda ŠIO
+žingsnio variantus (`label: reikšmė`) ir grąžina `{label, is_answer, internally_inconsistent,
+confidence}`, su aiškiu „neatitinka nė vienos — `unclear`, NEprimesk". Tai **sulieta į tą patį
+supratimo kvietimą**, kuris vyksta kiekvieną ėjimą, t. y. nulis papildomos latencijos ir kainos.
+
+Bet `perceive/evidence.py::step_perception_options` klausė **v1** `resolution.procedure`, kurio
+v2 Case nebepildo (tą patį atradom 6 bangoje, kai atsisveikinimo sargui teko `case.in_progress`).
+Vadinasi **kiekvienam kortelės žingsniui** variantai buvo `None`, modelis niekada nežinojo, ko
+paklausėme, ir vienintelis atsakymo skaitytuvas buvo žodynas. `state.turn.perception_step` buvo
+niekur neskaitomas laukas.
+
+**Iš to gimė visi trys 7 bangos radiniai:** „Neturiu." pasiūlymui nereiškė nieko (G35), „noriu
+registruoti gedimą" buvo sutikimas (G36), „Aišku, ačiū" tapo vardu (G32c). Skaitytuvas yra
+`f(tekstas)`, nors variklis puikiai žino, kad ką tik paklausė „ar turite kompiuterį?".
+
+| # | Kas pakeista | Kur |
+|---|---|---|
+| **G41** | Klausimo apimties skaitymas prijungtas prie v2 Case: variantai iš modulio `answers` + skaitytuvo glosų, ir **tik** kai klausimas tikrai nuskambėjo (`step_said == step`) — tas pats 6 bangos A reikalavimas | `perceive/evidence.py::_case_step_options` |
+| **G42** | Antra eilė po žodyno `_absorb`'e: žodynas pirmas (nemokamas, tikslus), o jo tylą perima to paties ėjimo skaitymas. Slenksčiai duomenyse: `reading_accept_confidence: 0.75` (užskaitom), `reading_confirm_confidence: 0.45` (užskaitom ir **pasakom pakeliui**, kad klientas galėtų pataisyti), žemiau — perklausiam dviem pasirinkimais | `case_rule._model_read`, `limits.yaml`, `context_card._reading_to_confirm` |
+| **G43** | `is_answer=false` (dar daro / klausia atgal) nebeleidžia bekontekstėms euristikoms pajudinti žingsnio: *„Einu pasižiūrėti, ar tas kompiuteris veikia"* anksčiau per `detect_restored("veikia")` tapdavo sutikimu su tiltu | `case_rule._model_says_not_an_answer` |
+| **G44** | **Matomumas:** kai nė vienas sluoksnis nesuprato, trace'e lieka `reader_silent` (modulis, skaitytuvas, faktas, kliento žodžiai), o `scripts/reader_silent.py` po sesijos padaro suvestinę — iš jos auga žodynai ir parafrazių testai | `case_rule._note_reader_silent`, `scripts/reader_silent.py` |
+| **G45** | Parafrazių testas: 20 tikrų formuluočių per modulių skaitytuvus + 6 per raktinių žodžių sluoksnį, ir atskiras sąrašas to, kas sąmoningai paliekama modeliui (kad niekas tyliai nesidubliuotų) | `tests/test_answer_reading.py` |
+
+### Ką pagavo eval'as (trys žodynų spąstai viename paleidime)
+
+Prijungus T1, eval'as iš karto nukrito į 193/195 — ir abu radiniai buvo **žodyno**, ne modelio:
+
+| Spąstas | Kas nutiko | Pataisa |
+|---|---|---|
+| Nuogas kamienas | `bridge_consent` per `detect_no_device` („netur-") suplojo **„Neturiu kito routerio, tik kompiuterį"** į atsisakymą — nors tai TAIP, ir `detect_have_device` tai mokėjo nuo seno (eval S4) | pasiūlymas skaito sakinio DALIMIS; „nėra ko jungti" markeriai atskirame `no_bridge_device` sąraše, be nuogo „netur-" |
+| Trumpas žodis substring'e | `device_yes` turi **„yra"**, ir „jo šiandien **nėra**" tapdavo „turiu"; `consent_yes` turi **„jo"**, ir „nešviečia **jo**kia lemputė" tapdavo sutikimu | trumpi (≤3 simb.) žymekliai skaitomi kaip ŽODŽIAI ir tik sakinio pradžioje (`_marked`); teigiamo žodžio ieškoma tik NENEIGTUOSE žodžiuose |
+| „Dar darau" kaip atsakymas | „Palaukit, pažiūrėsiu, kas čia **yra**" skaitėsi kaip „turiu" | `_device_answer` grąžina `None`, kai ėjimo intencija yra `in_progress` IR įrenginys neįvardytas (įvardijus — „atsinešiu kompiuterį" — laikas nesvarbu) |
+
+Ir vienas tvarkos sprendimas: **kontekstą turintis skaitymas viršesnis už bekontekstį.** Jei T1
+sako `is_answer=false`, tai nei žodynas, nei euristikos žingsnio nebejudina — „Einu pasižiūrėti,
+ar tas kompiuteris veikia" žodynui atrodo „turi kompiuterį", bet tai dar ne atsakymas.
+
+**Kodėl ne SLM (dar):** mato dydžio klausimas buvo antraeilis — apimties (ką modelis žino apie
+klausimą) klausimas buvo pirmaeilis. Išmatuoti variantai: T1 esamas kvietimas **0 ms / 0 USD**;
+T2 vietiniai embedding'ai (`multilingual-e5-small` jau įdiegtas ir šildomas starte) — **19,5 ms**
+vienam sakiniui šiame kompiuteryje; T3 atskiras mažas modelis per Groq ~100–300 ms; T4 savas
+klasifikatorius — reikia sužymėtų LT duomenų, kurių dar neturim (juos surinks `reader_silent`).
+Padaryta T1; T2 lieka laisvoje lentynoje, jei `reader_silent` parodys, kad T1 neuždengia.
+
+**Praktika, kuria einam** (contact-centrų standartas, ne išradimas): slot-scoped atpažinimas
+(Dialogflow CX / Lex apriboja atpažinimą to lauko reikšmėmis), trys išeitys pagal pasitikėjimą
+(accept / confirm / re-prompt), žodynai kaip POŽYMIAI, ne sprendėjai (Rasa lookup tables),
+implicit confirmation balse, ir žemo pasitikėjimo ėjimų peržiūros eilė (`reader_silent`).
+
+**Tikrinta:** 1428 passed, 1 skipped; eval 195/195 (po pirmo paleidimo — 193/195, žr. aukščiau).
+
 ## Banga 5 — valymas (šaka `fix/wave-5`, 2026-09-28)
 
 Andrius: *„manau galime apjungti tuos tris“* — penktoji banga sujungia tai, kas iki šiol gulo

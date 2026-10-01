@@ -45,3 +45,11 @@ detectors:
   ticket_consent:
     "yes": "detector.ticket_consent.yes"
     "no": "detector.ticket_consent.no"
+  # 7 banga: pasiūlymas laikinai paleisti internetą į vieną įrenginį, ir klausimas, ar yra kuo
+  # atidaryti routerio nustatymus. Abiem atvejais „neturiu" yra ATSAKYMAS, ne tyla.
+  bridge_consent:
+    "yes": "detector.bridge_consent.yes"
+    "no": "detector.bridge_consent.no"
+  panel_device:
+    "yes": "detector.panel_device.yes"
+    "no": "detector.panel_device.no"

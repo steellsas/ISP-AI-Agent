@@ -208,6 +208,12 @@ def _device_answer(text: str | None, words: list[str]) -> str | None:
             return "yes"  # a device named without being denied — that is enough
     if saw_device_clause:
         return "no"  # every device they mentioned was denied
+    # Nieko neįvardijo IR dar daro („Palaukit, pažiūrėsiu, kas čia yra") — tai ne atsakymas.
+    # Be šito žodis „yra" tokiame sakinyje reikšdavo „turiu" (7b banga). Įvardijus įrenginį
+    # laikas nesvarbu: „atsinešiu kompiuterį" yra atsakymas apie TURĖJIMĄ, todėl tikrinam tik
+    # čia, po punktų skaitymo.
+    if detect_turn_intent(text) == INTENT_IN_PROGRESS:
+        return None
     # No device named at all — fall back to a plain yes/no, denial first.
     if (
         any(m in low for m in vocab("neg"))
@@ -215,9 +221,22 @@ def _device_answer(text: str | None, words: list[str]) -> str | None:
         or vocab_re("bare_no").search(low)
     ):
         return "no"
-    if any(m in low for m in vocab("device_yes")) or any(m in low for m in vocab("pos")):
+    # Teigiamo žodžio ieškom tik NENEIGTUOSE žodžiuose: „yra" yra ir „nėra" viduje, ir būtent
+    # todėl „jo šiandien nėra" buvo perskaityta kaip „turiu" (7b banga). Diakritikai nuvalomi,
+    # nes neiginio priešdėlis gyvai skamba ir „nė-", ir „ne-".
+    plain = " ".join(w for w in low.split() if not _fold(w).startswith(vocab("negation_prefixes")))
+    if any(m in plain for m in vocab("device_yes")) or any(m in plain for m in vocab("pos")):
         return "yes"
     return None
+
+
+def _fold(word: str) -> str:
+    """Žodis be diakritikų — „nėra" -> „nera", kad neiginio priešdėlis būtų atpažintas."""
+    import unicodedata
+
+    return "".join(
+        ch for ch in unicodedata.normalize("NFKD", word) if not unicodedata.combining(ch)
+    )
 
 
 def _yn(text: str | None) -> str | None:
@@ -418,10 +437,19 @@ def detect_bridge_consent(text: str | None) -> str | None:
     """
     if not text:
         return None
-    if detect_no_device(text):
-        return "no"
+    # Prašymas registruoti gedimą yra atsisakymas, kad ir kokie žodžiai aplink jį.
     if detect_refuse_or_ticket(text) == "demand":
         return "no"
+    low = text.lower()
+    # Nėra KO jungti laidu. Telefonas šiam pasiūlymui netinka (nėra kur kišti kabelio), o
+    # nuogas „netur-" kamienas čia netinka: „Neturiu kito routerio, tik kompiuterį" yra TAIP.
+    if any(m in low for m in vocab("no_bridge_device")):
+        return "no"
+    # Sakinio DALIMIS (`detect_have_device`): tas pats skaitymas, kuris jau mokėjo, kad
+    # paminėtas ir nepaneigtas kompiuteris yra atsakymas „taip" (eval S4).
+    answer = detect_have_device(text)
+    if answer is not None:
+        return answer
     return detect_ticket_consent(text)
 
 
@@ -459,13 +487,37 @@ def detect_ticket_consent(text: str | None) -> str | None:
     if not text:
         return None
     low = text.lower()
-    if any(m in low for m in vocab("consent_no")):
+    if _marked(low, vocab("consent_no")):
         return "no"
     if vocab_re("bare_no").search(low):
         return "no"
-    if any(m in low for m in vocab("consent_yes")):
+    if _marked(low, vocab("consent_yes")):
         return "yes"
     return None
+
+
+_LT_LETTER = "a-ząčęėįšųūž"
+
+
+def _marked(low: str, marks: tuple[str, ...] | list[str]) -> bool:
+    """Ar sakinyje yra bent vienas žymeklis — trumpieji skaitomi kaip ŽODŽIAI ir tik sakinio
+    PRADŽIOJE.
+
+    Lietuviškas „jo" yra ir šnekamasis „taip", ir įvardis: „jo šiandien nėra" per paprastą
+    substring'ą tapdavo sutikimu, o „nešviečia JOkia lemputė" — irgi. Šnekamasis sutikimas
+    beveik visada stovi pirmas („Jo, gerai"), tad trumpiems žymekliams to ir reikalaujam.
+    Ilgi žymekliai (kamienai „sutink-", „registruok-") lieka substring'ai, kaip ir buvo.
+    """
+    import re as _re
+
+    head = " ".join(low.split()[:2])
+    for mark in marks:
+        if len(mark) > 3:
+            if mark in low:
+                return True
+        elif _re.search(rf"(?<![{_LT_LETTER}]){_re.escape(mark)}(?![{_LT_LETTER}])", head):
+            return True
+    return False
 
 
 def detect_farewell(text: str | None) -> bool:
