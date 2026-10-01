@@ -8,6 +8,7 @@
 | Document | Purpose |
 |---|---|
 | [refactoring/RESULT.md](refactoring/RESULT.md) | **The system as it is now**: architecture diagram, what each milestone changed, verification, latency, known limitations |
+| [AGENTO_VEIKIMAS.md](AGENTO_VEIKIMAS.md) | **How the agent works** (Lithuanian): the LangGraph turn, who decides what, how a fault card is chosen, where knowledge comes from, how much is data vs code, and measured latency |
 | [refactoring/ROADMAP.md](refactoring/ROADMAP.md) | What is left to fix and build after the refactor, with evidence and where to start |
 | [refactoring/DECISIONS.md](refactoring/DECISIONS.md) | Architecture decisions D-01…D-22 (the "why") |
 | [refactoring/REFACTORING_PLAN.md](refactoring/REFACTORING_PLAN.md) | The refactor itself: milestones, status log with every deviation, findings F-1…F-31, owner questions |
@@ -42,8 +43,7 @@
 
 ## Planned
 
-Programmer guide (engine, modules, file map — start from RESULT.md) · presentation
-(Lithuanian) · instructor guide (knowledge files, phrases, policies — start from
+Presentation (Lithuanian) · instructor guide (knowledge files, phrases, policies — start from
 FAULT_PACKS.md) · integration and production guide (ticket types → departments, MCP, admin
 login, audio retention).
 
