@@ -735,6 +735,7 @@ def _dialogue_state(state, rt) -> list[str]:
     out += _unclear_case_answer(state)
     out += _reading_to_confirm(state)
     out += _proof_to_tell(state)
+    out += _recheck_to_ask(state)
     out += _summary_to_tell(state)
     if s.dialog.clarity_level == "basic" and not s.closing.case_closed:
         out.append(
@@ -827,6 +828,20 @@ def _summary_to_tell(state) -> list[str]:
         f"{body}. At most THREE short sentences, in this order: what we did, what it means / "
         "what works now, and that you are registering a technician. No greeting, no new "
         "question, do NOT ask for contact details in this reply — that is the next turn."
+    ]
+
+
+def _recheck_to_ask(state) -> list[str]:
+    """Klientas tai jau užsiminė pakeliui, bet šis klausimas patvirtina hipotezę — tad
+    patikslinam, o ne klausiam tuščiai. Gyvai 2026-10-02 iš „dėžutė atrodo kaip be maitinimų"
+    buvo padarytas faktas, ir maitinimo klausimas praleistas (7d banga)."""
+    told = state.turn.directives.recheck
+    if not told or not told.get("faktas"):
+        return []
+    return [
+        f"THEY ALREADY MENTIONED IT IN PASSING ({told['faktas']}) — but this question is what the "
+        "diagnosis stands on, so CONFIRM it instead of asking blankly: name what you heard and "
+        "ask them to check it for certain („jūs sakėte… patikslinu: ar…“)."
     ]
 
 

@@ -50,11 +50,14 @@ solution:
     # per ėjimą — adresas ir slaptažodis yra atskiri veiksmai, ne priedas prie pirmo.
     args: {knowledge: troubleshooting/internet_factory_reset_dhcp, count: 2}
     done_when: [guide_agreed=no]
+    # Nėra įrenginio su naršykle — nėra per ką vesti, kad ir kurioje vietoje tai paaiškėtų.
+    skip_when: [panel_device=no]
   - module: verify
     args:
       evidence: [dhcp=ok]
       ask: restored
     done_when: [guide_agreed=no]
+    skip_when: [panel_device=no]
 
 escalate:
   need: "verdict.dhcp_silent.ticket_need"

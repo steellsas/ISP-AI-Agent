@@ -207,3 +207,87 @@ class TestTheTechnicianGetsTheSameSummary:
 
         assert "Padaryta telefonu" in line and "lemput" in line
         assert "PALEISTAS" in phrase("ticket.details.bridge_live")
+
+
+class TestTheSequenceIsNotSkippedOnAGuess:
+    """Banga 7d, gyvas skambutis 2026-10-02 (antras mirusio routerio).
+
+    Andrius: *„kai išgalvojami pasakymai ar veiksmai ir kai peršokama per seką — nepaklausiama,
+    neišsiaiškinama iki galo."* Trys atskiri sargai, visi bendri, ne vienos kortelės.
+    """
+
+    def test_a_volunteered_guess_does_not_skip_a_confirming_question(self, call):
+        """Gyvai: iš „dėžutė visiškai atrodo kaip be maitinimų" modelis padarė
+        `power_cable=unplugged`, ir maitinimo klausimas buvo praleistas kaip „jau žinomas"."""
+        state, rt = call
+        record_telemetry(state, rt, DEAD)
+        record_client(state, rt, "reachable", "yes")
+        record_client(state, rt, "lights", "off")
+        record_client(state, rt, "power_cable", "unplugged")  # pasakyta pakeliui, ne atsakant
+        state.case.fault, state.case.solution = "no_mac_observed", 0
+        state.case.step = _step_of("no_mac_observed", "check_power")
+
+        plan = case_rule.plan(state, rt)
+
+        assert plan.rule == "case.check_power", "hipotezę patvirtinantis klausimas užduodamas"
+        assert state.turn.directives.recheck, "ir užduodamas PATIKSLINANT, ne tuščiai"
+
+    def test_a_done_word_cannot_settle_a_question_nobody_asked(self, call):
+        """Gyvai: „Gerai, to patikrinsiu…" buvo atsakymas naratoriaus improvizuotam klausimui, o
+        variklis tai užrašė kaip sutikimą su tiltu (`bridge_agreed=yes`)."""
+        state, rt = call
+        record_telemetry(state, rt, DEAD)
+        record_client(state, rt, "reachable", "yes")
+        record_client(state, rt, "lights", "off")
+        record_client(state, rt, "power_cable", "plugged")
+        state.case.fault, state.case.solution = "no_mac_observed", 0
+        state.case.step = _step_of("no_mac_observed", "offer_bridge")
+        state.case.awaiting = "bridge_agreed"
+        state.case.step_said = -1  # pasiūlymas NENUSKAMBĖJO
+        state.dialog.turn_count += 1
+        state.dialog.last_heard = "Gerai, tai patikrinsiu."
+
+        case_rule.plan(state, rt)
+
+        assert state.case.facts.get("bridge_agreed") is None
+
+    def test_no_computer_stops_the_bridge_wherever_it_arrives(self, call):
+        """Gyvai: „neturiu kompiuterio" atėjo jau PO pasiūlymo, tad `answered_when` nebeveikė, ir
+        agentas tris kartus prašė kišti laidą į kompiuterį, kurio nėra."""
+        state, rt = call
+        record_telemetry(state, rt, DEAD)
+        record_client(state, rt, "reachable", "yes")
+        record_client(state, rt, "lights", "off")
+        record_client(state, rt, "power_cable", "plugged")
+        record_client(state, rt, "bridge_agreed", "yes")  # „sutikimas" jau užrašytas
+        state.case.fault, state.case.solution = "no_mac_observed", 0
+        state.case.step = _step_of("no_mac_observed", "connect_direct")
+        record_client(state, rt, "has_computer", "no")  # ir tik dabar paaiškėja
+
+        plan = case_rule.plan(state, rt)
+
+        assert plan.rule not in ("case.connect_direct", "case.bind", "case.port_reset")
+        assert plan.rule in ("case.summary", "case.escalate")
+
+
+class TestAFactWithoutAQuoteIsNotAFact:
+    """Banga 7d: `ground()` atmesdavo faktą, kurio citatos nėra sakinyje, bet faktą BE citatos
+    praleisdavo — ir būtent taip į „Džiugiu, Girino." atsirado `has_computer=no`."""
+
+    def test_a_quoteless_fact_is_dropped(self):
+        from agent.perceive.perception import Fact, Perception, ground
+
+        read = Perception(facts={"has_computer": Fact(value="no")})
+
+        grounded = ground(read, "Džiugiu, Girino.")
+
+        assert grounded.facts["has_computer"].grounded is False
+
+    def test_a_quoted_fact_that_was_really_said_stays(self):
+        from agent.perceive.perception import Fact, Perception, ground
+
+        read = Perception(facts={"lights": Fact(value="off", quote="nedega")})
+
+        grounded = ground(read, "Nedega nė viena lemputė.")
+
+        assert grounded.facts["lights"].grounded is True

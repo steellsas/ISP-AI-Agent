@@ -32,9 +32,12 @@ def _diagnosing_agent(monkeypatch, understand_on=True):
     return agent
 
 
-def _canned(facts=None, turn_type="answer", understood="", confusion="", conf=0.9):
+def _canned(facts=None, turn_type="answer", understood="", confusion="", conf=0.9, quote=None):
+    """`quote` — kliento žodžiai, kuriais modelis pagrindžia faktus (7d banga: faktas be
+    citatos nebepriimamas, nes būtent taip prasilįsdavo haliucinacijos)."""
     return {
         "facts": facts or {},
+        "quotes": dict.fromkeys(facts or {}, quote) if quote else {},
         "type": turn_type,
         "understood": understood,
         "confusion": confusion,
@@ -240,7 +243,9 @@ class TestKeywordSupplement:
         agent = _diagnosing_agent(monkeypatch)
         with patch(
             "agent.perceive.understand.understand",
-            return_value=_canned(facts={"lights": "blinking"}, understood="lemputė mirksi"),
+            return_value=_canned(
+                facts={"lights": "blinking"}, understood="lemputė mirksi", quote="Lemputė"
+            ),
         ):
             ingest_client_evidence(
                 agent.state, agent.runtime, "Lemputė dega žaliai"
@@ -260,7 +265,9 @@ class TestKeywordSupplement:
         with patch(
             "agent.perceive.understand.understand",
             return_value=_canned(
-                facts={"outlet_works": "not_working"}, understood="rozetė neveikia"
+                facts={"outlet_works": "not_working"},
+                understood="rozetė neveikia",
+                quote="routeris neveikia",
             ),
         ):
             ingest_client_evidence(
@@ -325,14 +332,18 @@ class TestContradictionCorroboration:
         with patch(
             "agent.perceive.understand.understand",
             return_value=_canned(
-                facts={"power_cable": "unplugged"}, understood="routeris be maitinimo"
+                facts={"power_cable": "unplugged"},
+                understood="routeris be maitinimo",
+                quote="neturi maitinimo",
             ),
         ):
             ingest_client_evidence(agent.state, agent.runtime, "routeris neturi maitinimo")
         assert agent.state.diagnosis.evidence["power_cable"]["value"] == "unplugged"
         with patch(
             "agent.perceive.understand.understand",
-            return_value=_canned(facts={"power_cable": "plugged"}, understood="laidas įkištas"),
+            return_value=_canned(
+                facts={"power_cable": "plugged"}, understood="laidas įkištas", quote="ikištas"
+            ),
         ):
             ingest_client_evidence(
                 agent.state, agent.runtime, "Tai ikištas, viskas gerai"
@@ -435,7 +446,9 @@ class TestUnderstandWiring:
         from agent.perceive.evidence import ingest_client_evidence
 
         agent = _diagnosing_agent(monkeypatch)
-        canned = _canned(facts={"device_present": "found"}, understood="klientas rado routerį")
+        canned = _canned(
+            facts={"device_present": "found"}, understood="klientas rado routerį", quote="Radau"
+        )
         with patch("agent.perceive.understand.understand", return_value=canned):
             ingest_client_evidence(agent.state, agent.runtime, "Radau.")
         assert agent.state.diagnosis.evidence["device_present"]["value"] == "found"

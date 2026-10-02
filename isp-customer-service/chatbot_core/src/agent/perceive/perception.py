@@ -145,10 +145,16 @@ def _step_from(options: dict[str, str], outcome: Any) -> dict[str, Any] | None:
 
 
 def ground(perception: Perception, utterance: str) -> Perception:
-    """Drop every fact whose quote is not in what the caller actually said.
+    """Drop every fact the caller's own words do not support.
 
-    A fact WITHOUT a quote is left to the engine's own corroboration rules (an older
-    model, or a fact read from context rather than quoted).
+    Kiekvienas faktas turi turėti CITATĄ, ir ta citata turi būti tame sakinyje. Iki 7d bangos
+    faktas BE citatos buvo praleidžiamas „variklio koroboravimo taisyklėms" — ir būtent taip
+    prasilįsdavo haliucinacijos: gyvai 2026-10-02 į „Džiugiu, Girino." modelis grąžino
+    `has_computer=no` su paaiškinimu „klientas džiaugiasi, bet neturi kompiuterio". Melas su
+    citata buvo atmetamas, be citatos — ne.
+
+    Saugioji pusė yra ta pati, kurios prašė Andrius: geriau paklausti, nei spėti. Uždavinio
+    atsakymą ir toliau nešioja atskiras, patikimas kanalas (`perception.step`).
     """
     from ..evidence import _fold
 
@@ -157,7 +163,7 @@ def ground(perception: Perception, utterance: str) -> Perception:
     for key, fact in perception.facts.items():
         quote = (fact.quote or "").strip()
         if not quote:
-            kept[key] = fact
+            kept[key] = fact.model_copy(update={"grounded": False})
             continue
         if _fold(quote) in said:
             kept[key] = fact

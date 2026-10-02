@@ -253,14 +253,15 @@ def _check_steps(where: str, path: str, steps, modules, values) -> list[str]:
                 errors.append(f"{at}: {call.module}.{param}={given!r} is not one of {rules.values}")
         for extra in set(call.args) - set(spec.params):
             errors.append(f"{at}: {call.module} has no parameter '{extra}'")
-        for text in call.done_when:
-            try:
-                condition = Condition.parse(text)
-            except ValueError as e:
-                errors.append(f"{at}: done_when: {e}")
-                continue
-            if condition.fact not in values:
-                errors.append(f"{at}: done_when: unknown fact '{condition.fact}'")
+        for field in ("done_when", "skip_when"):
+            for text in getattr(call, field, None) or []:
+                try:
+                    condition = Condition.parse(text)
+                except ValueError as e:
+                    errors.append(f"{at}: {field}: {e}")
+                    continue
+                if condition.fact not in values:
+                    errors.append(f"{at}: {field}: unknown fact '{condition.fact}'")
         if call.module == "guide":
             # A card may send the caller through a WRITTEN procedure; if the document is not
             # there, or has no steps, the app stops now and not mid-call (wave 4b).

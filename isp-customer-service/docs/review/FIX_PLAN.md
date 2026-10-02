@@ -545,6 +545,58 @@ netikrus pavojaus signalus, ir ją reikia atskirai pasižiūrėti.
 
 **Tikrinta:** 1440 passed, 1 skipped; eval 195/195.
 
+## Banga 7d — išgalvoti faktai ir peršokta seka (šaka `fix/wave-7-bridge`, 2026-10-02)
+
+Šaltinis: trys balso skambučiai (`logs/sessions/20261002-1235*`, `…-1239*`, `…-1240*`). Pirmas
+praėjo tvarkingai — visa 7c grandinė suveikė. Andrius apie antrąjį: *„iššoko klausimas, nors
+nebuvo pasiklausęs, ar turiu kitą įrenginį… pasakė, kad perkroviau routerį ir kad jau matomas
+mano įrenginys."* Ir principas, kurio prašo: *„kad užkirstų kelią tokioms klaidoms ir kituose
+scenarijuose — kai išgalvojami pasakymai ar veiksmai ir kai peršokama per seką."*
+
+Visi sargai todėl padaryti **bendri**, ne vienos kortelės.
+
+| # | Radinys (12:40 skambutis) | Mechanizmas |
+|---|---|---|
+| **H1** | Maitinimo klausimas **praleistas**: iš *„dėžutė visiškai atrodo kaip be maitinimų"* modelis padarė faktą `power_cable=unplugged` | 6 bangos sargas „`confirms: true` neperšokamas" gyveno `_jumped_ahead` ir `_absorb`, o **praleidimo** kelias (`_module_plan_inner`, „klientas jau pasakė") `confirms` netikrino. Spėjimas apie išvaizdą praleido klausimą, be kurio „routeris sugedęs" yra spėjimas |
+| **H2** | *„Gerai, tai patikrinsiu…"* tapo **sutikimu su tiltu**, nors pasiūlymo niekas nepasakė | `_reported_done` („gerai" = yes) įrašo LAUKIAMĄ faktą ir pajudina žingsnį. Skaitytuvai 6 bangoje gavo sargą „ar klausimas tikrai nuskambėjo", o šis kelias — ne |
+| **H3** | „Neturiu kompiuterio" **nebesustabdė** tilto: trys nurodymai kišti laidą į kompiuterį, kurio nėra | `answered_when` praleidžia tik PASIŪLYMĄ; tilto žingsniai praleidžiami per `done_when: [bridge_agreed=no]`, o jis buvo `yes`. `done_when` jungia sąlygas **IR** — „arba nėra kompiuterio" joje neišreiškiama |
+| **H4** | Naratorius **išgalvojo veiksmą** („ištraukite maitinimo laidą ir įkiškite atgal" — šios kortelėje nėra), o paskui **paskelbė**, kad klientas perkrovė | Įgūdžio promptas leido perfrazuoti, bet nesakė, kad VEIKSMAS yra fiksuotas |
+| **H5** | `has_computer=no` iš *„Džiugiu, Girino."* (ir 12:35 skambutyje) | `ground()` atmesdavo faktą, kurio citatos nėra sakinyje, bet faktą **be citatos** praleisdavo — melas be citatos pralįsdavo |
+
+### Kas pakeista
+
+| # | Kas | Kur |
+|---|---|---|
+| **H1** | Hipotezę patvirtinančio klausimo nepraleidžia pakeliui pasakytas faktas. Jei klientas tai jau užsiminė — klausiama **patikslinant** („jūs sakėte… patikslinu: ar…"), ne tuščiai | `case_rule._module_plan_inner`, `context_card._recheck_to_ask` |
+| **H2** | „Atlikau / gerai / veikia" neužskaito žingsnio, kurio klausimas **nenuskambėjo** (`_step_was_asked`) — tas pats sargas, kaip skaitytuvams | `case_rule._absorb` |
+| **H3** | Naujas žingsnio laukas **`skip_when`** (pakanka BET KURIOS sąlygos — ARBA), priešingai `done_when` (IR). Tilto žingsniai: `skip_when: [has_computer=no]`; DHCP vedimas: `skip_when: [panel_device=no]` — bet kurioje vietoje, ne tik prie pasiūlymo | `contract/schema.py`, `contract/loader.py`, `case_rule._skip_now`, abi kortelės |
+| **H4** | Promptas: **veiksmas FIKSUOTAS** — perfrazuoti galima, pakeisti kitu veiksmu ar išgalvoti žingsnį ne; o jei žingsnis klientui neįmanomas, tai pasakoma ir sustojama (toliau sprendžia variklis). Ir: niekada neteigti, kad klientas kažką padarė, jei kortelė to nesako | `prompts/skills/instruct_step.md`, `inform_news.md` |
+| **H5** | Faktas **be citatos** nebepriimamas. Saugioji pusė ta, kurios prašė Andrius: geriau paklausti, nei spėti; uždavinio atsakymą ir toliau nešioja patikimas `perception.step` kanalas | `perceive/perception.py::ground` |
+| **H6** | Kortelės tiketo pastaba nebeteigia, kad tiltas „pasiūlytas" — tikrovę pasako variklis (7c `Laikinas internetas PALEISTAS…`) | `cards/no_mac_observed.yaml` |
+
+**Ne klaida:** 12:39 skambutis pataikė į `open_ticket_exists`, nes 12:35 ką tik užregistravo tiketą
+tam pačiam klientui — agentas teisingai pasakė, kad gedimas jau registruotas. Testuojant tą patį
+gedimą iš eilės reikia **♻ DB**.
+
+### Ką pagavo `reader_silent` (pirmas kartas su duomenimis)
+
+Eval'e trys scenarijai nukrito dėl **ėjimų biudžeto**: 7c išvada ir patikros klausimas pokalbį
+pailgino vienu-dviem ėjimais, tad `S6_router_hung_reboot`, `D6_crc` gavo po vieną kliento atsakymą.
+O `X_dhcp_silent` parodė tikrą duomenų skylę, ir ją įvardijo naujas trace'o įrašas:
+
+```
+reader_silent  module=panel_device detector=panel_device fact=panel_device
+               heard="Gerai, pabandykime kartu"
+```
+
+To scenarijaus ėjimai buvo rašyti kortelei, kuri PIRMA klausė „ar galite prieiti prie routerio";
+nuo 7 bangos pirmas klausimas yra „ar turite kompiuterį ar telefoną, prijungtą prie routerio", tad
+visi atsakymai buvo pasislydę vienu ėjimu (į įrenginio klausimą atėjo sutikimas vesti). Scenarijus
+perrašytas pagal dabartinę eigą. Be `reader_silent` tai būtų atrodę kaip „kažkodėl neužsiregistravo
+tiketas".
+
+**Tikrinta:** 1445 passed, 1 skipped; eval 195/195.
+
 ## Banga 5 — valymas (šaka `fix/wave-5`, 2026-09-28)
 
 Andrius: *„manau galime apjungti tuos tris“* — penktoji banga sujungia tai, kas iki šiol gulo

@@ -362,6 +362,8 @@ class TurnDirectives(BaseModel):
     ticket: dict[str, Any] | None = None
     # Ką linija rodo PO veiksmo — kad patikra pirma pasakytų, ką pamatė, ir tik tada klaustų.
     proof: dict[str, Any] | None = None
+    # Klientas tai jau užsiminė, bet klausimas per svarbus, kad eitume iš spėjimo — patikslinam.
+    recheck: dict[str, Any] | None = None
     # Kas padaryta ir ką išsiaiškinom — išvada prieš registraciją ar prieš pabaigą.
     summary: dict[str, Any] | None = None
 

@@ -466,6 +466,10 @@ class ModuleCall(_Model):
     # this — a procedure has an order (Andrius, 2026-09-23: "sprendimui reikia tikslaus
     # algoritmo, analizei — ne") — only what is already true is passed over.
     done_when: list[str] = []
+    # Faktai, dėl kurių šis žingsnis NETAIKOMAS — pakanka BET KURIO (ARBA), skirtingai nei
+    # `done_when` (IR). „Nėra kompiuterio" turi praleisti visus tilto žingsnius bet kurioje
+    # vietoje, ne tik prie pasiūlymo (7d banga, gyvai 2026-10-02).
+    skip_when: list[str] = []
     # Gilesnės žinios, kurių šiam žingsniui gali prireikti: „tplink lemputės", „wan dhcp".
     # Kortelė sprendžia gedimą, o žinių bazė ją PAPILDO — Andrius (2026-09-24): „jei jam reikia
     # gilesnių žinių apie routerio lemputes ar jungtis, jas gauna". Paieška čia vyksta AGENTO

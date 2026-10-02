@@ -633,7 +633,9 @@ def _absorb(state: Any, rt: Any, facts: dict[str, str]) -> str:
         # bekontekstės euristikos („veikia" sakinyje = rezultatas) nebeturi teisės pajudinti
         # žingsnio: „Einu pasižiūrėti, ar tas kompiuteris veikia" nėra sutikimas su tiltu.
         return "waiting"
-    if _reported_done(state) or _model_reports_done(state) or _reported_outcome(state, call):
+    if _step_was_asked(state) and (
+        _reported_done(state) or _model_reports_done(state) or _reported_outcome(state, call)
+    ):
         # They DID it. That answers any question about being able to (live S6: "ištraukiau
         # iš routerio ir įkišau atgal" against "can you get to it now" — the engine waited
         # three turns for a yes it no longer needed) and finishes an instruction.
@@ -1087,6 +1089,23 @@ def _answered_elsewhere(state: Any, rt: Any, call: Any, facts: dict[str, str]) -
     return False
 
 
+def _skip_now(call: Any, facts: dict[str, str]) -> bool:
+    """Ar šis žingsnis NETAIKOMAS (`skip_when`) — bet kuri sąlyga pakanka.
+
+    `done_when` reiškia „jau padaryta" ir jungia sąlygas IR; čia reikėjo ARBA: tilto žingsnių
+    nebėra ko daryti, jei klientas atsisakė ARBA jei nėra kompiuterio. Gyvai 2026-10-02
+    „neturiu kompiuterio" atėjo jau PO pasiūlymo, tad `answered_when` nebeveikė, ir agentas
+    tris kartus prašė kišti laidą į kompiuterį, kurio nėra — o paskui naratorius išsigalvojo
+    perkrovimą (7d banga).
+    """
+    from ...contract.schema import Condition
+
+    for text in getattr(call, "skip_when", None) or []:
+        if Condition.parse(text).holds(facts) is True:
+            return True
+    return False
+
+
 def _already_done(call: Any, facts: dict[str, str]) -> bool:
     """Does the card itself say this step is achieved (`done_when`)?"""
     from ...contract.schema import Condition
@@ -1278,10 +1297,22 @@ def _module_plan_inner(state: Any, rt: Any, call, facts: dict[str, str], *, rule
     settled = _answered_elsewhere(state, rt, call, facts)
     if settled:
         facts = ledger.facts_of(state)
+    insists = _confirms_hypothesis(call) and state.case.step_said != state.case.step
     already = (
         settled
+        or _skip_now(call, facts)
         or _already_done(call, facts)
-        or (step.kind == "ask" and step.awaits and _client_said(state, step.awaits))
+        or (
+            step.kind == "ask"
+            and step.awaits
+            and _client_said(state, step.awaits)
+            # Hipotezę patvirtinančio klausimo NEPRALEIDŽIA pakeliui pasakytas faktas. Gyvai
+            # 2026-10-02: iš „dėžutė visiškai atrodo kaip be maitinimų" modelis padarė
+            # `power_cable=unplugged`, ir maitinimo klausimas — be kurio „routeris sugedęs" yra
+            # spėjimas — buvo praleistas kaip „jau žinomas". Spėjimas apie išvaizdą nėra
+            # atsakymas (7d banga).
+            and not insists
+        )
     )
     if already:
         # They already told us, or the card says this step is achieved — asking again is how an
@@ -1297,6 +1328,15 @@ def _module_plan_inner(state: Any, rt: Any, call, facts: dict[str, str], *, rule
     state.case.awaiting = step.awaits
     if step.awaits:
         state.diagnosis.pending_evidence_key = step.awaits
+    if insists and step.awaits and _client_said(state, step.awaits):
+        # Klientas tai jau užsiminė, bet klausimas yra per svarbus, kad eitume iš spėjimo:
+        # patikslinam, o ne klausiam tuščiai („jūs sakėte, kad… patikslinu").
+        from ...evidence import gloss_label, gloss_value
+
+        value = state.case.facts.get(step.awaits)
+        state.turn.directives.recheck = {
+            "faktas": f"{gloss_label(step.awaits)} {gloss_value(value, step.awaits)}".strip()
+        }
     asked = modules.question_of(call, model=model)
     if step.kind == "instruct" and _just_acknowledged(state):
         # They said "gerai" — they are doing it. Repeating the instruction is what makes an

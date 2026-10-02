@@ -107,6 +107,7 @@ class TestTheCaseWalksTheCall:
         case_rule.plan(state, rt)
         said(state, rt, "reachable", "yes")
         case_rule.plan(state, rt)  # reboot
+        state.case.step_said = state.case.step  # nurodymas nuskambėjo (žymi atsakymo statytojas)
         state.dialog.turn_count += 1
         state.dialog.last_intent = "done"  # "padariau" — the one thing the line cannot say
 
@@ -152,6 +153,7 @@ class TestTheCaseWalksTheCall:
         case_rule.plan(state, rt)  # reach
         said(state, rt, "reachable", "yes")
         case_rule.plan(state, rt)  # reboot instruction given
+        state.case.step_said = state.case.step  # ir jis tikrai nuskambėjo
         state.dialog.turn_count += 1
         state.dialog.last_intent = "question"
         state.dialog.last_heard = "Tai padariau. Ką tik padariau? Kas toliau?"
