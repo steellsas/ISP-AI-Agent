@@ -674,6 +674,13 @@ def _model_read(state: Any, rt: Any, call: Any) -> tuple[str, str] | None:
     answer = modules.answer_from_label(call, label, device=_device(state))
     if answer is None:
         return None
+    if label == "no" and not _heard_a_negation(state.dialog.last_heard):
+        # Modelis gali atverti duris, bet ne užverti jų be kliento žodžio. Eval D8: į „Visuose"
+        # (atsakymą apie įrenginius) modelis atsakė, kad klientas prie routerio prieiti NEGALI —
+        # pasitikėjimas 1,0 — ir skambutis nuėjo į namų darbus. Lietuviškas atsakymas „ne" beveik
+        # visada nešasi neiginį; be jo tai spėjimas, ir klausiame iš naujo (7e banga).
+        rt.tracer.emit("case", move="model_no_without_words", module=call.module, label=label)
+        return None
     if confidence < limits.get("reading_accept_confidence"):
         # Vidutinis pasitikėjimas: užskaitom, bet atsakyme pakeliui patvirtinam — kad klientas
         # galėtų pataisyti, o ne kad agentas apsimestų tikras.
@@ -719,6 +726,21 @@ def _model_reports_done(state: Any) -> bool:
     if read.get("label") != "done" or not read.get("is_answer"):
         return False
     return float(read.get("confidence") or 0.0) >= limits.get("reading_accept_confidence")
+
+
+def _heard_a_negation(heard: str | None) -> bool:
+    """Ar kliento sakinyje apskritai yra neiginys / atsisakymas?
+
+    Tai ne atsakymo skaitymas, o SARGAS modelio „ne": be jokio „ne-" sakinyje toks atsakymas
+    yra spėjimas (eval D8: „Visuose" perskaityta kaip „negaliu prieiti").
+    """
+    from ...evidence import _fold
+
+    if not heard:
+        return False
+    # Lietuviškas neiginys yra priešdėlis: „ne-" / „nė-" („nedega", „nėra", „neturiu",
+    # „nebūtina", „nelabai"). Tad užtenka vieno tokio žodžio — o „Visuose" jo neturi.
+    return any(_fold(token).startswith("ne") for token in heard.lower().split())
 
 
 def _model_says_not_an_answer(state: Any) -> bool:
@@ -1006,7 +1028,7 @@ def _reflect_plan(state: Any, rt: Any) -> TurnPlan | None:
     )
 
 
-def _advance(state: Any, rt: Any, *, by_words: bool = False) -> str:
+def _advance(state: Any, rt: Any, *, by_words: bool = False, ran: bool = True) -> str:
     if by_words:
         state.case.moved_on_turn = state.dialog.turn_count
     state.case.retrying = False
@@ -1021,6 +1043,8 @@ def _advance(state: Any, rt: Any, *, by_words: bool = False) -> str:
         return "moved"
     if done is not None and done.module not in state.case.did:
         state.case.did.append(done.module)
+    if ran and done is not None and done.module not in state.case.worked:
+        state.case.worked.append(done.module)
     _queue_reflection(state)
     state.case.step += 1
     state.case.awaiting = None
@@ -1288,7 +1312,7 @@ def _module_plan_inner(state: Any, rt: Any, call, facts: dict[str, str], *, rule
     step = modules.plan_step(call, model=model)
     if step is None or (step.kind == "instruct" and not step.text):
         rt.tracer.emit("case", move="skip", module=call.module, why="no wording for this device")
-        _advance(state, rt)
+        _advance(state, rt, ran=False)
         following = _current(state)
         if following is not None:
             return _module_plan_inner(state, rt, following, facts, rule=f"case.{following.module}")
@@ -1320,7 +1344,7 @@ def _module_plan_inner(state: Any, rt: Any, call, facts: dict[str, str], *, rule
         # "esu prie routerio"). The ORDER of the fix is untouched: only what is already true is
         # passed over.
         rt.tracer.emit("case", move="known", module=call.module, fact=step.awaits)
-        _advance(state, rt)
+        _advance(state, rt, ran=False)
         following = _current(state)
         if following is not None:
             return _module_plan_inner(state, rt, following, facts, rule=f"case.{following.module}")
@@ -1482,14 +1506,18 @@ def _summary_words(state: Any, card: Any, facts: dict[str, str]) -> dict[str, st
     from ...contract.locale import maybe_phrase, phrase_or
 
     did: list[str] = []
-    for module in state.case.did:
+    for module in state.case.worked:
         # Tik DARBAI: klausimų moduliai (ar galite prieiti, ar turite kompiuterį) čia frazės
         # neturi, ir to pakanka, kad į išvadą nepakliūtų.
         words = phrase_or(f"summary.did.{module}", "")
         if words and words not in did:
             did.append(words)
     missed: list[str] = []
-    if facts.get("bridge_agreed") == "no":
+    if facts.get("has_computer") == "no":
+        # Ne atsisakė — nebuvo kuo. Gyvai 2026-10-02 tikete rašė „nenorėjot", nors klientas
+        # kompiuterio neturėjo.
+        missed.append(phrase_or("summary.no_computer", ""))
+    elif facts.get("bridge_agreed") == "no":
         missed.append(phrase_or("summary.declined_bridge", ""))
     if facts.get("guide_agreed") == "no":
         missed.append(phrase_or("summary.declined_guide", ""))
@@ -1498,7 +1526,14 @@ def _summary_words(state: Any, card: Any, facts: dict[str, str]) -> dict[str, st
         missed.append(unchecked)
     told = {
         "padaryta": ", ".join(did),
-        "isvada": (maybe_phrase(card.explain.get("conclusion")) if card else "") or "",
+        # Po gyvo tilto kortelės išvada jau pasenusi: linijoje DABAR matomas kliento
+        # kompiuteris, tad „linijoje jūsų įrenginio nematome" būtų netiesa (gyvai 2026-10-02).
+        # Kodėl reikia meistro, pasako `kodel` (kortelės `escalate.need`).
+        "isvada": (
+            ""
+            if _bridge_live(state, facts)
+            else (maybe_phrase(card.explain.get("conclusion")) if card else "") or ""
+        ),
         "dabar": (phrase_or("summary.bridge_live", "") if _bridge_live(state, facts) else ""),
         "nepavyko": "; ".join(part for part in missed if part),
         "kodel": (

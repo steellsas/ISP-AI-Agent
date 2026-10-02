@@ -181,7 +181,8 @@ class TestTheModelIsToldWhatWeAsked:
         state.case.step_said = state.case.step
         case_rule.plan(state, rt)  # pastato `awaiting`
         state.dialog.turn_count += 1
-        state.dialog.last_heard = "Mmm, o kiek tai kainuos?"  # žodynas to neskaito
+        # žodynas to neskaito, bet neiginys sakinyje yra — modelio „ne" priimamas (7e sargas)
+        state.dialog.last_heard = "Nelabai, nebūtina man to."
         state.turn.perception = {
             "step": {"label": "no", "is_answer": True, "confidence": 0.9},
         }
@@ -191,6 +192,21 @@ class TestTheModelIsToldWhatWeAsked:
         assert state.case.facts.get("bridge_agreed") == "no"
         assert state.turn.confirm_reading is None  # tikras — nereikia tikslintis
         assert any(e.get("move") == "read_by_model" for e in rt.tracer.of("case"))
+
+    def test_a_model_no_needs_the_callers_own_negation(self, call):
+        """7e / eval D8: į „Visuose" (atsakymą apie įrenginius) modelis pasakė, kad klientas prie
+        routerio prieiti NEGALI — pasitikėjimas 1,0 — ir skambutis nuėjo į namų darbus. Modelis
+        gali atverti duris, bet ne užverti jų be kliento žodžio: lietuviškas „ne" nešasi neiginį."""
+        state, rt = self._at_the_offer(call)
+        state.case.step_said = state.case.step
+        case_rule.plan(state, rt)
+        state.dialog.turn_count += 1
+        state.dialog.last_heard = "Visuose"  # jokio neiginio
+        state.turn.perception = {"step": {"label": "no", "is_answer": True, "confidence": 1.0}}
+
+        case_rule.plan(state, rt)
+
+        assert state.case.facts.get("bridge_agreed") is None
 
     def test_a_middling_reading_is_taken_but_said_out_loud(self, call):
         state, rt = self._at_the_offer(call)

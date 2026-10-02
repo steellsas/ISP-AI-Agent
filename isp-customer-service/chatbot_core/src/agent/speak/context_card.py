@@ -737,6 +737,7 @@ def _dialogue_state(state, rt) -> list[str]:
     out += _proof_to_tell(state)
     out += _recheck_to_ask(state)
     out += _summary_to_tell(state)
+    out += _question_mid_fix(state)
     if s.dialog.clarity_level == "basic" and not s.closing.case_closed:
         out.append(
             "PLAIN WORDS: the caller said they do not follow technical words. Speak "
@@ -796,6 +797,33 @@ def _stuck(state, rt) -> list[str]:
         "SILENCE (the caller said nothing): do NOT say „neišgirdau“ — they may just be "
         "listening or thinking. Calmly, without apologising, ask for what is needed (e.g. "
         "the street), or check in with „Ar mane girdite?“. Do not rush." + extra
+    ]
+
+
+def _question_mid_fix(state) -> list[str]:
+    """Klientas paklausė, o gedimo sprendimas VYKSTA: atsakom ir tęsiam tą patį žingsnį.
+
+    Gyvai 2026-10-02 (tiltas): į „laukiu, sakykit kada" atsakymą pasiėmė klausimo perdavimas, ir
+    naratorius prisigraibė žinių ribos frazės — klientas išgirdo *„deja, negaliu patarti, kaip tai
+    padaryti"* kaip tik tada, kai pririšimas buvo sėkmingas. Riba yra MŪSŲ srities klausimams, ne
+    sprendimo viduriui.
+    """
+    rule = str((state.turn.plan or {}).get("rule") or "")
+    if rule != "dialog.question_passthrough" or not state.case.in_progress:
+        return []
+    nxt = _next_step_words(state)
+    if nxt:
+        state.case.step_said = state.case.step
+    tail = (
+        f" Then continue with THIS step, word for word: „{nxt}“."
+        if nxt
+        else " Then say what you are waiting for — do not invent a new step."
+    )
+    return [
+        "THEY ASKED SOMETHING WHILE THE FIX IS IN PROGRESS: answer it in ONE short sentence from "
+        "what you already know." + tail + " NEVER say you cannot advise or that you will register "
+        "the problem instead — the fix is running, and that phrase belongs to questions outside "
+        "our area."
     ]
 
 
@@ -1240,6 +1268,12 @@ def _goal_recap_and_findings(state, rt) -> list[str]:
         # this card does not have at all (its fix is a written procedure). So either the
         # card's OWN next step is named here, or nothing is.
         nxt = _next_step_words(state)
+        if nxt:
+            # Klausimas nuskamba ŠIAME atsakyme, nors ėjimą pasiėmė identifikacija — tad ir
+            # pažymim. Gyvai 2026-10-02: „ar galite prieiti prie routerio?" nuskambėjo
+            # identifikacijos atsakyme, žymė neatsirado, kliento „galiu prieiti" buvo atmestas
+            # („klausimo juk nebuvo"), ir tas pats klausimas nuskambėjo antrą kartą (7e banga).
+            state.case.step_said = state.case.step
         nothing_yet = (
             ""
             if instructing

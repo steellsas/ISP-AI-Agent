@@ -537,6 +537,12 @@ class CaseState(BaseModel):
     # else could: has the phone work been done before a technician is sent (`only_after`), and
     # what does the technician need to know we already tried.
     did: list[str] = Field(default_factory=list)
+    # Kas IŠ TIKRŲJŲ buvo padaryta (ne pereita). `did` turi platesnę reikšmę — „įvykdyta ar
+    # bent bandyta" — ir ja laikosi `escalate.only_after`, todėl į jį įrašomi ir praleisti bei
+    # pasiduoti žingsniai. Išvada klientui ir tiketas meistrui privalo turėti tik darbus: gyvai
+    # 2026-10-02 klientas kompiuterio neturėjo, tiltas buvo praleistas, o tikete rašė
+    # „prijungėm kompiuterį, pririšom, perkrovėm prievadą" (7e banga).
+    worked: list[str] = Field(default_factory=list)
     # Ar išvada („padarėm tai ir tai, todėl registruojam") jau pasakyta. Andrius (2026-10-02):
     # *„klientas atsimins galutinį pokalbį — svarbi informacija, ką agentas padėjo ir ko
     # nepadarė."* Ji sakoma VIENĄ kartą, savo ėjimu, prieš registraciją.

@@ -597,6 +597,58 @@ tiketas".
 
 **Tikrinta:** 1445 passed, 1 skipped; eval 195/195.
 
+## Banga 7e — ką teigiame, kad padarėme (šaka `fix/wave-7-bridge`, 2026-10-02)
+
+Šaltinis: du balso skambučiai (`logs/sessions/20261002-1357*`, `…-1401*`). Visi 7d sargai
+suveikė — nė vieno išgalvoto veiksmo, nė vieno peršokto klausimo, nė vieno netikro sutikimo;
+`reader_silent` tylėjo. Likę radiniai jau nebe apie valdymą, o apie **sąžiningą buhalteriją** ir
+apie tai, **kas kalba kortelės vardu**.
+
+| # | Radinys | Mechanizmas |
+|---|---|---|
+| **O1** | Klientas kompiuterio neturėjo, tiltas praleistas — o tikete meistrui: *„Padaryta telefonu: … prijungėm kompiuterį tiesiai prie linijos, pririšom jį prie jūsų linijos, perkrovėm jūsų prievadą"* | `_advance` įrašydavo modulį į `case.did` **ir praleidžiant** žingsnį (`move=known`). `did` reikšmė yra platesnė („įvykdyta ar bent bandyta" — ja laikosi `escalate.only_after`), bet išvada ir tiketas iš jos ėmė DARBUS |
+| **O2** | Išvada po gyvo tilto: *„Linijoje jūsų routeris nematomas"* — o telemetrija tuo metu rodė `device_seen=yes, device_registered=match` | Išvados „ką tai reiškia" dalis imama iš kortelės `explain.conclusion`, kuri po tilto jau pasenusi: linijoje dabar matomas kliento kompiuteris |
+| **O3** | Tas pats klausimas du kartus iš eilės: *„Ar galite prieiti prie routerio?"* → *„Galiu prieiti"* → *„Gerai, kad galite prieiti. Ar galite dabar prieiti prie routerio?"* | Kortelės klausimas nuskambėjo IDENTIFIKACIJOS atsakyme, o `case.step_said` žymimas tik kai ėjimo taisyklė yra `case.*`. Tad atsakymas atmestas („klausimo juk nebuvo"), ir klausimas pakartotas žodis į žodį — 6 bangos sargas kirto pats sau |
+| **O4** | Tilto viduryje, kai pririšimas ką tik pavyko: *„Deja, negaliu patarti, kaip tai padaryti. Bet dabar galiu užregistruoti jūsų problemą…"* | Kliento sakinys atrodė kaip klausimas → visą ėjimą pasiėmė `dialog.question_passthrough` **be kortelės žingsnio žodžių**, ir naratorius prisigraibė žinių ribos frazės |
+
+### Kas pakeista
+
+| # | Kas | Kur |
+|---|---|---|
+| **O1** | Nauja `case.worked` — **kas tikrai vyko**; `did` lieka „pereita ar bandyta" (`only_after`). Išvada ir tiketas ima `worked` | `graph_v2/state.py`, `case_rule._advance(ran=…)`, `_summary_words` |
+| **O2** | Po gyvo tilto pasenusi kortelės išvada **nebekartojama** — kodėl reikia meistro, pasako `escalate.need`. Ir „nebuvo kuo" atskirta nuo „nenorėjot" (`summary.no_computer`) | `case_rule._summary_words`, `phrases.yaml` |
+| **O3** | Atsakymas, kuris **neša** kortelės žingsnio klausimą, pažymi `step_said` — tada kliento atsakymas užskaitomas ir klausimas nebekartojamas | `context_card._goal_recap_and_findings` |
+| **O4** | Kai klientas paklausia, o sprendimas VYKSTA: atsakom vienu sakiniu **ir** tęsiam tą patį žingsnį jo žodžiais; žinių ribos frazė („negaliu patarti") tuo metu uždrausta — ji yra mūsų srities klausimams, ne sprendimo viduriui | `context_card._question_mid_fix` |
+
+**Bendra šių dviejų skambučių išvada:** valdymo logika stabili (trys dienos iš eilės radiniai vis
+paviršiniai), o likusi šaknis viena — **variklis ir naratorius nesutaria, kas kalba kortelės
+vardu**. Tą pačią vietą matėm 6 bangoje (`case.finding` nedingsta), 7b (`step_perception_options`
+tamsus) ir dabar iš dviejų pusių: klausimas nuskamba nepažymėtas (O3) arba visai nenuskamba, o
+naratorius improvizuoja (O4).
+
+### Ką pagavo eval'as: modelis gali atverti duris, bet ne užverti (O5)
+
+Prijungus O3 (klausimas, nuskambėjęs kito ėjimo atsakyme, pažymimas) iškart nukrito du
+scenarijai — ir priežastis buvo gilesnė už žymę. `D8_router_hung`:
+
+```
+KLIENTAS: „Visuose"                      (atsakymas apie ĮRENGINIUS, ne apie priėjimą)
+perception.step: {"label": "no", "is_answer": true, "confidence": 1.0}
+case: read_by_model module=reach → reachable=NO → namų darbai („kai būsite namuose…")
+```
+
+Modelis, gavęs `reach` variantus, perskaitė „Visuose" kaip „negaliu prieiti" su pasitikėjimu 1,0.
+Tas pats `A1_repeat_and_frustration`: po „Jau sakiau — visuose įrenginiuose" skambutis nuėjo į
+namų darbus, nors internetas ką tik atsirado.
+
+Taisymas yra principas, ne lopinys: **modelio „ne" reikalauja kliento neiginio.** Lietuviškas
+negatyvus atsakymas beveik visada nešasi priešdėlį („nedega", „nėra", „neturiu", „nebūtina",
+„nelabai"); jei sakinyje nėra nė vieno „ne-" žodžio, modelio „ne" yra spėjimas, ir klausiame iš
+naujo (`case_rule._heard_a_negation`, trace'e `move=model_no_without_words`). „Taip" pusei sargo
+nėra: modelis gali atverti duris, bet ne užverti jų be kliento žodžio.
+
+**Tikrinta:** 1451 passed, 1 skipped; eval 195/195.
+
 ## Banga 5 — valymas (šaka `fix/wave-5`, 2026-09-28)
 
 Andrius: *„manau galime apjungti tuos tris“* — penktoji banga sujungia tai, kas iki šiol gulo

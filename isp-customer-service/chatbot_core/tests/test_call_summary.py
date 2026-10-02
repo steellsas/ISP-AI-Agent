@@ -58,7 +58,9 @@ class TestTheBridgeSuccessIsToldBeforeAnythingElse:
     def _after_the_bind(self, call):
         state, rt = _dead_router_at(call, "verify", has_computer="yes", bridge_agreed="yes")
         record_telemetry(state, rt, BRIDGED)
-        state.case.did = ["check_lights", "check_power", "connect_direct", "bind", "port_reset"]
+        # `worked` — kas tikrai vyko (iš jo išvada ir tiketas); `did` — kas pereita (`only_after`)
+        state.case.worked = ["check_lights", "check_power", "connect_direct", "bind", "port_reset"]
+        state.case.did = list(state.case.worked)
         return state, rt
 
     def test_the_line_proof_is_spoken_and_the_caller_is_asked(self, call):
@@ -91,7 +93,9 @@ class TestTheBridgeSuccessIsToldBeforeAnythingElse:
 class TestTheSummaryBeforeRegistering:
     def _at_the_end(self, call, **facts):
         state, rt = _dead_router_at(call, "escalate", **facts)
-        state.case.did = ["check_lights", "check_power", "connect_direct", "bind", "port_reset"]
+        # `worked` — kas tikrai vyko (iš jo išvada ir tiketas); `did` — kas pereita (`only_after`)
+        state.case.worked = ["check_lights", "check_power", "connect_direct", "bind", "port_reset"]
+        state.case.did = list(state.case.worked)
         return state, rt
 
     def test_it_says_what_was_done_and_why_before_the_ticket(self, call):
@@ -183,7 +187,9 @@ class TestTheTechnicianGetsTheSameSummary:
         from agent.speak.context_card import _summary_to_tell
 
         state, rt = _dead_router_at(call, "escalate", has_computer="yes", bridge_agreed="yes")
-        state.case.did = ["check_lights", "check_power", "connect_direct", "bind", "port_reset"]
+        # `worked` — kas tikrai vyko (iš jo išvada ir tiketas); `did` — kas pereita (`only_after`)
+        state.case.worked = ["check_lights", "check_power", "connect_direct", "bind", "port_reset"]
+        state.case.did = list(state.case.worked)
         record_telemetry(state, rt, BRIDGED)
         case_rule.plan(state, rt)
 
@@ -198,7 +204,9 @@ class TestTheTechnicianGetsTheSameSummary:
         from agent.contract.locale import phrase
 
         state, rt = _dead_router_at(call, "escalate", has_computer="yes", bridge_agreed="yes")
-        state.case.did = ["check_lights", "check_power", "connect_direct", "bind", "port_reset"]
+        # `worked` — kas tikrai vyko (iš jo išvada ir tiketas); `did` — kas pereita (`only_after`)
+        state.case.worked = ["check_lights", "check_power", "connect_direct", "bind", "port_reset"]
+        state.case.did = list(state.case.worked)
         record_telemetry(state, rt, BRIDGED)
         case_rule.plan(state, rt)
 
@@ -291,3 +299,93 @@ class TestAFactWithoutAQuoteIsNotAFact:
         grounded = ground(read, "Nedega nė viena lemputė.")
 
         assert grounded.facts["lights"].grounded is True
+
+
+class TestWhatWeClaimWeDid:
+    """Banga 7e, gyvi skambučiai 2026-10-02 (13:57 ir 14:01).
+
+    Du radiniai, abu apie SĄŽININGĄ buhalteriją — ne apie valdymą: tiketas rašė darbus, kurių
+    nebuvo, o išvada po tilto kartojo pasenusią kortelės išvadą.
+    """
+
+    def _no_computer_at_the_end(self, call):
+        state, rt = call
+        record_telemetry(state, rt, DEAD)
+        record_client(state, rt, "reachable", "yes")
+        record_client(state, rt, "lights", "off")
+        record_client(state, rt, "power_cable", "plugged")
+        state.case.fault, state.case.solution = "no_mac_observed", 0
+        state.case.step = _step_of("no_mac_observed", "offer_bridge")
+        state.case.step_said = state.case.step
+        record_client(state, rt, "has_computer", "no")
+        record_client(state, rt, "bridge_agreed", "no")
+        # lemputės ir maitinimas šiame skambutyje tikrai buvo eiti (fixture'as faktus suseda iš
+        # karto, tad darbų sąrašą pažymim rankomis — testo dalykas yra tilto žingsniai)
+        state.case.worked = ["check_lights", "check_power"]
+        state.case.did = list(state.case.worked)
+        return state, rt
+
+    def test_a_skipped_step_is_not_a_job_we_did(self, call):
+        """Gyvai: kompiuterio nebuvo, tiltas praleistas — o tikete rašė „prijungėm kompiuterį,
+        pririšom, perkrovėm prievadą"."""
+        state, rt = self._no_computer_at_the_end(call)
+
+        for _ in range(3):
+            case_rule.plan(state, rt)
+
+        assert "connect_direct" in state.case.did, "`only_after` turi matyti, kad žingsnis pereitas"
+        assert "connect_direct" not in state.case.worked
+        told = state.case.summary or {}
+        assert "prijungėm kompiuterį" not in told.get("padaryta", "")
+        assert "lemput" in told.get("padaryta", ""), "o tai, kas tikrai vyko, pasakoma"
+
+    def test_no_computer_is_not_a_refusal(self, call):
+        state, rt = self._no_computer_at_the_end(call)
+
+        for _ in range(3):
+            case_rule.plan(state, rt)
+
+        told = state.case.summary or {}
+        assert "nebuvo kuo" in told.get("nepavyko", "")
+        assert "nenorėjot" not in told.get("nepavyko", "")
+
+    def test_after_a_live_bridge_the_stale_conclusion_is_dropped(self, call):
+        """Gyvai: „pririšome jį tiesiai prie linijos. Linijoje jūsų routeris nematomas" — o
+        telemetrija tuo metu rodė `device_seen=yes, device_registered=match`."""
+        state, rt = _dead_router_at(call, "escalate", has_computer="yes", bridge_agreed="yes")
+        state.case.worked = ["check_lights", "check_power", "connect_direct", "bind", "port_reset"]
+        state.case.did = list(state.case.worked)
+        record_telemetry(state, rt, BRIDGED)
+
+        case_rule.plan(state, rt)
+
+        told = state.case.summary
+        assert told["dabar"], "pasakom, kas veikia dabar"
+        assert "nematome" not in told["isvada"], "pasenusi išvada nebekartojama"
+        assert told["kodel"], "o kodėl reikia meistro — pasakoma"
+
+
+class TestAQuestionDoesNotDerailTheFix:
+    """Banga 7e: į „laukiu, sakykit kada" naratorius atsakė *„deja, negaliu patarti, kaip tai
+    padaryti"* — kaip tik tada, kai pririšimas buvo sėkmingas."""
+
+    def test_the_step_words_ride_with_the_answer(self, call):
+        from agent.speak.context_card import _question_mid_fix
+
+        state, rt = _dead_router_at(call, "check_lights")
+        state.turn.plan = {"rule": "dialog.question_passthrough"}
+
+        said = _question_mid_fix(state)
+
+        assert said, "sprendimo viduryje klausimas atsakomas IR žingsnis tęsiamas"
+        assert "lemput" in said[0].lower(), "su kortelės žodžiais"
+        assert "cannot advise" in said[0], "ir su aiškiu uždraudimu dėl žinių ribos"
+        assert state.case.step_said == state.case.step, "klausimas nuskambėjo — vadinasi, pažymėtas"
+
+    def test_outside_a_fix_it_says_nothing(self, call):
+        from agent.speak.context_card import _question_mid_fix
+
+        state, rt = call
+        state.turn.plan = {"rule": "dialog.question_passthrough"}
+
+        assert _question_mid_fix(state) == []
