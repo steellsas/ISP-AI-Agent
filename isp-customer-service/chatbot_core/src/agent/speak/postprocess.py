@@ -69,8 +69,22 @@ def track_stuck(state: Any, rt: Any, reply: str) -> None:
 
     progressed = progress_key(state) != state.turn.progress_key_at_start
     is_q = is_question(reply)
+    # Pakartojimas yra ir tas pats PAREIŠKIMAS, ne tik tas pats klausimas: 2026-10-01 tilto
+    # pasiūlymas nuskambėjo tris kartus vienodai, o klaustuko jame nebuvo (jį nukirpo srauto
+    # sargas), tad šis skaitliukas tylėjo ir perfrazuoti niekas nepaprašė.
+    from ..contract import limits
+    from ..contract.locale import vocab
+
+    # Jei klientas PATS paprašė pakartoti, tas pats atsakymas yra teisingas atsakymas — ne ciklas.
+    heard = (state.dialog.last_heard or "").lower()
+    asked_again = any(mark in heard for mark in vocab("repeat_request"))
+    window = state.dialog.recent_replies[: max(1, limits.get("reply_repeat_window"))]
     repeat = bool(
-        is_q and state.dialog.last_question and similar(reply, state.dialog.last_question)
+        not asked_again
+        and (
+            (is_q and state.dialog.last_question and similar(reply, state.dialog.last_question))
+            or any(similar(reply, earlier) for earlier in window)
+        )
     )
     state.dialog.last_reply_repeated = repeat
     if progressed:
@@ -81,6 +95,8 @@ def track_stuck(state: Any, rt: Any, reply: str) -> None:
     # real re-ask escalates, and only real progress clears it.
     if is_q:
         state.dialog.last_question = reply
+    state.dialog.last_reply = reply
+    state.dialog.recent_replies = [reply, *window][: max(1, limits.get("reply_repeat_window"))]
     rt.tracer.emit("stuck", count=state.dialog.stuck_count, repeated=repeat)
 
 

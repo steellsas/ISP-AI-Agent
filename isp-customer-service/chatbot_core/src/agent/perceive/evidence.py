@@ -5,6 +5,7 @@ pass, the keyword readers, the pending-question read, and the importance gates
 from __future__ import annotations
 
 import os
+from dataclasses import dataclass
 from typing import Any
 
 from ..contract.locale import vocab
@@ -29,6 +30,15 @@ def unasked_pending_cleared(state: Any) -> str | None:
     return key
 
 
+@dataclass(frozen=True)
+class CaseStep:
+    """Kortelės žingsnis, kurio atsakymo laukiam — tiek, kiek jo reikia skaitymui."""
+
+    id: str
+    module: str
+    detector: str | None
+
+
 def step_perception_options(state: Any, rt: Any):
     """(options, step) for the merged perception call — the SAME routing-key
     meanings procedure.classify_confirm_and_route / classify_instruct_and_advance
@@ -39,6 +49,14 @@ def step_perception_options(state: Any, rt: Any):
 
     if os.getenv("CLASSIFIER", "on").lower() == "off":
         return None, None
+    # 7 banga. Gedimo kelią veda v2 Case, o šis skaitymas iki šiol klausė TIK v1
+    # `resolution.procedure`, kurio Case nebepildo — tad kiekvienam kortelės žingsniui
+    # variantai buvo `None`, ir modelis niekada nežinojo, ko ką tik paklausėme. Vienintelis
+    # atsakymo skaitytuvas buvo žodynas, ir būtent iš to gimė 2026-10-01 radiniai: „Neturiu."
+    # pasiūlymui nereiškė nieko, o „noriu registruoti gedimą" buvo perskaityta kaip sutikimas.
+    case_options = _case_step_options(state)
+    if case_options is not None:
+        return case_options
     r = state.resolution.procedure or {}
     strat = get_strategy(r.get("verdict")) if r else None
     step = strat.step(r.get("step", "")) if strat else None
@@ -60,6 +78,44 @@ def step_perception_options(state: Any, rt: Any):
 
         return detector_glosses("instruct_done"), step
     return None, None
+
+
+def _case_step_options(state: Any) -> tuple[dict[str, str], CaseStep] | None:
+    """Variantai TAM kortelės žingsniui, kurio klausimas tikrai nuskambėjo.
+
+    `None` reiškia „ne Case ėjimas" — tada skaitymas elgiasi kaip anksčiau. Reikalavimas, kad
+    klausimas būtų nuskambėjęs (`step_said == step`), yra tas pats, kaip ir žodyno skaitytuvams:
+    planas gali būti sudarytas ir neištartas (ėjimą paėmė identifikacija ar tiketas), o tada
+    kito ėjimo atsakymas yra ne į šį klausimą (6 bangos A radinys).
+    """
+    from ..contract import cards as catalog
+    from ..detectors import glosses as detector_glosses
+
+    case = getattr(state, "case", None)
+    if case is None or not case.fault or case.solution is None:
+        return None
+    card = catalog.card(case.fault)
+    if card is None:
+        return None
+    steps = card.solution[case.solution].steps
+    if not (0 <= case.step < len(steps)):
+        return None
+    call = steps[case.step]
+    spec = catalog.module(call.module)
+    if spec is None or spec.kind not in ("ask", "instruct", "verify"):
+        return None
+    if case.step_said != case.step:
+        return None
+    handle = CaseStep(
+        id=f"{case.fault}.{case.step}.{call.module}", module=call.module, detector=spec.detector
+    )
+    if spec.kind == "instruct":
+        return detector_glosses("instruct_done"), handle
+    # Kortelės / modulio savos reikšmės yra tiksliausios; be jų — universalios skaitytuvo.
+    universal = detector_glosses(spec.detector or "yes_no")
+    labels = list(spec.answers) or list(universal)
+    options = {label: universal.get(label, label) for label in labels}
+    return (options, handle) if options else None
 
 
 def ingest_client_evidence(state, rt, user_input: str | None) -> None:

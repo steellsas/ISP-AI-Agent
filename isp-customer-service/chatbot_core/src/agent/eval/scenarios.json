@@ -169,6 +169,7 @@
         "Visuose įrenginiuose",
         "Gerai, ištraukiau iš routerio ir įkišau atgal",
         "Mirksi, puslapis atsidaro — veikia",
+        "Taip, veikia",
         "Ne, ačiū"
       ],
       "expect": {
@@ -535,6 +536,7 @@
         "Perkišau, nepadėjo, laidas buvo kiek užlenktas",
         "Ne, neveikia",
         "Taip, tinka",
+        "Bet kada",
         "Ačiū, viso gero"
       ],
       "expect": {
@@ -650,6 +652,7 @@
         "Visuose",
         "Taip, galiu prieiti",
         "Perkroviau, internetas atsirado",
+        "Taip, jau veikia",
         "Ne, ačiū, viso gero"
       ],
       "expect": {
@@ -673,16 +676,17 @@
         "Labas, neveikia internetas",
         "Taip",
         "Greta, taip, mano sutartis",
-        "Taip, esu prie routerio",
+        "Turiu kompiuterį, prijungtą prie routerio laidu",
         "Gerai, pabandykime kartu",
-        "Prijungiau kompiuterį laidu",
+        "Prijungiau",
         "Atsidarė, prašo prisijungimo",
         "Suvedžiau, esu viduje",
         "Radau tą skiltį",
-        "Pasirinkau",
+        "Pasirinkau DHCP",
         "Išsaugojau",
-        "Palaukiu",
+        "Palaukiau, persikrovė",
         "Ne, vis tiek neveikia",
+        "Gerai",
         "Taip, tinka šis numeris",
         "Bet kada",
         "Ačiū, viso gero"

@@ -301,6 +301,14 @@ class DialogState(BaseModel):
     cannot_now_done: bool = False
     # The last reply re-asked the previous question verbatim.
     last_reply_repeated: bool = False
+    # Praeito ėjimo atsakymas — visas, ne tik klausimas. Gyvai 2026-10-01 tas pats tilto
+    # pasiūlymas nuskambėjo žodis į žodį tris kartus, o sargas to nepamatė: pakartojimu buvo
+    # laikomas tik KLAUSIMAS, o tam atsakymui klaustuką buvo nukirpęs srauto sargas (7 banga).
+    last_reply: str | None = None
+    # Paskutiniai atsakymai (naujausias pirmas) — pakartojimui reikia LANGO, ne vieno žingsnio:
+    # gyvai 2026-10-02 ta pati instrukcija nuskambėjo du kartus, o tarp jų įsiterpė „laukiu jūsų
+    # atsakymo", tad lyginimas tik su prieš tai buvusiu atsakymu to nepamatė (7c banga).
+    recent_replies: list[str] = Field(default_factory=list)
     # (doc, section, step) of the last injected playbook section (trace dedup).
     last_rag_injection_key: list[Any] | None = None
 
@@ -352,6 +360,12 @@ class TurnDirectives(BaseModel):
     recap: dict[str, Any] | None = None
     ident: dict[str, Any] | None = None
     ticket: dict[str, Any] | None = None
+    # Ką linija rodo PO veiksmo — kad patikra pirma pasakytų, ką pamatė, ir tik tada klaustų.
+    proof: dict[str, Any] | None = None
+    # Klientas tai jau užsiminė, bet klausimas per svarbus, kad eitume iš spėjimo — patikslinam.
+    recheck: dict[str, Any] | None = None
+    # Kas padaryta ir ką išsiaiškinom — išvada prieš registraciją ar prieš pabaigą.
+    summary: dict[str, Any] | None = None
 
 
 class TurnScratch(BaseModel):
@@ -380,6 +394,9 @@ class TurnScratch(BaseModel):
     # The same reading in its own shape (wave 2a): source, turn type, facts + quotes.
     perception: dict[str, Any] | None = None
     perception_step: dict[str, Any] | None = None
+    # Atsakymas, kurį perskaitė modelis VIDUTINIU pasitikėjimu: užskaitom, bet atsakyme
+    # pakeliui patvirtinam, kad klientas galėtų pataisyti („Supratau — lemputės nedega.").
+    confirm_reading: str | None = None
     # The evidence key the caller reported as done this turn.
     done_report_key: str | None = None
     directives: TurnDirectives = Field(default_factory=TurnDirectives)
@@ -520,6 +537,22 @@ class CaseState(BaseModel):
     # else could: has the phone work been done before a technician is sent (`only_after`), and
     # what does the technician need to know we already tried.
     did: list[str] = Field(default_factory=list)
+    # Kas IŠ TIKRŲJŲ buvo padaryta (ne pereita). `did` turi platesnę reikšmę — „įvykdyta ar
+    # bent bandyta" — ir ja laikosi `escalate.only_after`, todėl į jį įrašomi ir praleisti bei
+    # pasiduoti žingsniai. Išvada klientui ir tiketas meistrui privalo turėti tik darbus: gyvai
+    # 2026-10-02 klientas kompiuterio neturėjo, tiltas buvo praleistas, o tikete rašė
+    # „prijungėm kompiuterį, pririšom, perkrovėm prievadą" (7e banga).
+    worked: list[str] = Field(default_factory=list)
+    # Ar išvada („padarėm tai ir tai, todėl registruojam") jau pasakyta. Andrius (2026-10-02):
+    # *„klientas atsimins galutinį pokalbį — svarbi informacija, ką agentas padėjo ir ko
+    # nepadarė."* Ji sakoma VIENĄ kartą, savo ėjimu, prieš registraciją.
+    summarised: bool = False
+    # Pati išvada. Ji NEIŠTRINAMA ją pasakius, nes turi antrą adresatą: tą patį sąrašą gauna ir
+    # tiketas — meistras turi matyti, kas buvo ir kas padaryta (Andrius, 2026-10-02: *„tuomet
+    # tiketai bus informatyvūs ir meistrams bus aiškiau, kas ten įvyko"*).
+    summary: dict[str, str] | None = None
+    # Ar išvada jau NUSKAMBĖJO klientui (sakoma vieną kartą; duomenys lieka tiketui).
+    summary_said: bool = False
     # The step is being retried, so the card's `on_fail` call is what runs — a retry that
     # repeats the identical instruction teaches the caller nothing.
     retrying: bool = False

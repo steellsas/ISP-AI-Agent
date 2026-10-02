@@ -127,6 +127,7 @@ def _check_cards(cards: dict | None = None, modules: dict | None = None) -> None
     from .locale import active_language, load_locale
     from .schema import Condition
 
+    whole_catalogue = cards is None and modules is None
     cards = catalog.cards() if cards is None else cards
     modules = catalog.modules() if modules is None else modules
     locale = load_locale(active_language())
@@ -141,6 +142,12 @@ def _check_cards(cards: dict | None = None, modules: dict | None = None) -> None
     for spec in modules.values():
         for fact in spec.produces:
             values.setdefault(fact, set())
+        # `answered_when` nustato faktą — vadinasi, modulis jį ir gamina.
+        for rule in spec.answered_when:
+            try:
+                values.setdefault(Condition.parse(rule.set).fact, set())
+            except ValueError:
+                pass  # sintaksės klaidą pasakys patikra žemiau
 
     def check_conditions(where: str, raw: list[str]) -> None:
         for text in raw:
@@ -157,6 +164,22 @@ def _check_cards(cards: dict | None = None, modules: dict | None = None) -> None
                     f"{where}: '{text}' — {condition.fact} is never "
                     f"{condition.value!r} (it is one of {sorted(known)})"
                 )
+
+    # `answered_when`: abi pusės yra sąlygos tuo pačiu faktų žodynu, ir abi tikrinamos čia —
+    # klaidinga nuoroda modulyje kainuotų tylų praleistą žingsnį pokalbio viduryje.
+    for name, spec in modules.items():
+        for i, rule in enumerate(spec.answered_when):
+            where = f"modules/{name}.yaml: answered_when.{i}"
+            if whole_catalogue:
+                # `when` faktą deklaruoja kortelė (`needs`) arba kitas modulis, tad jį galima
+                # tikrinti tik tada, kai kataloge yra visi — testai validuoja po vieną kortelę.
+                check_conditions(f"{where}.when", [rule.when])
+            else:
+                try:
+                    Condition.parse(rule.when)
+                except ValueError as e:
+                    errors.append(f"{where}.when: {e}")
+            check_conditions(f"{where}.set", [rule.set])
 
     fallbacks = [name for name, card in cards.items() if card.fallback]
     if len(fallbacks) > 1:
@@ -230,14 +253,15 @@ def _check_steps(where: str, path: str, steps, modules, values) -> list[str]:
                 errors.append(f"{at}: {call.module}.{param}={given!r} is not one of {rules.values}")
         for extra in set(call.args) - set(spec.params):
             errors.append(f"{at}: {call.module} has no parameter '{extra}'")
-        for text in call.done_when:
-            try:
-                condition = Condition.parse(text)
-            except ValueError as e:
-                errors.append(f"{at}: done_when: {e}")
-                continue
-            if condition.fact not in values:
-                errors.append(f"{at}: done_when: unknown fact '{condition.fact}'")
+        for field in ("done_when", "skip_when"):
+            for text in getattr(call, field, None) or []:
+                try:
+                    condition = Condition.parse(text)
+                except ValueError as e:
+                    errors.append(f"{at}: {field}: {e}")
+                    continue
+                if condition.fact not in values:
+                    errors.append(f"{at}: {field}: unknown fact '{condition.fact}'")
         if call.module == "guide":
             # A card may send the caller through a WRITTEN procedure; if the document is not
             # there, or has no steps, the app stops now and not mid-call (wave 4b).

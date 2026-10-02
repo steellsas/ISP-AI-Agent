@@ -8,6 +8,7 @@
 | Document | Purpose |
 |---|---|
 | [refactoring/RESULT.md](refactoring/RESULT.md) | **The system as it is now**: architecture diagram, what each milestone changed, verification, latency, known limitations |
+| [AGENTO_VEIKIMAS.md](AGENTO_VEIKIMAS.md) | **How the agent works** (Lithuanian): the LangGraph turn, who decides what, how a fault card is chosen, where knowledge comes from, how much is data vs code, and measured latency |
 | [refactoring/ROADMAP.md](refactoring/ROADMAP.md) | What is left to fix and build after the refactor, with evidence and where to start |
 | [refactoring/DECISIONS.md](refactoring/DECISIONS.md) | Architecture decisions D-01…D-22 (the "why") |
 | [refactoring/REFACTORING_PLAN.md](refactoring/REFACTORING_PLAN.md) | The refactor itself: milestones, status log with every deviation, findings F-1…F-31, owner questions |
@@ -38,12 +39,12 @@
 | `uv run uvicorn --app-dir chatbot_core src.app.main:app --port 8080` | The service and the dashboard |
 | `uv run pytest` | Unit and integration tests |
 | `uv run python chatbot_core/src/agent/eval/run_eval.py [--only ID] [--json out.json]` | Scripted calls, scored |
+| `uv run python scripts/reader_silent.py [--days N] [--module M]` | What no reader understood: the `reader_silent` summary from call traces (feeds the vocabulary and `tests/test_answer_reading.py`) |
 | `uv run python scripts/prune_logs.py [--days N] [--keep N] [--apply]` | Logs janitor: old call traces and audio past its retention date (dry run without `--apply`) |
 
 ## Planned
 
-Programmer guide (engine, modules, file map — start from RESULT.md) · presentation
-(Lithuanian) · instructor guide (knowledge files, phrases, policies — start from
+Presentation (Lithuanian) · instructor guide (knowledge files, phrases, policies — start from
 FAULT_PACKS.md) · integration and production guide (ticket types → departments, MCP, admin
 login, audio retention).
 

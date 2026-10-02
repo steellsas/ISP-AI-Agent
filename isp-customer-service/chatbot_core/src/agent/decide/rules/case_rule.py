@@ -55,6 +55,11 @@ def plan(state: Any, rt: Any) -> TurnPlan | None:
         state.case.fault, state.case.solution, state.case.step = None, None, 0
         state.case.awaiting, state.case.awaiting_probe = None, False
         state.case.guide_step, state.case.guide_said = 0, -1
+    if state.case.fault is not None and _caller_is_lost(state, rt):
+        # Klientas nebegali sekti žingsnių (kelis ėjimus iš eilės nesusikalbam) — telefoninis
+        # sprendimas baigiamas SĄŽININGAI: pasakom, ką padarėm, ir registruojam meistrą. Tai
+        # sprendimo kelio darbas, ne identifikacijos kopėčios (7f banga).
+        return _escalate(state, rt, state.case.fault)
     if state.case.fault is not None:
         status = _absorb(state, rt, facts)
         # The caller's physical action must reach the line BEFORE anything reads it again,
@@ -68,6 +73,8 @@ def plan(state: Any, rt: Any) -> TurnPlan | None:
             facts = ledger.facts_of(state)  # the verification's own reading is part of them now
         if status == "handed_over":
             return None  # the ticket dialogue owns the rest of the call
+        if status == "escalating":
+            return _escalate(state, rt, state.case.fault)
         if status == "solved":
             return _resolved(state, rt)
         step = _current(state)
@@ -518,10 +525,15 @@ def _absorb(state: Any, rt: Any, facts: dict[str, str]) -> str:
     fact arriving. An instruction is settled by the caller SAYING they did it — which is
     the one thing the engine cannot read from the line.
 
-    Returns "waiting", "moved", "solved" or "failed".
+    Returns "waiting", "moved", "solved", "failed", "handed_over" or "escalating".
     """
     call = _current(state)
     if call is None:
+        if state.case.summarised:
+            # Išvada jau pasakyta — šis skambutis eina pas meistrą. Be šito ėjimas po išvados
+            # grįždavo į „žingsnių nebėra, vadinasi išspręsta" ir agentas pasakydavo, kad
+            # internetas veikia (7c banga).
+            return "handed_over" if state.ticket.stage else "escalating"
         return "solved" if state.case.fault and state.case.solution is not None else "waiting"
     if (
         call is not None
@@ -550,6 +562,14 @@ def _absorb(state: Any, rt: Any, facts: dict[str, str]) -> str:
         return "waiting"  # its own reading has not come back yet
     settled = modules.step_done(call, facts)
     if settled is True:
+        if _verify_must_be_told(state, call):
+            # Įrodymas yra, bet klientas jo dar NEIŠGIRDO. Gyvai 2026-10-02: po pririšimo
+            # telemetrija jau rodė `device_seen=yes, traffic=flowing`, patikra užsidarė tylėdama,
+            # ir tą patį ėjimą kortelė nuėjo į eskalaciją — klientas išgirdo tik „telefonu
+            # neišspręsime", o paskui dar ir kad internetas neveiks, nors kompiuteris jau buvo
+            # pririštas. Andrius (2026-09-28): *„turėtų pasakyti, kad matau, jog srautas atsirado,
+            # ir pasiklausti kliento — įsitikinti, ar problema išspręsta."*
+            return "waiting"
         return _advance(state, rt)
     if settled is False:
         return _retry_or_give_up(state, rt)
@@ -564,7 +584,11 @@ def _absorb(state: Any, rt: Any, facts: dict[str, str]) -> str:
     # different question: live 2026-09-30 „Ne, tai mano vardu, Giedriaus vardu" was read as
     # `lights=no`, the lights question counted as answered, and the agent jumped to the power
     # lead without ever asking what the caller saw.
-    if _step_was_asked(state):
+    if _step_was_asked(state) and not _model_says_not_an_answer(state):
+        # Kontekstą turintis skaitymas viršesnis už bekontekstį: jei jis sako, kad klientas dar
+        # daro arba klausia atgal, tai nei žodynas, nei euristikos žingsnio nejudina. „Einu
+        # pasižiūrėti, ar tas kompiuteris veikia" žodynui atrodo „turi kompiuterį" (paminėtas ir
+        # nepaneigtas), bet tai dar ne atsakymas (7b banga).
         read = modules.read_answer(call, state.dialog.last_heard, device=_device(state))
         if read is not None:
             fact, value = read
@@ -576,6 +600,18 @@ def _absorb(state: Any, rt: Any, facts: dict[str, str]) -> str:
         if own is not None:
             ledger.record_client(state, rt, own[0], own[1])
             facts = ledger.facts_of(state)
+        # Antra eilė po žodyno (7 banga): tą patį sakinį to paties ėjimo supratimo kvietimas
+        # perskaitė ŽINODAMAS, ko paklausėme, ir grąžino etiketę iš UŽDARO šio modulio sąrašo.
+        # Žodynas lieka pirmas (jis nemokamas ir tikslus), bet jo tyla nebėra aklavietė:
+        # 2026-10-01 „Neturiu." ir „tik telefonas" žodynui nereiškė nieko, ir klausimas
+        # kartojosi tris kartus.
+        if state.case.awaiting and state.case.awaiting not in facts:
+            model = _model_read(state, rt, call)
+            if model is not None:
+                ledger.record_client(state, rt, model[0], model[1])
+                facts = ledger.facts_of(state)
+            else:
+                _note_reader_silent(state, rt, call)
     awaited = state.case.awaiting
     confirming = _confirms_hypothesis(call)
     if confirming and awaited and not _client_said(state, awaited):
@@ -597,7 +633,14 @@ def _absorb(state: Any, rt: Any, facts: dict[str, str]) -> str:
         return _advance(state, rt, by_words=True)
     if confirming:
         return _answer_was_unclear(state, rt, call)
-    if _reported_done(state) or _reported_outcome(state, call):
+    if _model_says_not_an_answer(state):
+        # Kontekstą turintis skaitymas pasakė, kad klientas dar daro arba klausia atgal. Tada
+        # bekontekstės euristikos („veikia" sakinyje = rezultatas) nebeturi teisės pajudinti
+        # žingsnio: „Einu pasižiūrėti, ar tas kompiuteris veikia" nėra sutikimas su tiltu.
+        return "waiting"
+    if _step_was_asked(state) and (
+        _reported_done(state) or _model_reports_done(state) or _reported_outcome(state, call)
+    ):
         # They DID it. That answers any question about being able to (live S6: "ištraukiau
         # iš routerio ir įkišau atgal" against "can you get to it now" — the engine waited
         # three turns for a yes it no longer needed) and finishes an instruction.
@@ -608,6 +651,132 @@ def _absorb(state: Any, rt: Any, facts: dict[str, str]) -> str:
 
 
 # --- what the caller has actually told us, and where they have walked to -------------------
+
+
+def _model_read(state: Any, rt: Any, call: Any) -> tuple[str, str] | None:
+    """Atsakymas į ŠĮ klausimą, perskaitytas to paties ėjimo supratimo kvietime.
+
+    Tai ne naujas kvietimas: `perceive` kiekvieną ėjimą paduoda modeliui šio žingsnio
+    variantus (`perceive/evidence.py::_case_step_options`) ir gauna
+    `{label, is_answer, internally_inconsistent, confidence}`. Čia tik nusprendžiama, ar tuo
+    pasitikėti, ir etiketė verčiama faktu modulio taisyklėmis.
+
+    Trys atsisakymo atvejai, kurie NĖRA „nesupratau": `label="unclear"` (modelis sąžiningai
+    nepriskyrė), `is_answer=false` (klientas dar daro arba klausia atgal) ir sakinys, kuris
+    pats sau prieštarauja.
+    """
+    from ...contract import limits
+
+    read = (state.turn.perception or {}).get("step") or {}
+    label = str(read.get("label") or "")
+    if not label or label == "unclear" or not read.get("is_answer"):
+        return None
+    if read.get("internally_inconsistent"):
+        return None
+    confidence = float(read.get("confidence") or 0.0)
+    if confidence < limits.get("reading_confirm_confidence"):
+        return None
+    answer = modules.answer_from_label(call, label, device=_device(state))
+    if answer is None:
+        return None
+    if label == "no" and not _heard_a_negation(state.dialog.last_heard):
+        # Modelis gali atverti duris, bet ne užverti jų be kliento žodžio. Eval D8: į „Visuose"
+        # (atsakymą apie įrenginius) modelis atsakė, kad klientas prie routerio prieiti NEGALI —
+        # pasitikėjimas 1,0 — ir skambutis nuėjo į namų darbus. Lietuviškas atsakymas „ne" beveik
+        # visada nešasi neiginį; be jo tai spėjimas, ir klausiame iš naujo (7e banga).
+        rt.tracer.emit("case", move="model_no_without_words", module=call.module, label=label)
+        return None
+    if confidence < limits.get("reading_accept_confidence"):
+        # Vidutinis pasitikėjimas: užskaitom, bet atsakyme pakeliui patvirtinam — kad klientas
+        # galėtų pataisyti, o ne kad agentas apsimestų tikras.
+        from ...evidence import gloss_label, gloss_value
+
+        said = f"{gloss_label(answer[0])} {gloss_value(answer[1], answer[0])}".strip()
+        state.turn.confirm_reading = said or None
+    rt.tracer.emit(
+        "case",
+        move="read_by_model",
+        module=call.module,
+        label=label,
+        confidence=round(confidence, 2),
+        sets=f"{answer[0]}={answer[1]}",
+    )
+    return answer
+
+
+def _verify_must_be_told(state: Any, call: Any) -> bool:
+    """Ar ši patikra turi pirma PASAKYTI, ką linija rodo, ir paklausti kliento?
+
+    Taikoma tik patikrai, kuri pati turi klausimą (`ask:`): tada telemetrijos įrodymas yra
+    pagrindas PASAKYTI, o ne praleisti žingsnį. Kai klausimas jau nuskambėjo, kliento atsakymas
+    žingsnį užbaigia įprastu keliu.
+    """
+    spec = catalog.module(call.module)
+    if spec is None or spec.kind != "verify" or not call.args.get("ask"):
+        return False
+    return state.case.step_said != state.case.step
+
+
+def _model_reports_done(state: Any) -> bool:
+    """Ar šio ėjimo skaitymas (su ŠIO žingsnio variantais) pasakė, kad veiksmas ATLIKTAS?
+
+    Nurodymo žingsnis nelaukia jokio fakto, tad per `state.case.awaiting` einanti antra eilė jo
+    neapima — o būtent čia žodynas ir pralenda. Gyvai 2026-10-02: ASR sudarkė „įkišau" į „Iki
+    šau", liko tik „pavyko", modelis grąžino `label="done", is_answer=true, confidence=1.0`, o
+    variklis to nepaėmė ir pakartojo tą pačią instrukciją (7c banga).
+    """
+    from ...contract import limits
+
+    read = (state.turn.perception or {}).get("step") or {}
+    if read.get("label") != "done" or not read.get("is_answer"):
+        return False
+    return float(read.get("confidence") or 0.0) >= limits.get("reading_accept_confidence")
+
+
+def _heard_a_negation(heard: str | None) -> bool:
+    """Ar kliento sakinyje apskritai yra neiginys / atsisakymas?
+
+    Tai ne atsakymo skaitymas, o SARGAS modelio „ne": be jokio „ne-" sakinyje toks atsakymas
+    yra spėjimas (eval D8: „Visuose" perskaityta kaip „negaliu prieiti").
+    """
+    from ...evidence import _fold
+
+    if not heard:
+        return False
+    # Lietuviškas neiginys yra priešdėlis: „ne-" / „nė-" („nedega", „nėra", „neturiu",
+    # „nebūtina", „nelabai"). Tad užtenka vieno tokio žodžio — o „Visuose" jo neturi.
+    return any(_fold(token).startswith("ne") for token in heard.lower().split())
+
+
+def _model_says_not_an_answer(state: Any) -> bool:
+    """Ar šio ėjimo skaitymas (su ŠIO klausimo variantais) pasakė, kad tai ne atsakymas?
+
+    `is_answer=false` reiškia „dar daro / klausia atgal / nesupranta" — ne „nesupratau aš".
+    Tai vienintelis signalas, kuris žino KLAUSIMĄ, tad jis viršesnis už bekontekstes
+    euristikas (7 banga).
+    """
+    read = (state.turn.perception or {}).get("step") or {}
+    return "is_answer" in read and not read.get("is_answer")
+
+
+def _note_reader_silent(state: Any, rt: Any, call: Any) -> None:
+    """Niekas nesuprato atsakymo į klausimą, kurį uždavėme — ir tai turi būti MATOMA.
+
+    Be šito „kitais žodžiais" radiniai ateina tik iš gyvų skambučių ir tik tada, kai agentas
+    jau užsiciklino. Dabar po testų sesijos trace'e yra sąrašas, ko žodynai ir modelis
+    nesuprato — iš jo auga žodynai ir parafrazių testai (7 banga).
+    """
+    spec = catalog.module(call.module)
+    if spec is None or spec.kind != "ask" or not state.dialog.last_heard:
+        return
+    rt.tracer.emit(
+        "reader_silent",
+        module=call.module,
+        detector=spec.detector,
+        fact=state.case.awaiting,
+        heard=state.dialog.last_heard,
+        turn=state.dialog.turn_count,
+    )
 
 
 def _confirms_hypothesis(call: Any) -> bool:
@@ -864,7 +1033,7 @@ def _reflect_plan(state: Any, rt: Any) -> TurnPlan | None:
     )
 
 
-def _advance(state: Any, rt: Any, *, by_words: bool = False) -> str:
+def _advance(state: Any, rt: Any, *, by_words: bool = False, ran: bool = True) -> str:
     if by_words:
         state.case.moved_on_turn = state.dialog.turn_count
     state.case.retrying = False
@@ -879,6 +1048,8 @@ def _advance(state: Any, rt: Any, *, by_words: bool = False) -> str:
         return "moved"
     if done is not None and done.module not in state.case.did:
         state.case.did.append(done.module)
+    if ran and done is not None and done.module not in state.case.worked:
+        state.case.worked.append(done.module)
     _queue_reflection(state)
     state.case.step += 1
     state.case.awaiting = None
@@ -920,6 +1091,48 @@ def _more_guide_steps(state: Any, call: Any) -> bool:
     if call is None or call.module != "guide":
         return False
     return state.case.guide_step + 1 < modules.guide_length(call)
+
+
+def _answered_elsewhere(state: Any, rt: Any, call: Any, facts: dict[str, str]) -> bool:
+    """Ar į šio modulio klausimą jau atsako kitas faktas (modulio `answered_when`)?
+
+    Gyvai 2026-10-01: klientas pasakė, kad kompiuterio neturi, o tiltas vis tiek buvo
+    siūlomas ir paskui vykdomas — kortelės `done_when` sąlygos jungiamos IR, tad „praleisk,
+    jei atsisakė ARBA jei nėra ko jungti" joje neišreiškiama. Modulis tai pasako pats, ir
+    atsakymas įrašomas kaip kliento (jis juk tai ir pasakė), kad tolesni žingsniai praleistų
+    save savo esamu `done_when`.
+    """
+    from ...contract.schema import Condition
+
+    spec = catalog.module(call.module)
+    for rule in getattr(spec, "answered_when", None) or []:
+        if Condition.parse(rule.when).holds(facts) is not True:
+            continue
+        fact, value = rule.set.split("=", 1)
+        if facts.get(fact) != value:
+            ledger.record_client(state, rt, fact, value)
+            rt.tracer.emit(
+                "case", move="answered_elsewhere", module=call.module, by=rule.when, sets=rule.set
+            )
+        return True
+    return False
+
+
+def _skip_now(call: Any, facts: dict[str, str]) -> bool:
+    """Ar šis žingsnis NETAIKOMAS (`skip_when`) — bet kuri sąlyga pakanka.
+
+    `done_when` reiškia „jau padaryta" ir jungia sąlygas IR; čia reikėjo ARBA: tilto žingsnių
+    nebėra ko daryti, jei klientas atsisakė ARBA jei nėra kompiuterio. Gyvai 2026-10-02
+    „neturiu kompiuterio" atėjo jau PO pasiūlymo, tad `answered_when` nebeveikė, ir agentas
+    tris kartus prašė kišti laidą į kompiuterį, kurio nėra — o paskui naratorius išsigalvojo
+    perkrovimą (7d banga).
+    """
+    from ...contract.schema import Condition
+
+    for text in getattr(call, "skip_when", None) or []:
+        if Condition.parse(text).holds(facts) is True:
+            return True
+    return False
 
 
 def _already_done(call: Any, facts: dict[str, str]) -> bool:
@@ -1037,6 +1250,34 @@ def _explain_retry(state: Any, rt: Any) -> None:
     }
 
 
+def _proof_plan(state: Any, rt: Any, call: Any, facts: dict[str, str], step: Any, rule: str):
+    """Patikra, kurios įrodymas jau yra: pasakom, ką matom, ir paklausiam kliento.
+
+    Be šio ėjimo telemetrija uždarydavo patikrą tyliai: gyvai 2026-10-02 po pririšimo klientas
+    nieko negirdėjo apie tai, kad srautas atsirado, o po sekundės išgirdo „telefonu
+    neišspręsime" ir dar kad internetas neveiks — nors kompiuteris jau buvo pririštas.
+    """
+    from ...contract.schema import Condition
+    from ...facts import summary as facts_summary
+
+    keys = [Condition.parse(text).fact for text in (call.args.get("evidence") or [])]
+    state.turn.directives.proof = {"faktai": facts_summary(facts, keys)}
+    # Klausiam, tad ir laukiam atsakymo: be šito kliento „ne, vis tiek neveikia" niekur
+    # nenukeliautų — žingsnį uždarytų ta pati telemetrija, kuri jau sako, kad veikia.
+    answer = modules.answer_from_label(call, "yes")
+    awaits = step.awaits or (answer[0] if answer else None)
+    state.case.awaiting = awaits
+    if awaits:
+        state.diagnosis.pending_evidence_key = awaits
+    rt.tracer.emit("case", move="proof", module=call.module, facts=state.turn.directives.proof)
+    return TurnPlan(
+        owner="procedure",
+        rule=rule,
+        say=Say(kind="directive", goal=step.goal, stage="diagnosis"),
+        awaiting=awaits,
+    )
+
+
 def _resolved(state: Any, rt: Any) -> TurnPlan:
     """The solution ran and the line agrees: say it works and close warmly. The engine
     closes on ITS verdict, never on the caller's word alone (D-07)."""
@@ -1076,14 +1317,31 @@ def _module_plan_inner(state: Any, rt: Any, call, facts: dict[str, str], *, rule
     step = modules.plan_step(call, model=model)
     if step is None or (step.kind == "instruct" and not step.text):
         rt.tracer.emit("case", move="skip", module=call.module, why="no wording for this device")
-        _advance(state, rt)
+        _advance(state, rt, ran=False)
         following = _current(state)
         if following is not None:
             return _module_plan_inner(state, rt, following, facts, rule=f"case.{following.module}")
         return _escalate(state, rt, state.case.fault)
 
-    already = _already_done(call, facts) or (
-        step.kind == "ask" and step.awaits and _client_said(state, step.awaits)
+    settled = _answered_elsewhere(state, rt, call, facts)
+    if settled:
+        facts = ledger.facts_of(state)
+    insists = _confirms_hypothesis(call) and state.case.step_said != state.case.step
+    already = (
+        settled
+        or _skip_now(call, facts)
+        or _already_done(call, facts)
+        or (
+            step.kind == "ask"
+            and step.awaits
+            and _client_said(state, step.awaits)
+            # Hipotezę patvirtinančio klausimo NEPRALEIDŽIA pakeliui pasakytas faktas. Gyvai
+            # 2026-10-02: iš „dėžutė visiškai atrodo kaip be maitinimų" modelis padarė
+            # `power_cable=unplugged`, ir maitinimo klausimas — be kurio „routeris sugedęs" yra
+            # spėjimas — buvo praleistas kaip „jau žinomas". Spėjimas apie išvaizdą nėra
+            # atsakymas (7d banga).
+            and not insists
+        )
     )
     if already:
         # They already told us, or the card says this step is achieved — asking again is how an
@@ -1091,7 +1349,7 @@ def _module_plan_inner(state: Any, rt: Any, call, facts: dict[str, str], *, rule
         # "esu prie routerio"). The ORDER of the fix is untouched: only what is already true is
         # passed over.
         rt.tracer.emit("case", move="known", module=call.module, fact=step.awaits)
-        _advance(state, rt)
+        _advance(state, rt, ran=False)
         following = _current(state)
         if following is not None:
             return _module_plan_inner(state, rt, following, facts, rule=f"case.{following.module}")
@@ -1099,6 +1357,15 @@ def _module_plan_inner(state: Any, rt: Any, call, facts: dict[str, str], *, rule
     state.case.awaiting = step.awaits
     if step.awaits:
         state.diagnosis.pending_evidence_key = step.awaits
+    if insists and step.awaits and _client_said(state, step.awaits):
+        # Klientas tai jau užsiminė, bet klausimas yra per svarbus, kad eitume iš spėjimo:
+        # patikslinam, o ne klausiam tuščiai („jūs sakėte, kad… patikslinu").
+        from ...evidence import gloss_label, gloss_value
+
+        value = state.case.facts.get(step.awaits)
+        state.turn.directives.recheck = {
+            "faktas": f"{gloss_label(step.awaits)} {gloss_value(value, step.awaits)}".strip()
+        }
     asked = modules.question_of(call, model=model)
     if step.kind == "instruct" and _just_acknowledged(state):
         # They said "gerai" — they are doing it. Repeating the instruction is what makes an
@@ -1136,6 +1403,11 @@ def _module_plan_inner(state: Any, rt: Any, call, facts: dict[str, str], *, rule
             redecide_after_action=not speaks,
         )
     if step.kind == "verify":
+        if _verify_must_be_told(state, call) and modules.step_done(call, facts) is True:
+            # Įrodymas jau yra (zondas atsakė ankstesniame ėjime), tad šis ėjimas nebezonduoja —
+            # jis PASAKO, ką linija rodo, ir paklausia kliento. Andrius (2026-09-28): *„turėtų
+            # pasakyti, kad matau, jog srautas atsirado… ir pasiklausti kliento."*
+            return _proof_plan(state, rt, call, facts, step, rule)
         state.case.awaiting_probe = True
         return TurnPlan(
             owner="procedure",
@@ -1188,6 +1460,30 @@ def _escalate(state: Any, rt: Any, fault: str | None, note: str | None = None) -
     if card is not None and card.escalate:
         note = note or card.escalate.note
     state.case.fault = state.case.fault or fault
+    # IŠVADA prieš registraciją — savo ėjimu. Andrius (2026-10-02): *„pasakyti, ką padarėme ir
+    # kodėl registruojame tiketą… klientas atsimins galutinį pokalbį."* Atskiras ėjimas, nes
+    # išvada + kontakto klausimas viename atsakyme nebetelpa: srauto sargas baigia atsakymą ties
+    # 200 simbolių, ir klausimas nukristų (7 bangos G34). Tiketo dialogas pradedamas TIK po jos,
+    # kad tiketo taisyklė (3 eilutė) šio ėjimo nepaimtų.
+    live_facts = ledger.facts_of(state)
+    if _bridge_live(state, live_facts):
+        # Laikinas internetas tikrai PALEISTAS. Šią žymę rašė tik v1 vedlys (`execute/diagnosis`),
+        # tad v2 skambutyje tiketo įvadas „internetas kol kas veikia per kompiuterį" ir tiketo
+        # aprašymas apie tiltą buvo tamsūs: gyvai 2026-10-02 klientas išgirdo „telefonu
+        # neišspręsime", o paskui dar ir kad internetas neveiks, nors kompiuteris buvo pririštas.
+        state.resolution.bridge_bound = True
+    if not state.case.summarised:
+        told = _summary_words(state, card, live_facts)
+        state.case.summarised = True
+        if told:
+            state.turn.directives.summary = told
+            state.case.summary = told
+            rt.tracer.emit("case", move="summary", fault=fault, said=told)
+            return TurnPlan(
+                owner="procedure",
+                rule="case.summary",
+                say=Say(kind="directive", goal="sum up what was done and why", stage="diagnosis"),
+            )
     begin_ticket_dialogue(state, rt, None)
     if note:
         state.case.facts.setdefault("_ticket_note", note)
@@ -1203,6 +1499,86 @@ def _escalate(state: Any, rt: Any, fault: str | None, note: str | None = None) -
         rule="case.escalate",
         say=Say(kind="directive", goal=goal, stage="ticket"),
     )
+
+
+def _caller_is_lost(state: Any, rt: Any) -> bool:
+    """Ar klientas nebegali sekti žingsnių?
+
+    `dialog.stuck_count` kyla tik tada, kai agentas IŠ TIKRŲJŲ pakartoja tą patį (ir nebekyla,
+    kai klientas pats paprašė pakartoti — 7f). Pasiekus ribą telefoninis sprendimas baigiamas su
+    išvada, o ne identifikacijos kopėčia.
+    """
+    from ...contract import limits
+
+    if state.dialog.stuck_count < limits.get("stuck_fix_gives_up"):
+        return False
+    if state.case.summarised or state.ticket.stage:
+        return False  # jau baigiam
+    state.case.facts.setdefault("_lost_the_thread", "yes")
+    rt.tracer.emit(
+        "case", move="caller_lost", fault=state.case.fault, stuck=state.dialog.stuck_count
+    )
+    return True
+
+
+def _summary_words(state: Any, card: Any, facts: dict[str, str]) -> dict[str, str] | None:
+    """Kas padaryta, ką tai reiškia, kas veikia dabar ir ko nepavyko — kliento kalba.
+
+    Viskas iš to, ką variklis jau turi: `case.did` (kas tikrai VYKO), kortelės išvada, tilto
+    būsena, atsisakymai ir tai, ko nepavyko patikrinti. Nieko naujo neskaičiuojama — todėl ši
+    išvada negali prasilenkti su tuo, kas skambutyje buvo.
+    """
+    from ...contract.locale import maybe_phrase, phrase_or
+
+    did: list[str] = []
+    for module in state.case.worked:
+        # Tik DARBAI: klausimų moduliai (ar galite prieiti, ar turite kompiuterį) čia frazės
+        # neturi, ir to pakanka, kad į išvadą nepakliūtų.
+        words = phrase_or(f"summary.did.{module}", "")
+        if words and words not in did:
+            did.append(words)
+    missed: list[str] = []
+    if facts.get("has_computer") == "no":
+        # Ne atsisakė — nebuvo kuo. Gyvai 2026-10-02 tikete rašė „nenorėjot", nors klientas
+        # kompiuterio neturėjo.
+        missed.append(phrase_or("summary.no_computer", ""))
+    elif facts.get("bridge_agreed") == "no":
+        missed.append(phrase_or("summary.declined_bridge", ""))
+    if facts.get("guide_agreed") == "no":
+        missed.append(phrase_or("summary.declined_guide", ""))
+    if facts.get("_lost_the_thread") == "yes":
+        missed.append(phrase_or("summary.lost_the_thread", ""))
+    unchecked = _unchecked_words(state)
+    if unchecked:
+        missed.append(unchecked)
+    told = {
+        "padaryta": ", ".join(did),
+        # Po gyvo tilto kortelės išvada jau pasenusi: linijoje DABAR matomas kliento
+        # kompiuteris, tad „linijoje jūsų įrenginio nematome" būtų netiesa (gyvai 2026-10-02).
+        # Kodėl reikia meistro, pasako `kodel` (kortelės `escalate.need`).
+        "isvada": (
+            ""
+            if _bridge_live(state, facts)
+            else (maybe_phrase(card.explain.get("conclusion")) if card else "") or ""
+        ),
+        "dabar": (phrase_or("summary.bridge_live", "") if _bridge_live(state, facts) else ""),
+        "nepavyko": "; ".join(part for part in missed if part),
+        "kodel": (
+            maybe_phrase(card.escalate.need)
+            if card and card.escalate and card.escalate.need
+            else ""
+        )
+        or "",
+    }
+    if not (told["padaryta"] or told["dabar"] or told["nepavyko"]):
+        return None  # nieko nebuvo padaryta — nėra ko ir sumuoti
+    return told
+
+
+def _bridge_live(state: Any, facts: dict[str, str]) -> bool:
+    """Ar laikinas internetas tikrai PALEISTAS (ne pasiūlytas): pririšimas įvyko ir linija mato
+    tą patį įrenginį. Gyvai 2026-10-02 klientas apie tai neišgirdo nė žodžio."""
+    return "bind" in state.case.did and facts.get("device_registered") == "match"
 
 
 def _phone_work_left(state: Any, fault: str | None) -> str | None:

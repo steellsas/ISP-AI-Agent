@@ -527,7 +527,10 @@ tools:
 # sudedama išvados eilutė: „Ką matau: … — panašu, kad …".
 fact:
   line_link:
-    up: "linija iki jūsų buto veikia"
+    # Andrius (2026-10-02): *„nereikia sakyti apie mazgus ir switch — tiesiog, kad iki jūsų
+    # ateina."* Tiekėjo pusės technika klientui nėra naujienа: jam reikia žinoti, kad signalas
+    # atkeliauja, o įrenginio nematome.
+    up: "iki jūsų namų internetas ateina"
     down: "linijos iki jūsų buto nėra"
   traffic:
     none: "srautas iki routerio nevaikšto"
@@ -545,7 +548,9 @@ fact:
     ok: "adresą iš mūsų įrenginys gauna"
     silent: "įrenginys adreso net neprašo"
   node_reachable:
-    "yes": "mūsų mazgas jūsų gatvėje veikia"
+    # Tyčia tuščia: kai mazgas veikia, tai pasakyta „iki jūsų namų internetas ateina" (line_link).
+    # Kai NEVEIKIA — tai jau naujiena, ir ji sakoma.
+    "yes": ""
     "no": "mūsų mazgas nepasiekiamas"
   neighbours:
     all_down: "kaimynams tame pačiame mazge irgi neveikia"
@@ -590,9 +595,17 @@ modules:
     question: "Patikrinkime maitinimą: ar routerio laidas tvirtai įkištas į patį routerį ir į rozetę? Jei taip — pabandykite kitą rozetę."
   offer_guide:
     question: "Panašu, kad routeryje pasimetę interneto nustatymai. Galime pabandyti juos susigrąžinti kartu — aš pasakysiu po vieną žingsnį. Ar norite pabandyti, ar geriau iš karto užregistruoti specialistą?"
+  panel_device:
+    # TRUMPAI, klausimas paskutinis (srauto sargas baigia atsakymą ties 200 simbolių).
+    question: "Nustatymus atidarysime per naršyklę: ar turite kompiuterį ar telefoną, prijungtą prie to paties routerio?"
   offer_bridge:
-    # Po lempučių ir maitinimo patikros išvada jau PAGRĪSTA — ir ji pasakoma garsiai, prieš pasiūlymą.
-    question: "Lemputės nedega, o maitinimas tvarkoje — routeris tikėtinai sugedęs, jį reikės pakeisti. Kol kas galiu laikinai paleisti internetą į vieną įrenginį: jei turite kompiuterį, įkišim linijos laidą tiesiai į jį. Ar norite pabandyti?"
+    # Po lempučių ir maitinimo patikros išvada jau PAGRĮSTA — ir ji pasakoma garsiai, prieš pasiūlymą.
+    #
+    # TRUMPAI, ir klausimas PASKUTINIS. Gyvai 2026-10-01 ši frazė buvo 233 simbolių, o srauto
+    # sargas (`reply_stop_chars: 200`) baigia atsakymą tuo sakiniu, kuris perlipa ribą — nukrito
+    # būtent „Ar norite pabandyti?", klientas išgirdo pranešimą be klausimo, ir pasiūlymas
+    # nuskambėjo tris kartus. Laido kišimas priklauso `connect_direct` žingsniui, ne pasiūlymui.
+    question: "Routeris tikėtinai sugedęs — jį reikės pakeisti. Kol kas galiu laikinai paleisti internetą į vieną įrenginį: ar turite kompiuterį, kurį galėtume pajungti?"
   port_reset:
     announce: "Perkrauju jūsų prievadą, kad naujas įrenginys gautų adresą — užtruks kelias sekundes."
 
@@ -765,6 +778,11 @@ ticket:
     anamnesis: " Klientas: {text}."
     bridge_router: " Laikinas tiltas per kompiuterį veikia; routeris sugedęs, reikia keisti."
     checked: " Patikrinta su klientu: {facts}."
+    # Ką agentas su klientu PADARĖ (ne tik patikrino) — meistras turi matyti, kas jau atlikta,
+    # kad nekartotų to paties (Andrius, 2026-10-02).
+    done: " Padaryta telefonu: {works}."
+    not_done: " Nepavyko / nebuvo daryta: {items}."
+    bridge_live: " Laikinas internetas PALEISTAS per kliento kompiuterį — veikia tik jame; routerį reikia keisti."
     unanswered: " Klientas neatsakė: {items}."
     assumed_item: "{fact} (dirbome su prielaida: {value})"
     tried: " Bandyta/atmesta: {causes}."
@@ -812,6 +830,36 @@ detector:
   ticket_consent:
     "yes": "sutinka, kad užregistruotume gedimą (pritaria, sako gerai/tinka, arba laukia skambučio — 'lauksiu skambučio' irgi yra sutikimas)"
     "no": "AIŠKIAI atsisako registracijos — NE šiaip nerišlus atsakymas"
+  bridge_consent:
+    "yes": "sutinka pabandyti laikiną internetą IR turi kompiuterį, kurį galima pajungti laidu"
+    "no": "nesutinka ARBA nėra ko jungti ('neturiu', 'tik telefonas') ARBA prašo iš karto registruoti gedimą / meistrą"
+  panel_device:
+    "yes": "turi kompiuterį, telefoną ar planšetę, prijungtą prie to routerio — nustatymus bus kuo atidaryti"
+    "no": "neturi jokio įrenginio su naršykle tame routeryje"
+
+summary:
+  # IŠVADA prieš registraciją (Andrius, 2026-10-02): „patikrinome routerį, lemputės nedega,
+  # maitinimas ateina, laikinai prijungėme kitą įrenginį — internetas laikinai veiks, kol
+  # nepakeisim routerio; registruojam meistrą dėl routerio." Tai, ką klientas atsimins.
+  #
+  # Čia tik DARBAI — žingsnių, kurie vien klausia (ar galite prieiti, ar turite kompiuterį),
+  # sąraše nėra: klientui svarbu, kas buvo PADARYTA.
+  did:
+    check_lights: "pasižiūrėjom routerio lemputes"
+    check_power: "patikrinom, ar routerį pasiekia elektra"
+    cable: "patikrinom kabelį"
+    reboot: "perkrovėm routerį"
+    connect_direct: "prijungėm kompiuterį tiesiai prie linijos"
+    bind: "pririšom jį prie jūsų linijos"
+    port_reset: "perkrovėm jūsų prievadą"
+    guide: "kartu ėjom per routerio nustatymus"
+    device_check: "patikrinom įrenginį"
+    homework: "susitarėm, ką patikrinsit, kai būsit namuose"
+  bridge_live: "internetas dabar laikinai veikia tik tame kompiuteryje — kol pakeisim routerį"
+  declined_bridge: "laikino interneto per kompiuterį nenorėjot"
+  no_computer: "laikino interneto paleisti nebuvo kuo — kompiuterio prijungti neturėjot"
+  lost_the_thread: "telefonu šių žingsnių kartu pabaigti nepavyko"
+  declined_guide: "nustatymų kartu neėjom — pasirinkot iš karto specialistą"
 
 anamnesis:
   # How the caller's anamnesis reads in Lithuanian (the state keeps the codes).

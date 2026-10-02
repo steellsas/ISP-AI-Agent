@@ -92,21 +92,26 @@ solution:
   - module: connect_direct
     args: {to: computer}
     done_when: [bridge_agreed=no]
+    # Nėra kompiuterio — nėra į ką kišti laido, kad ir kurioje vietoje tai paaiškėtų.
+    skip_when: [has_computer=no]
   - module: bind
     args: {device: computer}
     done_when: [bridge_agreed=no]
+    skip_when: [has_computer=no]
   - module: port_reset
     done_when: [bridge_agreed=no]
+    skip_when: [has_computer=no]
   - module: verify
     args:
       evidence: [device_seen=yes, traffic=flowing]
       ask: restored
     done_when: [bridge_agreed=no]
+    skip_when: [has_computer=no]
   # 4. Meistras — dėl KEITIMO, ir tiketas pasako, kas patikrinta.
   - module: escalate
     args:
       note: "lemputes nedega, maitinimas patikrintas - routeris nebeatsiranda linijoje,
-        reikia keisti irengini; laikinas internetas pasiulytas"
+        reikia keisti irengini"
 escalate:
   need: "pack.no_mac_observed.ticket_need"
   note: "linijoje nematomas kliento įrenginys"

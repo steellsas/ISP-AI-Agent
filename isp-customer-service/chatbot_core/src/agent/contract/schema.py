@@ -466,6 +466,10 @@ class ModuleCall(_Model):
     # this — a procedure has an order (Andrius, 2026-09-23: "sprendimui reikia tikslaus
     # algoritmo, analizei — ne") — only what is already true is passed over.
     done_when: list[str] = []
+    # Faktai, dėl kurių šis žingsnis NETAIKOMAS — pakanka BET KURIO (ARBA), skirtingai nei
+    # `done_when` (IR). „Nėra kompiuterio" turi praleisti visus tilto žingsnius bet kurioje
+    # vietoje, ne tik prie pasiūlymo (7d banga, gyvai 2026-10-02).
+    skip_when: list[str] = []
     # Gilesnės žinios, kurių šiam žingsniui gali prireikti: „tplink lemputės", „wan dhcp".
     # Kortelė sprendžia gedimą, o žinių bazė ją PAPILDO — Andrius (2026-09-24): „jei jam reikia
     # gilesnių žinių apie routerio lemputes ar jungtis, jas gauna". Paieška čia vyksta AGENTO
@@ -506,6 +510,20 @@ class ParamSpec(_Model):
     required: bool = False
     values: list[str] = []
     default: Any = None
+
+
+class AnsweredWhen(_Model):
+    """Kada šio modulio klausimo nebereikia — faktas, kuris JAU atsako, ir ką tai reiškia.
+
+    Kortelės `done_when` sąlygos jungiamos IR, tad „praleisk, jei atsisakė ARBA jei nėra ko
+    jungti" joje neišreiškiama. Čia pasakoma kitaip: nėra kompiuterio -> pasiūlymas atsakytas
+    „ne", ir visi tilto žingsniai praleidžiami savo esamu `done_when: [bridge_agreed=no]`.
+    Gyvai 2026-10-01: klientas tris kartus pasakė, kad kompiuterio neturi, o tiltas vis tiek
+    buvo vykdomas.
+    """
+
+    when: str  # fact=value, kuris jau atsako į šį klausimą
+    set: str  # fact=value, kurį tai nustato
 
 
 class ModuleSpec(_Model):
@@ -549,6 +567,8 @@ class ModuleSpec(_Model):
     # line changes by itself.
     simulate: str | None = None
     simulate_env: str | None = None
+    # Klausimas, į kurį atsakymas jau žinomas iš kito fakto (žr. `AnsweredWhen`).
+    answered_when: list[AnsweredWhen] = []
 
 
 class FaultCard(_Model):

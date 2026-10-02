@@ -149,13 +149,28 @@ def _action_key(spec: ModuleSpec, args: dict[str, Any]) -> str | None:
 CLIENT_FACT = {"check_lights": "lights"}
 
 
+# Skaitytuvo etiketė nėra fakto reikšmė. `detect_lights` sako „no" / „yes" / spalvą, o
+# kortelės `needs.lights` kalba reikšmėmis off / on / blinking — gyvai 2026-10-01 tas pats
+# atsakymas užrašė iš pradžių `lights=off` (per `evidence.py`), o paskui `lights=no`, ir
+# kortelės `values: {off: confirms, on: rules_out}` nebeturėjo ką pasakyti. Spalva reiškia, kad
+# lemputė DEGA — ką ta spalva reiškia linijai, pasako įrangos katalogas (`wan_link`).
+# {faktas: ({etiketė: reikšmė}, reikšmė visoms kitoms etiketėms)}
+CLIENT_FACT_VALUES = {"lights": ({"no": "off", "blinking": "blinking"}, "on")}
+
+
 def client_fact(call: ModuleCall, text: str | None) -> tuple[str, str] | None:
     """The CALLER-owned fact their answer establishes for this module, if it has one."""
     name = CLIENT_FACT.get(call.module)
     if not name or not text:
         return None
     label = _detect(name, text)
-    return (name, label) if label else None
+    if not label:
+        return None
+    stated = CLIENT_FACT_VALUES.get(name)
+    if stated is None:
+        return name, label
+    mapping, otherwise = stated
+    return name, mapping.get(label, otherwise)
 
 
 def _awaits(spec: ModuleSpec, args: dict[str, Any], device) -> str | None:
@@ -212,6 +227,19 @@ def read_answer(call: ModuleCall, text: str | None, *, device=None) -> tuple[str
         return None
     label = _detect(spec.detector, text)
     if label is None:
+        return None
+    return answer_from_label(call, label, device=device)
+
+
+def answer_from_label(call: ModuleCall, label: str, *, device=None) -> tuple[str, str] | None:
+    """Ką šio modulio atsakymo ETIKETĖ reiškia faktais, kaip ("fact", "value").
+
+    Atskirta nuo `read_answer`, nes etiketę gali atnešti ne tik žodynas: tą patį sakinį to
+    paties ėjimo supratimo kvietimas perskaito ŽINODAMAS klausimą (7 banga), ir jo etiketė
+    turi virsti faktu lygiai taip pat — vertimas yra modulio, ne skaitytuvo dalykas.
+    """
+    spec = catalog.module(call.module)
+    if spec is None or not label:
         return None
     if spec.module == "check_lights" and device is not None:
         light = str(_with_defaults(spec, call).get("light") or "internet")

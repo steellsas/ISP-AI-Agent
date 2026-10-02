@@ -206,6 +206,21 @@ device_yes:
   - "prijung"
 
 usable_device: ["kompiuter", "nešiojam", "nesiojam", "laptop", "router", "kompas"]
+# Kai TILTUI nėra ko jungti. Sąmoningai be nuogo „netur-" kamieno (jį turi `no_device`): gyvai
+# ir eval'e (S4) „Neturiu kito routerio, tik kompiuterį" yra TAIP — kompiuteris ir yra tai, ko
+# tiltui reikia. Telefonas netinka, nes nėra kur kišti kabelio.
+no_bridge_device:
+  - "tik telefon"
+  - "vien telefon"
+  - "tik su telefon"
+  - "nėra kompiuter"
+  - "nera kompiuter"
+  - "negaliu prijungti"
+  - "negaliu pasijungti"
+
+# Įrenginiai, kuriais galima atidaryti routerio nustatymus naršyklėje — čia telefonas TINKA
+# (tiltui jis netinka, nes nėra kur kišti laido).
+browser_device: ["kompiuter", "nešiojam", "nesiojam", "laptop", "kompas", "telefon", "planšet", "planset"]
 
 farewell:
   - "viso gero"
@@ -232,6 +247,21 @@ farewell:
   - "visą gera"
   - "viso gera"
   - "visai ger"  # "Ne visai gero" = garbled "ne, viso gero" (observed live)
+
+# Klientas PATS paprašė pakartoti — tai bendradarbiavimas, ne ciklas. Gyvai 2026-10-02 (DHCP):
+# „Pakartokit, ką reikia man padaryti" ir dar du beveik tokie pat vedimo punktai pakėlė „stuck"
+# skaitliuką iki 3, ir agentas pasiūlė abonento kodą (identifikacijos taktika!), o paskui
+# užregistravo gedimą ir atsisveikino vedimo viduryje.
+repeat_request:
+  - "pakartok"
+  - "pakartot"
+  - "pakartoki"
+  - "dar karta pasakyk"
+  - "dar kartą pasakyk"
+  - "ką reikia padaryti"
+  - "ka reikia padaryti"
+  - "ką turiu daryti"
+  - "ka turiu daryti"
 
 confused:
   - "nesuprantu"
@@ -299,6 +329,13 @@ done:
   - "istraukiau"
   - "prijungiau"
   - "pajungiau"
+  # Gyvai 2026-10-02: ASR sudarkė „įkišau" į „Iki šau", ir vienintelis likęs žodis buvo
+  # „pavyko" — žodynui tai nereiškė nieko, tad ta pati instrukcija nuskambėjo antrą kartą.
+  - "pavyko"
+  - "gavosi"
+  - "sutvarkiau"
+  - "įdėjau"
+  - "idejau"
   - "jau"
   - "gatava"
   - "viskas"

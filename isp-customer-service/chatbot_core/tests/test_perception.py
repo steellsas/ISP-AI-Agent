@@ -76,7 +76,9 @@ GROUNDING = [
     ("Lemputės nedega visai", "Lemputės nedega", True),
     ("Lemputės nedega visai", "nedega", True),
     ("Lemputės nedega visai", "ištraukiau laidą", False),  # never said
-    ("Lemputės nedega visai", None, True),  # no quote -> the old corroboration rules
+    # 7d banga: faktas BE citatos nebepriimamas. Gyvai 2026-10-02 į „Džiugiu, Girino." modelis
+    # grąžino `has_computer=no` be citatos — melas su citata buvo atmetamas, be jos — ne.
+    ("Lemputės nedega visai", None, False),
 ]
 
 

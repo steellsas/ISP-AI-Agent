@@ -102,6 +102,42 @@ class TestStuckCounter:
         track_stuck(a.state, a.runtime, "Kurioje gatvėje?")
         assert a.state.dialog.stuck_count == 0
 
+    def test_the_same_statement_twice_is_also_a_repeat(self):
+        """Banga 7, gyvai 2026-10-01: tilto pasiūlymas nuskambėjo žodis į žodį TRIS kartus, o
+        skaitliukas tylėjo — pakartojimu buvo laikomas tik klausimas, o klaustuką tam atsakymui
+        buvo nukirpęs srauto sargas. Tas pats pareiškimas du kartus taip pat yra ciklas."""
+        a = _agent()
+        offer = "Kol kas galiu laikinai paleisti internetą į vieną įrenginį."
+        a.state.turn.progress_key_at_start = progress_key(a.state)
+        track_stuck(a.state, a.runtime, offer)
+        assert a.state.dialog.stuck_count == 0  # pirmas kartas
+
+        a.state.turn.progress_key_at_start = progress_key(a.state)
+        track_stuck(a.state, a.runtime, offer)
+
+        assert a.state.dialog.stuck_count == 1
+        assert a.state.dialog.last_reply_repeated is True
+
+    def test_a_different_statement_is_not_a_repeat(self):
+        a = _agent()
+        a.state.turn.progress_key_at_start = progress_key(a.state)
+        track_stuck(a.state, a.runtime, "Patikrinsiu liniją iki jūsų buto.")
+        a.state.turn.progress_key_at_start = progress_key(a.state)
+        track_stuck(a.state, a.runtime, "Routeris linijoje matomas.")
+        assert a.state.dialog.stuck_count == 0
+
+    def test_a_repeat_one_turn_apart_still_counts(self):
+        """Gyvai 2026-10-02: ta pati instrukcija nuskambėjo du kartus, o tarp jų įsiterpė
+        „laukiu jūsų atsakymo" — lyginant tik su prieš tai buvusiu atsakymu to nematėm."""
+        a = _agent()
+        step = "Ištraukite iš routerio laidą ir įkiškite jį į kompiuterio lizdą."
+        for reply in (step, "Gerai, laukiu jūsų atsakymo.", step):
+            a.state.turn.progress_key_at_start = progress_key(a.state)
+            track_stuck(a.state, a.runtime, reply)
+
+        assert a.state.dialog.stuck_count == 1
+        assert a.state.dialog.last_reply_repeated is True
+
     def test_repeated_verbatim_flag_set(self):
         a = _agent()
         a.state.dialog.last_question = "Kurioje gatvėje neveikia internetas?"

@@ -23,6 +23,10 @@ SKILLS = (
     "ticket_offscript",
     "inform_news",
     "goodbye",
+    # 7c banga: pokalbio IŠVADA prieš registraciją yra kitoks kalbėjimas nei klausimas ar
+    # nurodymas — iki šiol ji nukrisdavo į `ask_fact`, t. y. į promptą, kurio darbas paklausti
+    # vieno fakto. Andrius (2026-10-02): *„klientas atsimins galutinį pokalbį."*
+    "sum_up",
 )
 
 # A plan rule's family -> the skill, when the turn's own directives do not say otherwise.
@@ -86,6 +90,8 @@ def _case_skill(state: Any, rule: str) -> str | None:
         return None  # nothing is said for a check we run ourselves
     if module == "ask":
         return "ask_fact"
+    if module == "summary":
+        return "sum_up"
     if module == "resolved":
         return "explain_finding"
     if module == "escalate":

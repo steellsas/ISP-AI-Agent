@@ -94,12 +94,14 @@ class TestWhenNothingFits:
         knowledge document: the caller is guided through it before any technician.
 
         Wave 6 put the OFFER first: climbing into a router's settings is not for everybody,
-        and walking somebody through it against their will is not help.
+        and walking somebody through it against their will is not help. Wave 7 replaced „ar
+        galite prieiti prie routerio" with the question this fault actually needs — is there
+        anything with a browser on that router (Andrius, 2026-10-01).
         """
         move = next_move(_facts(dhcp_status="no_requests"))
         assert move.kind == "solve" and move.fault == "dhcp_silent"
         assert [call.module for call in move.steps] == [
-            "reach",
+            "panel_device",
             "offer_guide",
             "guide",
             "verify",
