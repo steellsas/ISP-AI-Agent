@@ -389,3 +389,73 @@ class TestAQuestionDoesNotDerailTheFix:
         state.turn.plan = {"rule": "dialog.question_passthrough"}
 
         assert _question_mid_fix(state) == []
+
+
+class TestALostCallerIsNotAnIdentificationProblem:
+    """Banga 7f, gyvas DHCP skambutis 2026-10-02.
+
+    Andrius: *„kaip ir būtų suveikę gerai, tik užbaigė — neaišku, ko jis neišgirdo… ir kai kada
+    kartojo pasakymą kelis kartus; vienas buvo, kad paprašiau pakartoti."*
+
+    Trace: trys beveik vienodi vedimo punktai (vieno pakartoti paprašė pats klientas) pakėlė
+    `stuck_count` iki 3, ir agentas pasakė *„Atsiprašau, vis nepavyksta išgirsti. Gal turite
+    abonento kodą nuo sąskaitos?"* — identifikacijos taktiką identifikuotam klientui vedimo
+    viduryje — o paskui užregistravo gedimą ir atsisveikino.
+    """
+
+    def test_a_requested_repeat_is_not_a_loop(self):
+        from agent.dialog_utils import progress_key
+        from agent.speak.postprocess import track_stuck
+
+        from tests.calls import make_agent
+
+        a = make_agent("+37060020106", language="lt")
+        step = "Dabar paspauskite „Išsaugoti (Save / Apply)“."
+        a.state.turn.progress_key_at_start = progress_key(a.state)
+        track_stuck(a.state, a.runtime, step)
+
+        a.state.dialog.last_heard = "Pakartokit, ką reikia man padaryti."
+        a.state.turn.progress_key_at_start = progress_key(a.state)
+        track_stuck(a.state, a.runtime, step)
+
+        assert a.state.dialog.stuck_count == 0, "klientas pats paprašė pakartoti"
+
+    def test_walking_the_document_counts_as_progress(self):
+        """Gyvai: kiekvienas vedimo punktas judėjo pirmyn, bet `progress_key` to nematė — tad tą
+        patį punktą perfrazavus skaitliukas kilo, ir po trijų suveikė identifikacijos kopėčia."""
+        from agent.dialog_utils import progress_key
+
+        from tests.calls import make_agent
+
+        a = make_agent("+37060020106", language="lt")
+        a.state.case.fault, a.state.case.solution = "dhcp_silent", 0
+        before = progress_key(a.state)
+        a.state.case.guide_step += 1
+
+        assert progress_key(a.state) != before
+
+    def test_the_account_code_ladder_stays_out_of_a_fix(self, call):
+        from agent.decide.rules.dialog import stuck_backstop
+
+        state, rt = call
+        state.case.fault, state.case.solution = "dhcp_silent", 0
+        state.dialog.stuck_count = 3
+
+        assert stuck_backstop(state) is None
+
+    def test_the_fix_ends_with_a_summary_instead(self, call):
+        state, rt = call
+        record_telemetry(state, rt, {**BASE, "dhcp_status": "no_requests", "traffic": "flowing"})
+        record_client(state, rt, "panel_device", "yes")
+        record_client(state, rt, "guide_agreed", "yes")
+        state.case.fault, state.case.solution = "dhcp_silent", 0
+        state.case.step = _step_of("dhcp_silent", "guide")
+        state.case.worked = ["guide"]
+        state.case.did = ["guide"]
+        state.dialog.stuck_count = 3
+
+        plan = case_rule.plan(state, rt)
+
+        assert plan.rule == "case.summary"
+        told = state.turn.directives.summary
+        assert "pabaigti nepavyko" in told["nepavyko"]

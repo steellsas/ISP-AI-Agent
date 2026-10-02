@@ -37,6 +37,10 @@ plan_redecide_max: 3
 # Tarp jų: užskaitoma, bet atsakyme pakeliui patvirtinama („Supratau — lemputės nedega.").
 reading_accept_confidence: 0.75
 reading_confirm_confidence: 0.45
+# Po kiek „pasimetimų" (`dialog.stuck_count`) telefoninis sprendimas baigiamas sąžiningai: su
+# išvada, ką padarėm, ir meistru. Iki 7f bangos tai darė identifikacijos kopėčia — pasiūlydavo
+# abonento kodą ir uždarydavo skambutį vedimo viduryje.
+stuck_fix_gives_up: 3
 # Kiek paskutinių atsakymų laikom pakartojimo lange (žr. speak/postprocess.py::track_stuck).
 reply_repeat_window: 3
 reply_stop_chars: 200               # past this, a streamed reply ends at its next sentence end

@@ -15,6 +15,12 @@ def stuck_backstop(state: Any) -> tuple[str, bool] | None:
     from ...contract.locale import phrase
 
     n = state.dialog.stuck_count
+    if state.identity.customer_id and getattr(state.case, "in_progress", False):
+        # Ši kopėčia yra IDENTIFIKACIJOS taktika: abonento kodas identifikuotam klientui vedimo
+        # viduryje yra nesąmonė, o „užregistruosiu ir geros dienos" praleidžia išvadą. Pasimetusį
+        # klientą sprendimo viduryje perima Case: jis pasako, ką padarėm, ir registruoja (7f banga,
+        # gyvai 2026-10-02 DHCP skambutis baigėsi kaip tik taip).
+        return None
     if n >= 4:
         if state.identity.customer_id:
             return (phrase("system.stuck_register"), True)

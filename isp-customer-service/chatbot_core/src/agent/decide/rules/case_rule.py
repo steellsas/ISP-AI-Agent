@@ -55,6 +55,11 @@ def plan(state: Any, rt: Any) -> TurnPlan | None:
         state.case.fault, state.case.solution, state.case.step = None, None, 0
         state.case.awaiting, state.case.awaiting_probe = None, False
         state.case.guide_step, state.case.guide_said = 0, -1
+    if state.case.fault is not None and _caller_is_lost(state, rt):
+        # Klientas nebegali sekti žingsnių (kelis ėjimus iš eilės nesusikalbam) — telefoninis
+        # sprendimas baigiamas SĄŽININGAI: pasakom, ką padarėm, ir registruojam meistrą. Tai
+        # sprendimo kelio darbas, ne identifikacijos kopėčios (7f banga).
+        return _escalate(state, rt, state.case.fault)
     if state.case.fault is not None:
         status = _absorb(state, rt, facts)
         # The caller's physical action must reach the line BEFORE anything reads it again,
@@ -1496,6 +1501,26 @@ def _escalate(state: Any, rt: Any, fault: str | None, note: str | None = None) -
     )
 
 
+def _caller_is_lost(state: Any, rt: Any) -> bool:
+    """Ar klientas nebegali sekti žingsnių?
+
+    `dialog.stuck_count` kyla tik tada, kai agentas IŠ TIKRŲJŲ pakartoja tą patį (ir nebekyla,
+    kai klientas pats paprašė pakartoti — 7f). Pasiekus ribą telefoninis sprendimas baigiamas su
+    išvada, o ne identifikacijos kopėčia.
+    """
+    from ...contract import limits
+
+    if state.dialog.stuck_count < limits.get("stuck_fix_gives_up"):
+        return False
+    if state.case.summarised or state.ticket.stage:
+        return False  # jau baigiam
+    state.case.facts.setdefault("_lost_the_thread", "yes")
+    rt.tracer.emit(
+        "case", move="caller_lost", fault=state.case.fault, stuck=state.dialog.stuck_count
+    )
+    return True
+
+
 def _summary_words(state: Any, card: Any, facts: dict[str, str]) -> dict[str, str] | None:
     """Kas padaryta, ką tai reiškia, kas veikia dabar ir ko nepavyko — kliento kalba.
 
@@ -1521,6 +1546,8 @@ def _summary_words(state: Any, card: Any, facts: dict[str, str]) -> dict[str, st
         missed.append(phrase_or("summary.declined_bridge", ""))
     if facts.get("guide_agreed") == "no":
         missed.append(phrase_or("summary.declined_guide", ""))
+    if facts.get("_lost_the_thread") == "yes":
+        missed.append(phrase_or("summary.lost_the_thread", ""))
     unchecked = _unchecked_words(state)
     if unchecked:
         missed.append(unchecked)

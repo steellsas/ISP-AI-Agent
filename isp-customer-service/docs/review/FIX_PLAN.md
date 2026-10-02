@@ -649,6 +649,45 @@ nėra: modelis gali atverti duris, bet ne užverti jų be kliento žodžio.
 
 **Tikrinta:** 1451 passed, 1 skipped; eval 195/195.
 
+## Banga 7f — pasimetęs klientas nėra identifikacijos problema (šaka `fix/wave-7-bridge`, 2026-10-02)
+
+Šaltinis: DHCP vedimo skambutis `logs/sessions/20261002-154626-446142-0001.jsonl`. Andrius: *„kaip
+ir būtų suveikę gerai, tik užbaigė — neaišku, ko jis neišgirdo… ir kai kada kartojo pasakymą kelis
+kartus; vienas buvo, kad paprašiau pakartoti."*
+
+Vedimas tikrai veikė: klientas prisijungė prie routerio, suvedė admin/admin, rado WAN, pasirinko
+DHCP, paspaudė „Išsaugoti" — **šeši punktai pirmyn**. Ir tada:
+
+```
+„Pasiurinkau. Ar kažką kitą spausk?"   → stuck 2, repeated=true   (tas pats punktas perfrazuotas)
+„Jūs tau kojau, taip?"                 → stuck 3, repeated=true   (ir vėl)
+„Paspaudžiu išsaugoti…"                → guide 6, stuck 4
+AGENTAS: „Atsiprašau, vis nepavyksta išgirsti. Gal turite abonento kodą nuo sąskaitos?"
+AGENTAS: „Užregistruosiu jūsų problemą… Geros dienos!"
+```
+
+| # | Radinys | Mechanizmas |
+|---|---|---|
+| **P1** | Klientas PATS paprašė pakartoti („Pakartokit, ką reikia man padaryti") — ir tas pakartojimas buvo įskaitytas kaip ciklas | `track_stuck` nematė skirtumo tarp „mes užstrigom" ir „klientas paprašė pakartoti" |
+| **P2** | **Vedimo pažanga nebuvo laikoma pažanga** | `progress_key` (dėl kurio „stuck" nusinulina) tikrino slotus, identifikaciją, tiketą — bet ne gedimo sprendimo poziciją. Tad šeši punktai pirmyn atrodė kaip įstrigęs pokalbis |
+| **P3** | Identifikuotam klientui vedimo viduryje buvo pasiūlytas **abonento kodas**, o paskui skambutis uždarytas | `dialog.stuck_backstop` kopėčia rašyta identifikacijos fazei (3 → kodas, 4 → uždaryti). Sprendimo kelyje abu laipteliai neteisingi: kodas nesąmonė, o „užregistruosiu ir geros dienos" praleidžia išvadą |
+| **P4** | Paskutinis vedimo punktas (po „Išsaugoti" — „leiskite routeriui persikrauti") **taip ir nenuskambėjo** | Tą ėjimą pasiėmė kopėčia (`guide_wait at=6 said=5`) |
+
+### Kas pakeista
+
+| # | Kas | Kur |
+|---|---|---|
+| **P1** | Kliento paprašytas pakartojimas nebeskaitomas pakartojimu (`repeat_request` žodynas) | `locales/lt/vocabulary.yaml`, `speak/postprocess.py` |
+| **P2** | `progress_key` įtraukia **sprendimo poziciją** (`case.step`, `case.guide_step`, atliktų darbų skaičių) — vedimas pirmyn nulina „stuck" | `dialog_utils.py` |
+| **P3** | Kopėčia nebesileidžia į sprendimą: kai klientas identifikuotas ir vyksta gedimo sprendimas, `stuck_backstop` tyli, o pasimetusį klientą perima Case — po `stuck_fix_gives_up: 3` jis **pasako išvadą** (ką padarėm, ko nepavyko — „telefonu šių žingsnių kartu pabaigti nepavyko") ir registruoja meistrą | `decide/rules/dialog.py`, `case_rule._caller_is_lost`, `limits.yaml`, `phrases.yaml` |
+| **P4** | Išspręsta savaime: be kopėčios ėjimo vedimas tęsiasi iki paskutinio punkto | — |
+
+**Kodėl tai svarbu ne tik šiam skambučiui:** P2 yra tas pats dalykas, kurį 7b bangoje radom
+`step_perception_options` (v1 būsenos skaitymas) — bendra pokalbio mechanika nemokėjo paklausti
+Case, ar jis pajudėjo. Dabar moka.
+
+**Tikrinta:** 1455 passed, 1 skipped; eval 195/195.
+
 ## Banga 5 — valymas (šaka `fix/wave-5`, 2026-09-28)
 
 Andrius: *„manau galime apjungti tuos tris“* — penktoji banga sujungia tai, kas iki šiol gulo

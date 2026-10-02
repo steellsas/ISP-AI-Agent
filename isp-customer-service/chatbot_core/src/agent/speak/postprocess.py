@@ -73,11 +73,18 @@ def track_stuck(state: Any, rt: Any, reply: str) -> None:
     # pasiūlymas nuskambėjo tris kartus vienodai, o klaustuko jame nebuvo (jį nukirpo srauto
     # sargas), tad šis skaitliukas tylėjo ir perfrazuoti niekas nepaprašė.
     from ..contract import limits
+    from ..contract.locale import vocab
 
+    # Jei klientas PATS paprašė pakartoti, tas pats atsakymas yra teisingas atsakymas — ne ciklas.
+    heard = (state.dialog.last_heard or "").lower()
+    asked_again = any(mark in heard for mark in vocab("repeat_request"))
     window = state.dialog.recent_replies[: max(1, limits.get("reply_repeat_window"))]
     repeat = bool(
-        (is_q and state.dialog.last_question and similar(reply, state.dialog.last_question))
-        or any(similar(reply, earlier) for earlier in window)
+        not asked_again
+        and (
+            (is_q and state.dialog.last_question and similar(reply, state.dialog.last_question))
+            or any(similar(reply, earlier) for earlier in window)
+        )
     )
     state.dialog.last_reply_repeated = repeat
     if progressed:

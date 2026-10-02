@@ -248,6 +248,21 @@ farewell:
   - "viso gera"
   - "visai ger"  # "Ne visai gero" = garbled "ne, viso gero" (observed live)
 
+# Klientas PATS paprašė pakartoti — tai bendradarbiavimas, ne ciklas. Gyvai 2026-10-02 (DHCP):
+# „Pakartokit, ką reikia man padaryti" ir dar du beveik tokie pat vedimo punktai pakėlė „stuck"
+# skaitliuką iki 3, ir agentas pasiūlė abonento kodą (identifikacijos taktika!), o paskui
+# užregistravo gedimą ir atsisveikino vedimo viduryje.
+repeat_request:
+  - "pakartok"
+  - "pakartot"
+  - "pakartoki"
+  - "dar karta pasakyk"
+  - "dar kartą pasakyk"
+  - "ką reikia padaryti"
+  - "ka reikia padaryti"
+  - "ką turiu daryti"
+  - "ka turiu daryti"
+
 confused:
   - "nesuprantu"
   - "nesupratau"

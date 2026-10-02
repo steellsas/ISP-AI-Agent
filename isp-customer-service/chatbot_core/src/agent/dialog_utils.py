@@ -64,6 +64,7 @@ def progress_key(state: Any) -> list:
     filled = sum(
         1 for slot in (p.city, p.street, p.house, p.apartment, p.account_code) if slot.value
     )
+    case = getattr(state, "case", None)
     return [
         state.identity.customer_id,
         filled,
@@ -71,6 +72,13 @@ def progress_key(state: Any) -> list:
         state.diagnosis.outage_reported,
         state.closing.case_closed,
         state.ticket.ticket_id,
+        # Gedimo sprendimo POZICIJA irgi yra pažanga. Be jos vedimas per dokumentą atrodė kaip
+        # įstrigęs pokalbis: gyvai 2026-10-02 (DHCP) kiekvienas punktas judėjo pirmyn, bet tą patį
+        # punktą perfrazavus „stuck" skaitliukas kilo, ir po trijų agentas pasiūlė abonento kodą
+        # bei uždarė skambutį vedimo viduryje (7f banga).
+        getattr(case, "step", None),
+        getattr(case, "guide_step", None),
+        len(getattr(case, "worked", []) or []),
     ]
 
 

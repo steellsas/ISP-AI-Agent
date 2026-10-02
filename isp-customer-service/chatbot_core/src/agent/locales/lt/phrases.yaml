@@ -858,6 +858,7 @@ summary:
   bridge_live: "internetas dabar laikinai veikia tik tame kompiuteryje — kol pakeisim routerį"
   declined_bridge: "laikino interneto per kompiuterį nenorėjot"
   no_computer: "laikino interneto paleisti nebuvo kuo — kompiuterio prijungti neturėjot"
+  lost_the_thread: "telefonu šių žingsnių kartu pabaigti nepavyko"
   declined_guide: "nustatymų kartu neėjom — pasirinkot iš karto specialistą"
 
 anamnesis:
