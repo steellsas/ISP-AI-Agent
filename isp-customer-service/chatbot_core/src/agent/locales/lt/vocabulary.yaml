@@ -314,6 +314,13 @@ done:
   - "istraukiau"
   - "prijungiau"
   - "pajungiau"
+  # Gyvai 2026-10-02: ASR sudarkė „įkišau" į „Iki šau", ir vienintelis likęs žodis buvo
+  # „pavyko" — žodynui tai nereiškė nieko, tad ta pati instrukcija nuskambėjo antrą kartą.
+  - "pavyko"
+  - "gavosi"
+  - "sutvarkiau"
+  - "įdėjau"
+  - "idejau"
   - "jau"
   - "gatava"
   - "viskas"

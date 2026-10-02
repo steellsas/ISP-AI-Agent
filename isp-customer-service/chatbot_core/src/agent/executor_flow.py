@@ -125,6 +125,16 @@ def register_ticket_from_state(state: Any, rt: Any, step_id: str | None) -> None
             client_bits.append(f"{gloss_label(key)}: {gloss_value(e['value'], key)}")
     if client_bits:
         details += phrase("ticket.details.checked", facts="; ".join(client_bits))
+    # Ta pati išvada, kurią išgirdo klientas, keliauja ir meistrui: kas PADARYTA, kas veikia
+    # dabar ir ko nepavyko. Vienas šaltinis (`case_rule._summary_words`) dviem adresatams —
+    # gyvai 2026-10-02 tikete buvo „laikinas internetas pasiūlytas", nors jis buvo PALEISTAS.
+    told = s.case.summary or {}
+    if told.get("padaryta"):
+        details += phrase("ticket.details.done", works=told["padaryta"])
+    if told.get("dabar"):
+        details += phrase("ticket.details.bridge_live")
+    if told.get("nepavyko"):
+        details += phrase("ticket.details.not_done", items=told["nepavyko"])
     # Why it was not solved (refusal / demand / not home) — recorded on the ticket
     # so the technician knows the context (policy 2026-07-30).
     reason = (s.resolution.procedure or {}).get("escalate_reason")

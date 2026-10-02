@@ -734,6 +734,8 @@ def _dialogue_state(state, rt) -> list[str]:
     out += _awaiting(state, rt)
     out += _unclear_case_answer(state)
     out += _reading_to_confirm(state)
+    out += _proof_to_tell(state)
+    out += _summary_to_tell(state)
     if s.dialog.clarity_level == "basic" and not s.closing.case_closed:
         out.append(
             "PLAIN WORDS: the caller said they do not follow technical words. Speak "
@@ -793,6 +795,56 @@ def _stuck(state, rt) -> list[str]:
         "SILENCE (the caller said nothing): do NOT say „neišgirdau“ — they may just be "
         "listening or thinking. Calmly, without apologising, ask for what is needed (e.g. "
         "the street), or check in with „Ar mane girdite?“. Do not rush." + extra
+    ]
+
+
+def _summary_to_tell(state) -> list[str]:
+    """IŠVADA prieš registraciją — tai, ką klientas atsimins.
+
+    Andrius (2026-10-02): *„patikrinome routerį, lemputės nedega, maitinimas ateina, laikinai
+    prijungėme kitą įrenginį — internetas laikinai veiks, kol nepakeisime routerio… pasakyti, ką
+    padarėme ir kodėl registruojame. Tai svarbu klientui: jis atsimins galutinį pokalbį, ir jei
+    gedimo nepavyko išspręsti dėl jo atsisakymo, tai irgi turi būti pasakyta."*
+    """
+    told = state.turn.directives.summary or (
+        None if state.case.summary_said else state.case.summary
+    )
+    if not told:
+        return []
+    state.case.summary_said = True  # klientui sakoma vieną kartą; duomenys lieka tiketui
+    parts = [f"WHAT WE DID: {told['padaryta']}" if told.get("padaryta") else ""]
+    if told.get("isvada"):
+        parts.append(f"WHAT IT MEANS: {told['isvada']}")
+    if told.get("dabar"):
+        parts.append(f"WHAT WORKS NOW: {told['dabar']}")
+    if told.get("nepavyko"):
+        parts.append(f"WHAT WE COULD NOT DO (say it plainly, no blame): {told['nepavyko']}")
+    if told.get("kodel"):
+        parts.append(f"WHY A TECHNICIAN: {told['kodel']}")
+    body = " · ".join(part for part in parts if part)
+    return [
+        "SUM UP THE CALL BEFORE REGISTERING — this is what the caller will remember. "
+        f"{body}. At most THREE short sentences, in this order: what we did, what it means / "
+        "what works now, and that you are registering a technician. No greeting, no new "
+        "question, do NOT ask for contact details in this reply — that is the next turn."
+    ]
+
+
+def _proof_to_tell(state) -> list[str]:
+    """Linija jau rodo, kad veiksmas suveikė — tai pasakoma, ir klientas paprašomas patikrinti.
+
+    Gyvai 2026-10-02: po pririšimo telemetrija rodė įrenginį ir srautą, bet klientas apie tai
+    neišgirdo nė žodžio — iš karto gavo „telefonu neišspręsime". Andrius (2026-09-28):
+    *„įsitikinti, ar problema išspręsta."*
+    """
+    told = state.turn.directives.proof
+    if not told or not told.get("faktai"):
+        return []
+    return [
+        f"THE LINE NOW SHOWS IT WORKED: {told['faktai']}. Say that FIRST, in your own words and "
+        "plainly (what you see on the line), then ask them to check on their own device — „ar "
+        "jums jau veikia?“. Do NOT close the call and do NOT register anything in this reply: "
+        "the caller's own answer decides what happens next."
     ]
 
 
@@ -1063,7 +1115,14 @@ def _goal_ticket(state, rt) -> list[str]:
     from ..decide.rules.ticket import ticket_need
 
     if td["kind"] == "phone_intro":
-        if state.resolution.bridge_bound:
+        if state.case.summarised:
+            # Išvada ką tik nuskambėjo savo ėjimu — kartoti „kodėl" reikštų tą patį du kartus.
+            goal = (
+                "you have JUST summed up what was done and why a technician is needed — do NOT "
+                "repeat it. Ask ONE thing only: whether the number they are calling from suits "
+                "for contact"
+            )
+        elif state.resolution.bridge_bound:
             goal = (
                 "give the good news — the internet works through the computer for now — and "
                 "that you are registering a technician for a new router; ask ONE thing only: "

@@ -72,9 +72,12 @@ def track_stuck(state: Any, rt: Any, reply: str) -> None:
     # Pakartojimas yra ir tas pats PAREIŠKIMAS, ne tik tas pats klausimas: 2026-10-01 tilto
     # pasiūlymas nuskambėjo tris kartus vienodai, o klaustuko jame nebuvo (jį nukirpo srauto
     # sargas), tad šis skaitliukas tylėjo ir perfrazuoti niekas nepaprašė.
+    from ..contract import limits
+
+    window = state.dialog.recent_replies[: max(1, limits.get("reply_repeat_window"))]
     repeat = bool(
         (is_q and state.dialog.last_question and similar(reply, state.dialog.last_question))
-        or (state.dialog.last_reply and similar(reply, state.dialog.last_reply))
+        or any(similar(reply, earlier) for earlier in window)
     )
     state.dialog.last_reply_repeated = repeat
     if progressed:
@@ -86,6 +89,7 @@ def track_stuck(state: Any, rt: Any, reply: str) -> None:
     if is_q:
         state.dialog.last_question = reply
     state.dialog.last_reply = reply
+    state.dialog.recent_replies = [reply, *window][: max(1, limits.get("reply_repeat_window"))]
     rt.tracer.emit("stuck", count=state.dialog.stuck_count, repeated=repeat)
 
 

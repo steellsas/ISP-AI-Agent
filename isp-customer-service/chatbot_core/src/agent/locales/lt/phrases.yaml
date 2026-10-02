@@ -527,7 +527,10 @@ tools:
 # sudedama išvados eilutė: „Ką matau: … — panašu, kad …".
 fact:
   line_link:
-    up: "linija iki jūsų buto veikia"
+    # Andrius (2026-10-02): *„nereikia sakyti apie mazgus ir switch — tiesiog, kad iki jūsų
+    # ateina."* Tiekėjo pusės technika klientui nėra naujienа: jam reikia žinoti, kad signalas
+    # atkeliauja, o įrenginio nematome.
+    up: "iki jūsų namų internetas ateina"
     down: "linijos iki jūsų buto nėra"
   traffic:
     none: "srautas iki routerio nevaikšto"
@@ -545,7 +548,9 @@ fact:
     ok: "adresą iš mūsų įrenginys gauna"
     silent: "įrenginys adreso net neprašo"
   node_reachable:
-    "yes": "mūsų mazgas jūsų gatvėje veikia"
+    # Tyčia tuščia: kai mazgas veikia, tai pasakyta „iki jūsų namų internetas ateina" (line_link).
+    # Kai NEVEIKIA — tai jau naujiena, ir ji sakoma.
+    "yes": ""
     "no": "mūsų mazgas nepasiekiamas"
   neighbours:
     all_down: "kaimynams tame pačiame mazge irgi neveikia"
@@ -773,6 +778,11 @@ ticket:
     anamnesis: " Klientas: {text}."
     bridge_router: " Laikinas tiltas per kompiuterį veikia; routeris sugedęs, reikia keisti."
     checked: " Patikrinta su klientu: {facts}."
+    # Ką agentas su klientu PADARĖ (ne tik patikrino) — meistras turi matyti, kas jau atlikta,
+    # kad nekartotų to paties (Andrius, 2026-10-02).
+    done: " Padaryta telefonu: {works}."
+    not_done: " Nepavyko / nebuvo daryta: {items}."
+    bridge_live: " Laikinas internetas PALEISTAS per kliento kompiuterį — veikia tik jame; routerį reikia keisti."
     unanswered: " Klientas neatsakė: {items}."
     assumed_item: "{fact} (dirbome su prielaida: {value})"
     tried: " Bandyta/atmesta: {causes}."
@@ -826,6 +836,28 @@ detector:
   panel_device:
     "yes": "turi kompiuterį, telefoną ar planšetę, prijungtą prie to routerio — nustatymus bus kuo atidaryti"
     "no": "neturi jokio įrenginio su naršykle tame routeryje"
+
+summary:
+  # IŠVADA prieš registraciją (Andrius, 2026-10-02): „patikrinome routerį, lemputės nedega,
+  # maitinimas ateina, laikinai prijungėme kitą įrenginį — internetas laikinai veiks, kol
+  # nepakeisim routerio; registruojam meistrą dėl routerio." Tai, ką klientas atsimins.
+  #
+  # Čia tik DARBAI — žingsnių, kurie vien klausia (ar galite prieiti, ar turite kompiuterį),
+  # sąraše nėra: klientui svarbu, kas buvo PADARYTA.
+  did:
+    check_lights: "pasižiūrėjom routerio lemputes"
+    check_power: "patikrinom, ar routerį pasiekia elektra"
+    cable: "patikrinom kabelį"
+    reboot: "perkrovėm routerį"
+    connect_direct: "prijungėm kompiuterį tiesiai prie linijos"
+    bind: "pririšom jį prie jūsų linijos"
+    port_reset: "perkrovėm jūsų prievadą"
+    guide: "kartu ėjom per routerio nustatymus"
+    device_check: "patikrinom įrenginį"
+    homework: "susitarėm, ką patikrinsit, kai būsit namuose"
+  bridge_live: "internetas dabar laikinai veikia tik tame kompiuteryje — kol pakeisim routerį"
+  declined_bridge: "laikino interneto per kompiuterį nenorėjot"
+  declined_guide: "nustatymų kartu neėjom — pasirinkot iš karto specialistą"
 
 anamnesis:
   # How the caller's anamnesis reads in Lithuanian (the state keeps the codes).

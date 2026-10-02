@@ -330,8 +330,10 @@ kartoja instrukciją **vieną** kartą kitais žodžiais, ne tais pačiais.
 | (agentas siūlo) | **pasiūlyti** laikiną internetą per kompiuterį — klausimu, ne nurodymu, ir klausimas turi **nuskambėti iki galo** |
 | *arba* **„Neturiu kompiuterio"** | tilto **nebevykdyti**: iš karto registruoti routerio keitimą — be nurodymų kišti laidą |
 | *arba* **„Registruokit gedimą"** | tai **ne sutikimas** su tiltu: eiti į registraciją |
-| „Taip, turiu" · *spausk 🔌 Kabelis* → „Įkišau" | pamatyti įrenginį, pririšti, perkrauti prievadą, patikrinti |
-| „Taip, atsirado" | pasakyti, kad tai **laikinai**, ir registruoti **routerio keitimą** |
+| „Taip, turiu" · *spausk 🔌 Kabelis* → **„Pavyko, įkišau"** | pamatyti įrenginį, pririšti, perkrauti prievadą — ir **nebekartoti** nurodymo (7c banga: „pavyko" vienas anksčiau nieko nereiškė) |
+| (agentas pats pasako, ką pamatė) | **„Matau, kad įrenginys linijoje atsirado ir srautas vaikšto. Ar jums jau veikia?"** — klausia, o ne tyli |
+| „Taip, veikia" | **IŠVADA savo ėjimu:** ką patikrinom, kad routeris sugedęs, kad laikinas internetas **veikia tik tame kompiuteryje**, ir kad registruojam meistrą dėl keitimo |
+| (tik po išvados) | „Ar tiks numeris, iš kurio skambinate?" — ir **nebekartoja**, kodėl registruoja |
 
 **Tikrinu:**
 - ✅ **lemputės IR maitinimas** klausiami prieš išvadą — be jų „sugedęs" yra spėjimas;
@@ -348,6 +350,10 @@ kartoja instrukciją **vieną** kartą kitais žodžiais, ne tais pačiais.
 - ✅ **neturint kompiuterio tiltas nebevykdomas** (G35–G37, gyvai 2026-10-01: trys nurodymai
   kišti laidą klientui, kuris tris kartus pasakė, kad kompiuterio neturi);
 - ✅ tas pats atsakymas **nebegali** nuskambėti žodis į žodį du kartus;
+- ✅ **išvada prieš registraciją** (7c banga): klientas išgirsta, ką padarėm, kas veikia dabar ir
+  kodėl registruojam — tai, ką jis atsimins; jei ko nors atsisakė, tai irgi pasakoma be priekaištų;
+- ✅ išvadoje **nebėra „mazgo" ir „switch"** — tik „iki jūsų namų internetas ateina, bet įrenginio
+  nematome";
 - ⏸ **palaukimas** (*„ar jau priėjote?"*) dar nepadarytas — Andrius: *„dėl palaukimo dar
   pagalvosime"*; kol kas agentas po nurodymo tiesiog klausia toliau.
 

@@ -650,6 +650,7 @@
         "Visuose",
         "Taip, galiu prieiti",
         "Perkroviau, internetas atsirado",
+        "Taip, jau veikia",
         "Ne, ačiū, viso gero"
       ],
       "expect": {
