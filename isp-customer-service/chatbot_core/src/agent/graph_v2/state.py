@@ -266,9 +266,6 @@ class TicketState(BaseModel):
 class DialogState(BaseModel):
     """Turn control: repeat-guard, what we wait for, how the caller follows."""
 
-    # Step roles the caller agreed to (the gate checks an action that needs consent).
-    consents: dict[str, bool] = Field(default_factory=dict)
-
     last_question: str | None = None
     # Consecutive question-turns with NO progress (drives nudge -> backstop).
     stuck_count: int = 0
@@ -279,8 +276,6 @@ class DialogState(BaseModel):
     # None | "client_answer" | "client_action" | "system_check"
     awaiting: str | None = None
     awaiting_turns: int = 0
-    # How many times the caller said they do not follow THIS step.
-    step_confusions: int = 0
     # Consecutive side-topic (deviation) turns.
     side_topic_streak: int = 0
     # resolution.detect_turn_intent of the last turn — only "answer"/"done" advance a step.

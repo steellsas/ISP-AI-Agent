@@ -115,9 +115,6 @@ class Step(_Model):
     answers: dict[str, str] = {}
     tools: list[str] = []
     tool_actions: list[str] = []
-    # required: the caller agrees before the step's action runs (the default);
-    # not_required: it runs without asking (e.g. the post-bridge registration).
-    consent: Literal["required", "not_required"] | None = None
     # What the step does (D-18); a module call inherits the module step's role.
     role: str | None = None
 
@@ -692,7 +689,7 @@ class ToolManifest(_Model):
     adapter: str
     args: dict[str, str] = {}
     returns: list[str] = []  # evidence keys / facts the observation may bring
-    requires: list[Literal["identified", "consent"]] = []
+    requires: list[Literal["identified"]] = []
     guards: ToolGuards = ToolGuards()
     timeout_s: StrictInt | StrictFloat
     retries: StrictInt = 0

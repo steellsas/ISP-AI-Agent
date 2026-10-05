@@ -1015,19 +1015,15 @@ def _awaiting(state, rt) -> list[str]:
             "return to what you asked for. Never repeat your question without answering."
         )
     elif s.dialog.last_intent == INTENT_CONFUSED:
-        if s.dialog.step_confusions >= 2:
-            out.append(
-                "STILL NOT FOLLOWING (2+ times): stop explaining the same thing. Take the "
-                "SMALLEST possible piece — one physical action doable in a second („Ar matote "
-                "dėžutę su lemputėmis? Tiesiog pasakykite taip ar ne“) — and go one such step "
-                "at a time. If that fails too, offer to register a technician visit."
-            )
-        else:
-            out.append(
-                "THE CALLER DID NOT FOLLOW: do NOT repeat the same words. Break this step into "
-                "a SMALLER one — first lead them to WHERE to look and what it looks like, and "
-                "ask for that one thing only."
-            )
+        # Antros pakopos („2+ kartus nesupranta — imk mažiausią įmanomą dalį, paskui siūlyk
+        # meistrą") čia nebėra: ji skaitė `dialog.step_confusions`, kurio v2 niekada nerašė,
+        # ir dar siūlė meistrą tuo metu, kai klientas dirba — o 8 banga būtent tai uždraudė.
+        # Pakopą dabar veda `case.stall` per `_assist_the_caller`.
+        out.append(
+            "THE CALLER DID NOT FOLLOW: do NOT repeat the same words. Break this step into "
+            "a SMALLER one — first lead them to WHERE to look and what it looks like, and "
+            "ask for that one thing only."
+        )
     if s.dialog.awaiting_turns >= 3:
         out.append(
             "LONG WAIT: several turns without progress. Check in like a human, ask how it is "

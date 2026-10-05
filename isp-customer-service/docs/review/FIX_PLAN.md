@@ -796,6 +796,50 @@ Prieš sintezę (ir tik prieš ją — ekrane, trace'e ir tikete tekstas nekinta
 
 **Tikrinta:** 1473 passed, 1 skipped; eval 195/195.
 
+## Banga 8c — tiketas pasako, kas jau bandyta; mirusios atšakos išimtos (šaka `fix/wave-8-assist`, 2026-10-05)
+
+Perėjus VISUS `GraphState` laukus (skaitomi kode, bet niekada nerašomi) išlindo dar keturi tos
+pačios šeimos radiniai kaip `step_perception_options`, `resolution.bridge_bound`,
+`case.step_said`, `progress_key` ir `dialog.awaiting`: elgsena rašyta v1 vedliui ir prie v2
+neprijungta. Andrius: *„padarom D1, o jei D2 ir D4 nereikalingi — galime ištrinti; dėl likusių
+reikia pagalvoti, kiek tai dabar aktualu."*
+
+### D1 · „Kas jau bandyta" tikete neatsirasdavo niekada
+
+`executor_flow` eilutę `ticket.details.tried` statė iš `diagnosis.failed_hypotheses` ir
+`rejected_hypotheses`, o v2 variklyje juos tik **išvalo** (`identification.py:40–41`) — niekas
+nepildo. Tad meistras niekada negavo to, dėl ko ir buvo kurtas apibendrinimas: ko nekartoti.
+
+Dabar skaitoma iš Case'o (`executor_flow._tried_causes`):
+
+| Šaltinis | Ką reiškia |
+|---|---|
+| `case.spent` | gedimai, kurių sprendimas BUVO paleistas ir nepadėjo |
+| `case.announced` ∩ dabar `ruled_out` | gedimai, apie kuriuos kalbėjome su klientu ir kuriuos faktai nuo tada atmetė |
+
+Visų `ruled_out` kortelių **nevardijam** sąmoningai: išmatuota, kad tipiniame skambutyje
+telemetrija jų atmeta 10–11 iš 12, ir meistrui tai ne žinia, o triukšmas. Dabartinis gedimas
+sąraše nefigūruoja — jis tikete jau yra kaip priežastis.
+
+### D2, D4 · išimta
+
+| # | Kas | Kodėl išimta |
+|---|---|---|
+| **D2** | `context_card` atšaka „2+ kartus nesupranta" (`dialog.step_confusions >= 2`) | skaitliuko niekas nedidino, tad atšaka niekada nesuveikė — o jos tekstas dar siūlė meistrą tuo metu, kai klientas dirba, ką 8 banga kaip tik uždraudė. Pakopą dabar veda `case.stall` per `_assist_the_caller` |
+| **D4** | sutikimo vartai: `gate.py` patikra, `Action.consent`, `dialog.consents`, v1 `Step.consent` (`resolution.py`, `faults.py`, `schema.py`, viena `consent: not_required` eilutė kortelėje) | `dialog.consents` niekada nebuvo rašomas, tad **bet kuris** veiksmas su `consent: required` būtų užblokuotas amžinai. Kliento sutikimo klausia PASIŪLYMO moduliai (`offer_bridge`, `offer_guide` → `*_consent` skaitytuvai) — tai ir yra v2 būdas |
+
+`policies.yaml` komentaras, teigęs, kad sutikimą tikrina vartai, pataisytas.
+
+### Palikta kitiems etapams (Andrius: „reikia pagalvoti, kiek tai dabar aktualu")
+
+**D3** `diagnosis.evidence_ask_counts` tik mažinamas, niekada nedidinamas (`delivery.py:70`,
+`speak/node.py:201`) · **H2** eval'o `reply_len` matuoja `turn.reply`, kuris nesutampa su trace'u ·
+**K1** `understand._ALLOWED` ranka surašyti 6 faktai prieš 14 kortelėse deklaruotų · **K2** nėra
+testo „vienas žodis — viena reikšmė" · **S1** `fast_path` suveikia ~1 iš 36 skaitymų ·
+**G15**, **G26** iš §6.
+
+**Tikrinta:** 1482 passed, 1 skipped; eval 195/195.
+
 ## Banga 8b — ne mano sritis ir neperskaitomas laikas (šaka `fix/wave-8-assist`, 2026-10-05)
 
 Du skambučiai (`logs/sessions/20261005-16*`): *„atrodo, kaip ir viskas suveikė"*. Abu gedimai

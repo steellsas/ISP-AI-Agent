@@ -50,7 +50,6 @@ class Action(BaseModel):
     type: Literal["tool", "procedure_step", "register_ticket", "append_ticket", "close", "none"]
     name: str | None = None  # tool name / step role / close reason
     args: dict[str, Any] = Field(default_factory=dict)
-    consent: Literal["required", "not_required"] = "not_required"
 
 
 class Contradiction(BaseModel):
