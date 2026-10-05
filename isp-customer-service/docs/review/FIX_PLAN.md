@@ -755,7 +755,31 @@ meistrams informuoti klientą apie galimus mokesčius."*
 Tad agentas apie mokesčius **nekalba** ir to nevertina. Kai prie šito prieisim, tai bus kortelės
 sprendimas (ar gedimą galima pašalinti telefonu) + frazė, ne variklio logika.
 
-**Tikrinta:** 1463 passed, 1 skipped; eval 195/195.
+### Pirmas gyvas 8 bangos skambutis: dokumentas nubėgo priekyje kliento (B1–B3)
+
+DHCP vedimas `logs/sessions/20261005-113912-078931-0001.jsonl`. Kantrybė suveikė — į „Ką padaryt,
+nesupratu" ir „Nežinau, o kaip čia reikia apijungti?" agentas paaiškino, kaip telefoną prijungti
+prie WiFi, o į „aš nieko nepadariau dar" atsakė „nieko tokio, pažiūrėkime paprasčiau". Meistro
+neminėjo. Bet vedimas ėjo priekyje kliento, ir modelis čia buvo teisus **kiekviename** ėjime:
+
+| Klientas | `perception.step` | Variklis |
+|---|---|---|
+| „Gerai, pažiūrės ten lipduko" | `waiting, is_answer=false` | **pajudino** punktą |
+| „Gerai, pabandom admin… vedu 192.168.1.1" | `waiting, is_answer=true` | pajudino |
+| „Matau admin, admin sakot įvesti, ne?" | `waiting, is_answer=true` | pajudino |
+| „Įvedžiau. A, cedariau." | `done` | pajudino (teisingai) |
+
+| # | Kas pakeista | Kur |
+|---|---|---|
+| **B1** | Vedimo punktas juda tik tada, kai klientas **praneša, kad padarė**: `label="waiting"`, `is_answer=false` ir `in_progress` intencija punkto nebejudina. Iki tol sprendė tik `understanding.type == "answer"`, o jis „gerai, pažiūrėsiu" laikė atsakymu | `case_rule._answered_the_written_step` |
+| **B2** | `label="waiting"` taip pat **blokuoja** bekontekstes euristikas: „Matau admin…" per `detect_restored` judindavo vedimą | `case_rule._model_says_still_working` |
+| **B3** | Nepavykusi patikra **neskuba išvadų**, kol klientas dar dirba („ir rodo atsiverti…") | `case_rule._absorb` |
+| **B4** | `reexplain_confused` įgūdis nebegali išgalvoti veiksmo — gyvai jis išrado mygtuką routerio galinėje pusėje, kurio dokumente nėra | `prompts/skills/reexplain_confused.md` |
+
+Ir dokumentacijoje: `BALSO_TESTAVIMAS.md` gavo **„du skambučiai, kurie patikrina viską"** — pažodinį
+scenarijų su tuo, ką sakyti ir ko tikėti (Andrius: *„kalbant pamiršau, ką turėčiau patestuoti"*).
+
+**Tikrinta:** 1466 passed, 1 skipped; eval 195/195.
 
 ## Banga 5 — valymas (šaka `fix/wave-5`, 2026-09-28)
 

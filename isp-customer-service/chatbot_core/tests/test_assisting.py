@@ -146,3 +146,55 @@ class TestOneMoreChanceBeforeTheTechnician:
 
         assert state.case.stall == 0
         assert plan is None or not plan.rule.startswith("ticket."), plan
+
+
+class TestTheDocumentWaitsForTheCaller:
+    """Gyvai 2026-10-05 (DHCP vedimas): modelis kiekvieną ėjimą teisingai sakė „waiting", o
+    variklis dokumentą vis tiek judino — tad agentas prašė „Išsaugoti", kai klientas dar vedė
+    admin/admin, ir „Internet/WAN", kai jis tik ėjo pažiūrėti lipduko."""
+
+    def _walking(self, call):
+        state, rt = call
+        record_telemetry(state, rt, {**BASE, "dhcp_status": "no_requests", "traffic": "flowing"})
+        record_client(state, rt, "panel_device", "yes")
+        record_client(state, rt, "guide_agreed", "yes")
+        from agent.contract import cards as catalog
+
+        steps = catalog.card("dhcp_silent").solution[0].steps
+        state.case.fault, state.case.solution = "dhcp_silent", 0
+        state.case.step = next(i for i, s in enumerate(steps) if s.module == "guide")
+        state.case.step_said = state.case.step
+        state.case.guide_said = state.case.guide_step
+        return state, rt
+
+    def test_going_to_look_does_not_move_the_point(self, call):
+        state, rt = self._walking(call)
+        at = state.case.guide_step
+        _heard(state, "Gerai, tuoj pažiūrėsiu ant lipduko, kur ten parašyta")
+        state.turn.perception = {
+            "step": {"label": "waiting", "is_answer": False, "confidence": 0.8}
+        }
+
+        case_rule.plan(state, rt)
+
+        assert state.case.guide_step == at, "klientas dar tik eina žiūrėti"
+
+    def test_a_question_mid_point_does_not_move_it(self, call):
+        state, rt = self._walking(call)
+        at = state.case.guide_step
+        _heard(state, "Matau admin, admin sakot įvesti, ne?")
+        state.turn.perception = {"step": {"label": "waiting", "is_answer": True, "confidence": 0.9}}
+
+        case_rule.plan(state, rt)
+
+        assert state.case.guide_step == at
+
+    def test_a_real_report_moves_it(self, call):
+        state, rt = self._walking(call)
+        at = state.case.guide_step
+        _heard(state, "Įvedžiau, esu viduje")
+        state.turn.perception = {"step": {"label": "done", "is_answer": True, "confidence": 1.0}}
+
+        case_rule.plan(state, rt)
+
+        assert state.case.guide_step == at + 1

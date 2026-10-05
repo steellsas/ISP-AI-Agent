@@ -92,6 +92,66 @@ kas jau atsakyta. Per failus tie patys scenarijai praėjo.
 
 ---
 
+## ⚡ DU SKAMBUČIAI, kurie patikrina viską (8 banga, 2026-10-05)
+
+Andrius: *„neblogai, jei per vieną ar du skambučius galėčiau testuoti tai, ką padarėme."* Šie du
+scenarijai uždengia 7–8 bangas. **Skaityk eilutes iš lentelės — jų tekstas pasirinktas specialiai.**
+Prieš kiekvieną — **♻ DB**.
+
+### Skambutis 1 — DHCP vedimas su „pasimetusiu" klientu (`+37060020106`)
+
+| # | Sakyk ŠITAIP | Ko tikėti |
+|---|---|---|
+| 1 | „Labas, neveikia internetas" | pasiūlys adresą |
+| 2 | „Taip" | klaus vardo |
+| 3 | „Greta" | pasakys, ką mato (**be „mazgo" ir „switch"**), ir klaus, ar turi **kompiuterį ar telefoną prijungtą prie routerio** |
+| 4 | „Turiu telefoną" | pasiūlys eiti kartu per nustatymus |
+| 5 | „Pabandom" | **pirmas punktas**: prijungti įrenginį prie routerio |
+| 6 | **„Nežinau"** | **negali** siūlyti meistro; turi padėti giliau (kur ieškoti, mažesnė dalis) |
+| 7 | *(patylėk visą ėjimą — nieko nesakyk)* | „Ar pavyksta? Gal pasakykite, ką matote" — **be nurodymo kartojimo** |
+| 8 | *(patylėk dar kartą)* | pasakys **kodėl** to reikia + mažiausią taip/ne klausimą |
+| 9 | „Čia dvi dėžutės, nežinau kuri" | tai **informacija** — padės atskirti ir ves toliau (ne meistras) |
+| 10 | „Gerai, tuoj pažiūrėsiu ant lipduko" | **negali** judėti prie kito punkto — turi pasakyti, kad palauks |
+| 11 | „Prisijungiau prie WiFi" | **kitas punktas**: naršyklėje 192.168.0.1 |
+| 12 | „Matau admin, admin sakot įvesti, ne?" | atsako į klausimą, bet **punkto nejudina** (tu dar nieko neįvedei) |
+| 13 | „Įvedžiau, esu viduje" | **juda**: rasti „Internet/WAN" |
+| 14 | „Radau" | pasirinkti DHCP |
+| 15 | „Pasirinkau DHCP" | paspausti „Išsaugoti" |
+| 16 | „Išsaugojau" | **pasakys, ką rodo linija, ir paklaus, ar jau veikia** |
+| 17 | „Ne, vis tiek neveikia" | **IŠVADA**: ką ėjom, kad telefonu nepavyko, ir registruoja meistrą |
+| 18 | „Tiks šis numeris" → „Bet kada" → „Ne, viskas" | tiketas ir šiltas atsisveikinimas |
+
+**Tikrinu:** ✅ niekada neminėjo meistro, kol dirbai (6, 7, 9, 10) · ✅ tyla gavo **savo** žodžius, ne
+instrukcijos kartojimą (7, 8) · ✅ vedimas **nenubėgo priekyje** (10, 12) · ✅ patikra **pasakė, ką
+mato, ir paklausė** (16) · ✅ išvada prieš registraciją (17).
+
+### Skambutis 2 — miręs routeris ir tiltas (`+37060012353`)
+
+| # | Sakyk ŠITAIP | Ko tikėti |
+|---|---|---|
+| 1 | „Labas, neveikia internetas" | adresas |
+| 2 | „Taip" → „Giedrius" | hipotezė: *„linijoje jūsų įrenginio nematome — gali būti be maitinimo arba sugedęs"*, ir klausia, **ar gali prieiti** |
+| 3 | „Galiu prieiti" | klaus apie **lemputes** |
+| 4 | **„Nedega. Dėžutė atrodo kaip be maitinimo"** | **vis tiek paklaus apie maitinimą** (patikslindamas) — tai hipotezę patvirtinantis klausimas |
+| 5 | „Laidas įkištas, rozetė veikia" | išvada + **pasiūlys** laikiną internetą su klausimu iki galo |
+| 6 | **„Neturiu kito routerio, tik kompiuterį"** | tai **TAIP** — eis į tiltą |
+| 7 | *spausk 🔌 Kabelis* → **„Pavyko, įkišau"** | pamatys įrenginį, pririš — **nekartos** nurodymo |
+| 8 | „Laukiu" | pasakys, ką rodo linija, ir paklaus, **ar jau veikia** |
+| 9 | „Taip, veikia" | **IŠVADA**: ką padarėm, kad internetas veikia **tik tame kompiuteryje**, ir kad registruoja keitimą |
+| 10 | „Tiks šis numeris" → „Bet kada" | tiketas (`equipment_replacement`) |
+
+**Tikrinu:** ✅ „atrodo kaip be maitinimo" **nepraleido** maitinimo klausimo (4) · ✅ „neturiu kito
+routerio, tik kompiuterį" — ne atsisakymas (6) · ✅ „pavyko" užskaitytas iš pirmo karto (7) ·
+✅ išvada sako, kad internetas laikinas (9) · ✅ tikete **„Padaryta telefonu"** atitinka tikrovę.
+
+### Po skambučių
+
+```powershell
+uv run python scripts/reader_silent.py --days 1
+```
+
+Jei kuri tavo frazė nebuvo suprasta — ji bus tame sąraše (modulis, skaitytuvas, tavo žodžiai).
+
 ## ⭐ Ką testuoti PIRMA (žinių sluoksnis, E1–E4)
 
 Žinios yra naujausia ir plačiausia dalis: agentas dabar gali atsakyti iš dokumentų, žino savo ribas

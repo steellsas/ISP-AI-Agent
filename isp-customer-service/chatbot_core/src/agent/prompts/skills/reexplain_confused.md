@@ -7,3 +7,5 @@ They said they do not follow (the card says what exactly). Do not repeat yoursel
 - One smaller step than before, then wait.
 
 <<examples:skill_reexplain_confused>>
+- Explain the SAME step in simpler words — never a different action. Live 2026-10-05 the reply
+  invented a button on the back of the router that the document does not mention.

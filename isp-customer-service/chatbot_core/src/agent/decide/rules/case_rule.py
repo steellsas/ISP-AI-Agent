@@ -574,6 +574,11 @@ def _absorb(state: Any, rt: Any, facts: dict[str, str]) -> str:
             return "waiting"
         return _advance(state, rt)
     if settled is False:
+        if _model_says_not_an_answer(state) or state.dialog.last_intent == "in_progress":
+            # Linija dar nerodo pokyčio, bet klientas dar DARO („ir rodo atsiverti…") — išvadų
+            # dabar neskubam (Andrius, 2026-10-05: *„kad agentas neskubėtų su veiksmais ir
+            # nenubėgtų į išvadas"*).
+            return "waiting"
         return _retry_or_give_up(state, rt)
     walked = _jumped_ahead(state, rt)
     if walked is not None:
@@ -640,8 +645,10 @@ def _absorb(state: Any, rt: Any, facts: dict[str, str]) -> str:
         # bekontekstės euristikos („veikia" sakinyje = rezultatas) nebeturi teisės pajudinti
         # žingsnio: „Einu pasižiūrėti, ar tas kompiuteris veikia" nėra sutikimas su tiltu.
         return "waiting"
-    if _step_was_asked(state) and (
-        _reported_done(state) or _model_reports_done(state) or _reported_outcome(state, call)
+    if (
+        _step_was_asked(state)
+        and not _model_says_still_working(state)
+        and (_reported_done(state) or _model_reports_done(state) or _reported_outcome(state, call))
     ):
         # They DID it. That answers any question about being able to (live S6: "ištraukiau
         # iš routerio ir įkišau atgal" against "can you get to it now" — the engine waited
@@ -748,6 +755,16 @@ def _heard_a_negation(heard: str | None) -> bool:
     # Lietuviškas neiginys yra priešdėlis: „ne-" / „nė-" („nedega", „nėra", „neturiu",
     # „nebūtina", „nelabai"). Tad užtenka vieno tokio žodžio — o „Visuose" jo neturi.
     return any(_fold(token).startswith("ne") for token in heard.lower().split())
+
+
+def _model_says_still_working(state: Any) -> bool:
+    """Ar šio ėjimo skaitymas sako, kad veiksmas DAR vyksta (`waiting`)?
+
+    Tada nei „matau", nei „gerai" neužskaito žingsnio: gyvai 2026-10-05 „Matau admin, admin sakot
+    įvesti, ne?" per `detect_restored` pajudino vedimą, nors klientas tik klausė, ką vesti.
+    """
+    read = (state.turn.perception or {}).get("step") or {}
+    return read.get("label") == "waiting"
 
 
 def _model_says_not_an_answer(state: Any) -> bool:
@@ -980,6 +997,17 @@ def _answered_the_written_step(state: Any) -> bool:
     heard = (state.dialog.last_heard or "").strip()
     if not heard or _just_acknowledged(state):
         return False
+    # Modelis, gavęs ŠIO punkto variantus (`instruct_done`), pasako „done" arba „waiting" — ir
+    # gyvai 2026-10-05 jis buvo teisus kiekviename ėjime, o variklis jo neklausė: „gerai,
+    # pažiūrėsiu ant lipduko" ir „matau admin, sakot įvesti, ne?" buvo `waiting`, bet dokumentas
+    # vis tiek pajudėdavo — tad agentas prašė „Išsaugoti", kai klientas dar nieko nebuvo padaręs.
+    from ...perceive.detectors import INTENT_IN_PROGRESS
+
+    read = (state.turn.perception or {}).get("step") or {}
+    if read.get("label") == "waiting" or read.get("is_answer") is False:
+        return False
+    if state.dialog.last_intent == INTENT_IN_PROGRESS:
+        return False  # „einu", „tuoj pažiūrėsiu" — dar ne rezultatas
     turn_type = str((getattr(state.turn, "understanding", None) or {}).get("type") or "answer")
     return turn_type == "answer"
 
