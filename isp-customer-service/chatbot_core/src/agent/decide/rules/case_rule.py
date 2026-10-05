@@ -528,6 +528,8 @@ def _absorb(state: Any, rt: Any, facts: dict[str, str]) -> str:
     Returns "waiting", "moved", "solved", "failed", "handed_over" or "escalating".
     """
     call = _current(state)
+    if call is not None:
+        _tick_waiting(state, rt, call)
     if call is None:
         if state.case.summarised:
             # Išvada jau pasakyta — šis skambutis eina pas meistrą. Be šito ėjimas po išvados
@@ -777,6 +779,59 @@ def _note_reader_silent(state: Any, rt: Any, call: Any) -> None:
         heard=state.dialog.last_heard,
         turn=state.dialog.turn_count,
     )
+
+
+def _tick_waiting(state: Any, rt: Any, call: Any) -> None:
+    """Ar šis ėjimas ką nors PRIDĖJO — ir kiek jau laukiam šio žingsnio.
+
+    Žmogus suporte neskaičiuoja pakartojimų; jis stebi, ar kitas žmogus vis dar dirba su juo.
+    Tą ir skaičiuojam: tušti ėjimai (nei informacijos, nei veiksmo, nei klausimo) didina
+    `case.stall`, o bet kokia įnašas jį nulina. Tyla turi savo kelią — ji nėra tuščias ėjimas.
+    """
+    state.case.waits += 1
+    heard = (state.dialog.last_heard or "").strip()
+    if not heard:
+        state.case.silence_asks += 1
+        rt.tracer.emit("case", move="silence", step=state.case.step, asks=state.case.silence_asks)
+        return
+    state.case.silence_asks = 0
+    if _turn_contributed(state, heard):
+        state.case.stall = 0
+        return
+    state.case.stall += 1
+    rt.tracer.emit(
+        "case", move="stall", step=state.case.step, stall=state.case.stall, heard=heard[:60]
+    )
+
+
+def _turn_contributed(state: Any, heard: str) -> bool:
+    """Ar klientas pridėjo ką nors: faktą, veiksmą, klausimą ar bent naują sakinį."""
+    from ...dialog_utils import similar
+    from ...perceive.detectors import INTENT_IN_PROGRESS, is_real_question
+
+    if (state.turn.perception or {}).get("facts"):
+        return True  # naujas faktas — net jei ne tas, kurio klausėm
+    if state.dialog.last_intent == INTENT_IN_PROGRESS:
+        return True  # „einu", „tuoj", „ieškau" — klientas dirba
+    if is_real_question(heard):
+        return True  # klausia — vadinasi, įsitraukęs
+    if _only_a_shrug(heard):
+        return False  # trumpas „nežinau" be jokios detalės nieko nepridėjo
+    return not any(similar(heard, earlier) for earlier in state.dialog.recent_heard)
+
+
+def _only_a_shrug(heard: str) -> bool:
+    """Ar tai tik „nežinau" be jokios detalės?
+
+    Viskas, kas pasako, KUR klientas užstrigo („nerandu", „čia dvi dėžutės"), yra informacija —
+    su ja agentas dirba toliau. Tuščias yra tik trumpas gūžtelėjimas pečiais.
+    """
+    from ...contract.locale import vocab
+
+    low = heard.lower().strip(" .,!?")
+    if len(low.split()) > 3:
+        return False
+    return any(mark in low for mark in vocab("shrug"))
 
 
 def _confirms_hypothesis(call: Any) -> bool:
@@ -1038,6 +1093,7 @@ def _advance(state: Any, rt: Any, *, by_words: bool = False, ran: bool = True) -
         state.case.moved_on_turn = state.dialog.turn_count
     state.case.retrying = False
     state.case.unclear = -1
+    state.case.stall, state.case.waits, state.case.silence_asks = 0, 0, 0
     done = _current(state)
     if _more_guide_steps(state, done):
         # A written procedure is walked one step per turn: the card step is not finished until
@@ -1148,6 +1204,68 @@ def _is_escalate(call: Any) -> bool:
     return bool(spec and spec.kind == "escalate")
 
 
+def _last_chance(state: Any, rt: Any, call: Any, step: Any) -> TurnPlan | None:
+    """Tušti ėjimai kaupiasi — pirma sąžiningai pasakom, ko nepavyksta, ir duodam DAR VIENĄ šansą.
+
+    Andrius (2026-10-05): *„agentas gali pasakyti, kad mums nepavyksta surasti routerio, jūs
+    negalite pasakyti — klientas turi dar šansą pabandyti… dar vienas šansas visada, kad
+    išvengtume, kai agentas nesuprato arba klientas nesuprato, ko nori agentas."*
+
+    Vieną kartą vienam žingsniui. Jei po jo klientas vėl nieko nepridės, pasiduos `_repeat_guard`
+    ir skambutis baigsis išvada bei meistru.
+    """
+
+    if not _no_way_forward(state):
+        return None
+    key = f"{state.case.fault}.{state.case.step}"
+    if state.case.chances.get(key):
+        return None
+    state.case.chances[key] = True
+    state.turn.directives.last_chance = {
+        "kas": _need_words(state, step.awaits) or "",
+        "kodel": _why_words(state, step.awaits) or "",
+    }
+    rt.tracer.emit("case", move="last_chance", module=call.module, fact=step.awaits)
+    return TurnPlan(
+        owner="procedure",
+        rule="case.last_chance",
+        say=Say(kind="directive", goal=step.goal, stage="diagnosis"),
+        awaiting=step.awaits,
+    )
+
+
+def _no_way_forward(state: Any) -> bool:
+    """Ar šiame žingsnyje judėti pirmyn nebėra kaip?
+
+    Dvi skirtingos kantrybės: tušti ėjimai (klientas kalba, bet nieko nepriduria) ir tyla
+    (klientas nieko nesako). Tyla kantresnė ir turi savo žodžius, bet ir ji negali tęstis
+    amžinai (8 banga).
+    """
+    from ...contract import limits
+
+    return state.case.stall >= limits.get("stall_before_last_chance") or (
+        state.case.silence_asks >= limits.get("silence_before_last_chance")
+    )
+
+
+def _need_words(state: Any, fact: str | None) -> str | None:
+    """Ko nepavyksta išsiaiškinti — kliento kalba („kokios lemputės dega")."""
+    if not fact:
+        return None
+    from ...evidence import gloss_label
+
+    return gloss_label(fact) or None
+
+
+def _why_words(state: Any, fact: str | None) -> str | None:
+    """Kodėl to reikia — kortelės `needs.<faktas>.why`, jei ji tai pasako."""
+    from ...contract.locale import maybe_phrase
+
+    card = catalog.card(state.case.fault)
+    need = card.needs.get(fact) if card and fact else None
+    return maybe_phrase(need.why) if need else None
+
+
 def _repeat_guard(state: Any, rt: Any, call: Any) -> TurnPlan | None:
     """A step that keeps being re-said is a step that is not working.
 
@@ -1161,6 +1279,10 @@ def _repeat_guard(state: Any, rt: Any, call: Any) -> TurnPlan | None:
     # punktą. Gyvai 2026-10-01: kiekvienas atsakytas punktas didino tą patį skaitliuką, ir po
     # trečio agentas pasakė „telefonu neišspręsime, registruoju meistrą" — kaip tik tada, kai klientas
     # jau buvo prisijungęs prie routerio skydelio.
+    if not _no_way_forward(state):
+        # Klientas vis dar dirba su mumis (pridėjo faktą, klausė, pasakė „einu") — tai ne ciklas,
+        # ir žingsnio atsisakyti negalima, kad ir kiek ėjimų tai užimtų (Andrius, 2026-10-05).
+        return None
     key = f"{state.case.fault}.{state.case.step}"
     if call.module == "guide":
         key = f"{key}.{state.case.guide_step}"
@@ -1357,6 +1479,13 @@ def _module_plan_inner(state: Any, rt: Any, call, facts: dict[str, str], *, rule
     state.case.awaiting = step.awaits
     if step.awaits:
         state.diagnosis.pending_evidence_key = step.awaits
+    # Pokalbio sluoksnio laukimo būsena. Iki 8 bangos `dialog.awaiting` ir `awaiting_turns` v2
+    # variklyje buvo tik SKAITOMI — niekas jų nepildė, tad visa kantrybės direktyvų šeima
+    # („klientas dar daro, nekartok", „suskaidyk į mažesnį", „pasiteirauk, kaip sekasi") niekada
+    # nesuveikdavo. Tai penktas tos pačios šeimos radinys po `step_perception_options`,
+    # `bridge_bound`, `step_said` ir `progress_key`.
+    state.dialog.awaiting = step.awaits or ("client_action" if step.kind != "action" else None)
+    state.dialog.awaiting_turns = state.case.waits
     if insists and step.awaits and _client_said(state, step.awaits):
         # Klientas tai jau užsiminė, bet klausimas yra per svarbus, kad eitume iš spėjimo:
         # patikslinam, o ne klausiam tuščiai („jūs sakėte, kad… patikslinu").
@@ -1382,6 +1511,9 @@ def _module_plan_inner(state: Any, rt: Any, call, facts: dict[str, str], *, rule
             awaiting=step.awaits,
         )
     if step.kind in ("ask", "instruct"):
+        chance = _last_chance(state, rt, call, step)
+        if chance is not None:
+            return chance
         exhausted = _repeat_guard(state, rt, call)
         if exhausted is not None:
             return exhausted
@@ -1512,6 +1644,8 @@ def _caller_is_lost(state: Any, rt: Any) -> bool:
 
     if state.dialog.stuck_count < limits.get("stuck_fix_gives_up"):
         return False
+    if not _no_way_forward(state):
+        return False  # jis vis dar dirba su mumis — tai ne aklavietė
     if state.case.summarised or state.ticket.stage:
         return False  # jau baigiam
     state.case.facts.setdefault("_lost_the_thread", "yes")

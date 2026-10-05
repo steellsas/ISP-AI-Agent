@@ -263,6 +263,18 @@ repeat_request:
   - "ką turiu daryti"
   - "ka turiu daryti"
 
+# TRUMPAS „nežinau" be jokios detalės — vienintelis atvejis, kai kliento ėjimas nieko nepridėjo.
+# Viskas, kas pasako, KUR jis užstrigo („nerandu", „čia dvi dėžutės", „nematau užrašo"), yra
+# informacija, ir agentas su tuo dirba toliau (8 banga).
+shrug:
+  - "nežinau"
+  - "nezinau"
+  - "neaišku"
+  - "neaisku"
+  - "nesuprantu"
+  - "nesupratau"
+  - "neturiu nuovokos"
+
 confused:
   - "nesuprantu"
   - "nesupratau"

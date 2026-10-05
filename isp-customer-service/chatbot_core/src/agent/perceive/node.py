@@ -42,6 +42,9 @@ def read_turn_start(state: Any, rt: Any, user_input: str | None) -> None:
     # turn's "understood" directive leaks into their replies.
     if state.ticket.stage:
         state.turn.understanding = None
+    previous = state.dialog.last_heard
+    if previous:
+        state.dialog.recent_heard = [previous, *state.dialog.recent_heard][:3]
     state.dialog.last_heard = (user_input or "").strip()
     state.dialog.last_intent = detect_turn_intent(user_input)
     # S2 (2026-08-24): a background telemetry read finished while the caller was busy —

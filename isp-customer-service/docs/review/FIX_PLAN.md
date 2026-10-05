@@ -688,6 +688,75 @@ Case, ar jis pajudėjo. Dabar moka.
 
 **Tikrinta:** 1455 passed, 1 skipped; eval 195/195.
 
+## Banga 8 — agentas asistuoja (šaka `fix/wave-8-assist`, 2026-10-05)
+
+Andrius: *„palaukimas: kai kliento prašoma kažką padaryti, reikia sulaukti, kol tai padarys,
+pasitikslinti, ar padarė, jei tyla — paklausti, kaip sekasi, ar aišku ir ką darys. Kad agentas
+asistuotų, neskubėtų su veiksmais ir nenubėgtų į išvadas, kad negali to išspręsti. Mums agentas
+yra asistentas: diagnozuoja gedimą ir ieško, kaip padėti klientui. Dažnai klientai blogai laikosi
+instrukcijų, nepilnai viską padaro arba pasiduoda, kai kažko nebesupranta."*
+
+Ir, svarbiausia, apie ciklą: *„skaičiuoti ėjimus neteisinga — vienam klientui routeriui perkrauti
+užtenka vieno sakinio, kitam reikia dešimties klausimų, ir tai ne ciklas, o darbas… Nuo kliento
+bendradarbiavimo priklauso: jei klientas pats ieško ir stengiasi, suporto žmogus tikrai padeda.
+Bet jei neatsako ir nenori pats spręsti — žmogus baigtų po kelių tų pačių klausimų."*
+
+### Radinys: kantrybė buvo parašyta ir neprijungta
+
+`state.dialog.awaiting` ir `awaiting_turns` v2 variklyje buvo tik **skaitomi** — niekas jų nepildė.
+Tad visa direktyvų šeima niekada nesuveikdavo: *„klientas dar daro — pasakyk, kad palauksi, ir
+NEKARTOK instrukcijos"*, *„nepasekė — suskaidyk į MAŽESNĮ"*, *„vis dar nepasiseka — imk mažiausią
+įmanomą dalį"*, *„ilgas laukimas — pasiteirauk, kaip sekasi"*, ir `scripted_wait_ack` („Gerai,
+palauksiu" be LLM). Tai **penktas** tos pačios šeimos radinys po `step_perception_options`,
+`resolution.bridge_bound`, `step_said` ir `progress_key`: elgsena rašyta v1 vedliui, o v2 Case jos
+neprijungė.
+
+### Kaip dabar matuojamas ciklas — ne ėjimais, o ĮNAŠU
+
+Kiekvienam ėjimui užduodamas vienas klausimas: *ar jis ką nors pridėjo?*
+
+| Pridėjo (skaitliukas NULINASI) | Iš kur |
+|---|---|
+| naujas faktas — net ne tas, kurio klausėm | skaitymo sluoksnis |
+| žingsnis ar vedimo punktas pajudėjo | `case.step` / `guide_step` |
+| klientas **klausia** („o kur tas lizdas?") | `is_real_question` |
+| klientas sako, kad **daro** („einu", „ieškau") | `INTENT_IN_PROGRESS` |
+| klientas aprašo, ką mato — net jei ne atsakymą („čia dvi dėžutės", „nerandu to užrašo") | sakinys iš esmės kitoks nei ankstesni |
+
+**Tuščias** ėjimas yra tik vienas: trumpas „nežinau" be jokios detalės (`shrug` žodynas) arba tas
+pats sakinys. Tik jie didina `case.stall`.
+
+**Tyla nėra tuščias ėjimas** (Andrius: *„jei klientas tyli, reikia suprasti kodėl… panašiai kaip
+identifikacijoje — klausiame, tiksliname, paaiškiname, kodėl ta informacija svarbi"*). Ji turi savo
+skaitliuką (`silence_asks`) ir savo žodžius: pirma *„ar pavyksta? gal pasakykite, ką matote"*,
+paskui — **kodėl** to reikia ir mažiausias įmanomas klausimas.
+
+### Kas pakeista
+
+| # | Kas | Kur |
+|---|---|---|
+| **A1** | Laukimo būsena prijungta prie v2 (`dialog.awaiting`, `awaiting_turns` iš `case.waits`) — penkios kantrybės direktyvos pradėjo veikti | `case_rule._module_plan_inner` |
+| **A2** | `case.stall` — tušti ėjimai, ne ėjimai. Pakartojimų sargas, „pasimetęs klientas" ir pasidavimas **nebeveikia**, kol klientas dirba | `case_rule._tick_waiting`, `_turn_contributed`, `_no_way_forward` |
+| **A3** | Tylos kelias: `case.silence_asks` + direktyvos („ar pavyksta?" → „kodėl to reikia" + mažiausias klausimas) | `case_rule`, `context_card._assist_the_caller` |
+| **A4** | **„Dar vienas šansas" visada** prieš registraciją: sąžiningai pasakom, ko nepavyksta išsiaiškinti (ir kodėl to reikia — kortelės `needs.<faktas>.why`), paprašom pabandyti dar kartą, ir tik tada meistras | `case_rule._last_chance`, `context_card._one_more_chance` |
+| **A5** | Agento repertuaras gilėja (perfrazuoti → mažiausia dalis → kaip surasti + kodėl), o kol klientas dirba, meistras **neminimas** | `context_card._assist_the_caller`, `prompts/skills/instruct_step.md` |
+
+Ribos duomenyse: `stall_before_last_chance: 2`, `silence_before_last_chance: 2`,
+`waits_before_help: 2`.
+
+### Ateities pastaba (NEĮGYVENDINTA, tyčia)
+
+Andrius (2026-10-05): *„klientas turės pasirinkti, ar mokėti už paslaugą, ar tai padaryti telefonu.
+Pvz., routeris ištrauktas iš rozetės: atvykus meistrui ir įjungus maitinimą viskas susitvarko —
+meistras vyko padaryti darbo, kurį klientas galėjo pasidaryti pats, ir už sugaištą laiką turėtų
+susimokėti. Motyvacija pačiam tai susitvarkyti… bet šiuo metu agentas to nevertins, palikta
+meistrams informuoti klientą apie galimus mokesčius."*
+
+Tad agentas apie mokesčius **nekalba** ir to nevertina. Kai prie šito prieisim, tai bus kortelės
+sprendimas (ar gedimą galima pašalinti telefonu) + frazė, ne variklio logika.
+
+**Tikrinta:** 1463 passed, 1 skipped; eval 195/195.
+
 ## Banga 5 — valymas (šaka `fix/wave-5`, 2026-09-28)
 
 Andrius: *„manau galime apjungti tuos tris“* — penktoji banga sujungia tai, kas iki šiol gulo

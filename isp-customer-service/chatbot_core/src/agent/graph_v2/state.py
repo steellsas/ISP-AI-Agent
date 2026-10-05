@@ -309,6 +309,8 @@ class DialogState(BaseModel):
     # gyvai 2026-10-02 ta pati instrukcija nuskambėjo du kartus, o tarp jų įsiterpė „laukiu jūsų
     # atsakymo", tad lyginimas tik su prieš tai buvusiu atsakymu to nepamatė (7c banga).
     recent_replies: list[str] = Field(default_factory=list)
+    # Paskutiniai KLIENTO sakiniai (naujausias pirmas) — kad matytume, ar jis pasakė ką nors nauja.
+    recent_heard: list[str] = Field(default_factory=list)
     # (doc, section, step) of the last injected playbook section (trace dedup).
     last_rag_injection_key: list[Any] | None = None
 
@@ -366,6 +368,8 @@ class TurnDirectives(BaseModel):
     recheck: dict[str, Any] | None = None
     # Kas padaryta ir ką išsiaiškinom — išvada prieš registraciją ar prieš pabaigą.
     summary: dict[str, Any] | None = None
+    # Ko nepavyksta išsiaiškinti — ir dar vienas šansas prieš registraciją.
+    last_chance: dict[str, Any] | None = None
 
 
 class TurnScratch(BaseModel):
@@ -537,6 +541,22 @@ class CaseState(BaseModel):
     # else could: has the phone work been done before a technician is sent (`only_after`), and
     # what does the technician need to know we already tried.
     did: list[str] = Field(default_factory=list)
+    # TUŠTI ėjimai iš eilės: klientas nei pridėjo informacijos, nei pasakė, kad daro. Andrius
+    # (2026-10-05): *„skaičiuoti ėjimus neteisinga — vienam klientui routeriui perkrauti užtenka
+    # vieno sakinio, kitam reikia dešimties klausimų, ir tai ne ciklas, o darbas. Klausimas, kaip
+    # nepapulti į ciklą."* Tad skaičiuojam ne ėjimus, o TUŠČIUS ėjimus: viskas, kas ką nors
+    # pridėjo (naujas faktas, kliento klausimas, „einu, darau", naujas sakinys), skaitliuką
+    # nulina. Tyla čia neįeina — ji turi savo kelią (8 banga).
+    stall: int = 0
+    # Kiek ėjimų jau laukiam ŠIO žingsnio (ir kai klientas dirba, ir kai ne) — iš to statoma
+    # agento repertuaro eilė: perfrazuoti -> mažiausia dalis -> kaip rasti + kodėl to reikia.
+    waits: int = 0
+    # Kiek kartų į tylą jau reagavom. Tyla nėra tuščias ėjimas: reikia suprasti, KODĖL klientas
+    # tyli (nežino, ką pasakyti; nesuprato; dar ieško), tad pasitiksliname ir paaiškiname, kodėl
+    # to reikia — kaip identifikacijoje (Andrius, 2026-10-05).
+    silence_asks: int = 0
+    # Kuriems žingsniams „dar vienas šansas" jau duotas (vienam žingsniui vieną kartą).
+    chances: dict[str, bool] = Field(default_factory=dict)
     # Kas IŠ TIKRŲJŲ buvo padaryta (ne pereita). `did` turi platesnę reikšmę — „įvykdyta ar
     # bent bandyta" — ir ja laikosi `escalate.only_after`, todėl į jį įrašomi ir praleisti bei
     # pasiduoti žingsniai. Išvada klientui ir tiketas meistrui privalo turėti tik darbus: gyvai

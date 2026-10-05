@@ -453,6 +453,7 @@ class TestALostCallerIsNotAnIdentificationProblem:
         state.case.worked = ["guide"]
         state.case.did = ["guide"]
         state.dialog.stuck_count = 3
+        state.case.stall = 2  # ir tušti ėjimai: klientas nebepriduria nieko (8 banga)
 
         plan = case_rule.plan(state, rt)
 
