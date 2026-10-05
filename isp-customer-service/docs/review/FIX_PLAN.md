@@ -779,7 +779,22 @@ neminėjo. Bet vedimas ėjo priekyje kliento, ir modelis čia buvo teisus **kiek
 Ir dokumentacijoje: `BALSO_TESTAVIMAS.md` gavo **„du skambučiai, kurie patikrina viską"** — pažodinį
 scenarijų su tuo, ką sakyti ir ko tikėti (Andrius: *„kalbant pamiršau, ką turėčiau patestuoti"*).
 
-**Tikrinta:** 1466 passed, 1 skipped; eval 195/195.
+### B5 · IP adresas diktuojamas, ne skaitomas kaip skaičius
+
+Andrius (2026-10-05): *„adreso diktavimas — dabar sako kaip skaičius, 192 tūkstančiai… turėtų
+diktuojama kaip IP adresas: 192 taškas 168 taškas 1 taškas 1."* Balsas `192.168.0.1` skaitė kaip
+vieną didelį skaičių: klientas tokio adreso neįveda, o ilgas skaičius dar ir ištęsia ėjimą.
+
+Prieš sintezę (ir tik prieš ją — ekrane, trace'e ir tikete tekstas nekinta) sakinys einamas per
+`adapters/tts/sentences.py::speakable`:
+
+| Tekste | Balse |
+|---|---|
+| `192.168.0.1` | „192 taškas 168 taškas 0 taškas 1" |
+| `admin/admin` | „admin, admin" (pauzė, ne „arba" — tai vardas IR slaptažodis, ir ne „slash") |
+| `19.99`, `Tilžės g. 60`, `***2353` | nekeičiama |
+
+**Tikrinta:** 1473 passed, 1 skipped; eval 195/195.
 
 ## Banga 5 — valymas (šaka `fix/wave-5`, 2026-09-28)
 

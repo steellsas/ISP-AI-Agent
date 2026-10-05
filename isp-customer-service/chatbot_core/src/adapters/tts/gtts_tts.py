@@ -47,6 +47,9 @@ class GTTSProvider:
         from gtts import gTTS  # deferred import (optional dependency)
 
         lang = language or self._default_language
+        from .sentences import speakable
+
+        text = speakable(text, lang)
         buffer = io.BytesIO()
         gTTS(text=text, lang=lang, tld=self._tld, slow=self._slow).write_to_fp(buffer)
         audio = buffer.getvalue()

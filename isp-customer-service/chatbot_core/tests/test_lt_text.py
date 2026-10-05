@@ -94,3 +94,40 @@ class TestDomainPrompt:
     def test_prompt_names_the_demo_localities(self):
         for name in ("Šiauliai", "Tilžės", "Dainų", "Ginkūnai", "Bubiai"):
             assert name in DOMAIN_PROMPT_LT
+
+
+class TestDictatedForSpeech:
+    """Kaip balsas DIKTUOJA techninį tekstą (8b banga, gyvai 2026-10-05).
+
+    Andrius: *„adreso diktavimas — dabar sako kaip skaičius, 192 tūkstančiai… turėtų diktuojama
+    kaip IP adresas: 192 taškas 168 taškas 1 taškas 1."* Ilgas skaičius dar ir ištęsia ėjimą.
+    """
+
+    def test_an_ip_is_dictated_piece_by_piece(self):
+        from adapters.tts import speakable
+
+        said = speakable("Naršyklėje atidarykite 192.168.0.1 arba 192.168.1.1.")
+
+        assert "192 taškas 168 taškas 0 taškas 1" in said
+        assert "192 taškas 168 taškas 1 taškas 1" in said
+
+    def test_a_slash_becomes_a_pause_not_a_word(self):
+        from adapters.tts import speakable
+
+        assert speakable("Prisijungimas dažnai admin/admin.") == (
+            "Prisijungimas dažnai admin, admin."
+        )
+        assert "Save, Apply" in speakable("Paspauskite „Išsaugoti (Save / Apply)“.")
+
+    @pytest.mark.parametrize(
+        "text", ["Kaina 19.99 eurų.", "Tilžės g. 60.", "Skambinsime ***2353.", "Butas 7."]
+    )
+    def test_everything_else_is_left_alone(self, text):
+        from adapters.tts import speakable
+
+        assert speakable(text) == text
+
+    def test_other_languages_say_dot(self):
+        from adapters.tts import speakable
+
+        assert "192 dot 168 dot 0 dot 1" in speakable("Open 192.168.0.1 please.", "en")
