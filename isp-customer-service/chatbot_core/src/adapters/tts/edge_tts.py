@@ -71,6 +71,9 @@ class EdgeTTSProvider:
         voice — lower ('-5%') sounds more matter-of-fact/technical (Andrius
         2026-08-20). Both from the config page, validated, engine default when
         unset."""
+        from .sentences import speakable
+
+        sentence = speakable(sentence, self._default_language)
         kwargs = {}
         rate = self._pct("TTS_RATE")
         if rate:

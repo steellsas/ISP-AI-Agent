@@ -688,6 +688,219 @@ Case, ar jis pajudėjo. Dabar moka.
 
 **Tikrinta:** 1455 passed, 1 skipped; eval 195/195.
 
+## Banga 8 — agentas asistuoja (šaka `fix/wave-8-assist`, 2026-10-05)
+
+Andrius: *„palaukimas: kai kliento prašoma kažką padaryti, reikia sulaukti, kol tai padarys,
+pasitikslinti, ar padarė, jei tyla — paklausti, kaip sekasi, ar aišku ir ką darys. Kad agentas
+asistuotų, neskubėtų su veiksmais ir nenubėgtų į išvadas, kad negali to išspręsti. Mums agentas
+yra asistentas: diagnozuoja gedimą ir ieško, kaip padėti klientui. Dažnai klientai blogai laikosi
+instrukcijų, nepilnai viską padaro arba pasiduoda, kai kažko nebesupranta."*
+
+Ir, svarbiausia, apie ciklą: *„skaičiuoti ėjimus neteisinga — vienam klientui routeriui perkrauti
+užtenka vieno sakinio, kitam reikia dešimties klausimų, ir tai ne ciklas, o darbas… Nuo kliento
+bendradarbiavimo priklauso: jei klientas pats ieško ir stengiasi, suporto žmogus tikrai padeda.
+Bet jei neatsako ir nenori pats spręsti — žmogus baigtų po kelių tų pačių klausimų."*
+
+### Radinys: kantrybė buvo parašyta ir neprijungta
+
+`state.dialog.awaiting` ir `awaiting_turns` v2 variklyje buvo tik **skaitomi** — niekas jų nepildė.
+Tad visa direktyvų šeima niekada nesuveikdavo: *„klientas dar daro — pasakyk, kad palauksi, ir
+NEKARTOK instrukcijos"*, *„nepasekė — suskaidyk į MAŽESNĮ"*, *„vis dar nepasiseka — imk mažiausią
+įmanomą dalį"*, *„ilgas laukimas — pasiteirauk, kaip sekasi"*, ir `scripted_wait_ack` („Gerai,
+palauksiu" be LLM). Tai **penktas** tos pačios šeimos radinys po `step_perception_options`,
+`resolution.bridge_bound`, `step_said` ir `progress_key`: elgsena rašyta v1 vedliui, o v2 Case jos
+neprijungė.
+
+### Kaip dabar matuojamas ciklas — ne ėjimais, o ĮNAŠU
+
+Kiekvienam ėjimui užduodamas vienas klausimas: *ar jis ką nors pridėjo?*
+
+| Pridėjo (skaitliukas NULINASI) | Iš kur |
+|---|---|
+| naujas faktas — net ne tas, kurio klausėm | skaitymo sluoksnis |
+| žingsnis ar vedimo punktas pajudėjo | `case.step` / `guide_step` |
+| klientas **klausia** („o kur tas lizdas?") | `is_real_question` |
+| klientas sako, kad **daro** („einu", „ieškau") | `INTENT_IN_PROGRESS` |
+| klientas aprašo, ką mato — net jei ne atsakymą („čia dvi dėžutės", „nerandu to užrašo") | sakinys iš esmės kitoks nei ankstesni |
+
+**Tuščias** ėjimas yra tik vienas: trumpas „nežinau" be jokios detalės (`shrug` žodynas) arba tas
+pats sakinys. Tik jie didina `case.stall`.
+
+**Tyla nėra tuščias ėjimas** (Andrius: *„jei klientas tyli, reikia suprasti kodėl… panašiai kaip
+identifikacijoje — klausiame, tiksliname, paaiškiname, kodėl ta informacija svarbi"*). Ji turi savo
+skaitliuką (`silence_asks`) ir savo žodžius: pirma *„ar pavyksta? gal pasakykite, ką matote"*,
+paskui — **kodėl** to reikia ir mažiausias įmanomas klausimas.
+
+### Kas pakeista
+
+| # | Kas | Kur |
+|---|---|---|
+| **A1** | Laukimo būsena prijungta prie v2 (`dialog.awaiting`, `awaiting_turns` iš `case.waits`) — penkios kantrybės direktyvos pradėjo veikti | `case_rule._module_plan_inner` |
+| **A2** | `case.stall` — tušti ėjimai, ne ėjimai. Pakartojimų sargas, „pasimetęs klientas" ir pasidavimas **nebeveikia**, kol klientas dirba | `case_rule._tick_waiting`, `_turn_contributed`, `_no_way_forward` |
+| **A3** | Tylos kelias: `case.silence_asks` + direktyvos („ar pavyksta?" → „kodėl to reikia" + mažiausias klausimas) | `case_rule`, `context_card._assist_the_caller` |
+| **A4** | **„Dar vienas šansas" visada** prieš registraciją: sąžiningai pasakom, ko nepavyksta išsiaiškinti (ir kodėl to reikia — kortelės `needs.<faktas>.why`), paprašom pabandyti dar kartą, ir tik tada meistras | `case_rule._last_chance`, `context_card._one_more_chance` |
+| **A5** | Agento repertuaras gilėja (perfrazuoti → mažiausia dalis → kaip surasti + kodėl), o kol klientas dirba, meistras **neminimas** | `context_card._assist_the_caller`, `prompts/skills/instruct_step.md` |
+
+Ribos duomenyse: `stall_before_last_chance: 2`, `silence_before_last_chance: 2`,
+`waits_before_help: 2`.
+
+### Ateities pastaba (NEĮGYVENDINTA, tyčia)
+
+Andrius (2026-10-05): *„klientas turės pasirinkti, ar mokėti už paslaugą, ar tai padaryti telefonu.
+Pvz., routeris ištrauktas iš rozetės: atvykus meistrui ir įjungus maitinimą viskas susitvarko —
+meistras vyko padaryti darbo, kurį klientas galėjo pasidaryti pats, ir už sugaištą laiką turėtų
+susimokėti. Motyvacija pačiam tai susitvarkyti… bet šiuo metu agentas to nevertins, palikta
+meistrams informuoti klientą apie galimus mokesčius."*
+
+Tad agentas apie mokesčius **nekalba** ir to nevertina. Kai prie šito prieisim, tai bus kortelės
+sprendimas (ar gedimą galima pašalinti telefonu) + frazė, ne variklio logika.
+
+### Pirmas gyvas 8 bangos skambutis: dokumentas nubėgo priekyje kliento (B1–B3)
+
+DHCP vedimas `logs/sessions/20261005-113912-078931-0001.jsonl`. Kantrybė suveikė — į „Ką padaryt,
+nesupratu" ir „Nežinau, o kaip čia reikia apijungti?" agentas paaiškino, kaip telefoną prijungti
+prie WiFi, o į „aš nieko nepadariau dar" atsakė „nieko tokio, pažiūrėkime paprasčiau". Meistro
+neminėjo. Bet vedimas ėjo priekyje kliento, ir modelis čia buvo teisus **kiekviename** ėjime:
+
+| Klientas | `perception.step` | Variklis |
+|---|---|---|
+| „Gerai, pažiūrės ten lipduko" | `waiting, is_answer=false` | **pajudino** punktą |
+| „Gerai, pabandom admin… vedu 192.168.1.1" | `waiting, is_answer=true` | pajudino |
+| „Matau admin, admin sakot įvesti, ne?" | `waiting, is_answer=true` | pajudino |
+| „Įvedžiau. A, cedariau." | `done` | pajudino (teisingai) |
+
+| # | Kas pakeista | Kur |
+|---|---|---|
+| **B1** | Vedimo punktas juda tik tada, kai klientas **praneša, kad padarė**: `label="waiting"`, `is_answer=false` ir `in_progress` intencija punkto nebejudina. Iki tol sprendė tik `understanding.type == "answer"`, o jis „gerai, pažiūrėsiu" laikė atsakymu | `case_rule._answered_the_written_step` |
+| **B2** | `label="waiting"` taip pat **blokuoja** bekontekstes euristikas: „Matau admin…" per `detect_restored` judindavo vedimą | `case_rule._model_says_still_working` |
+| **B3** | Nepavykusi patikra **neskuba išvadų**, kol klientas dar dirba („ir rodo atsiverti…") | `case_rule._absorb` |
+| **B4** | `reexplain_confused` įgūdis nebegali išgalvoti veiksmo — gyvai jis išrado mygtuką routerio galinėje pusėje, kurio dokumente nėra | `prompts/skills/reexplain_confused.md` |
+
+Ir dokumentacijoje: `BALSO_TESTAVIMAS.md` gavo **„du skambučiai, kurie patikrina viską"** — pažodinį
+scenarijų su tuo, ką sakyti ir ko tikėti (Andrius: *„kalbant pamiršau, ką turėčiau patestuoti"*).
+
+### B5 · IP adresas diktuojamas, ne skaitomas kaip skaičius
+
+Andrius (2026-10-05): *„adreso diktavimas — dabar sako kaip skaičius, 192 tūkstančiai… turėtų
+diktuojama kaip IP adresas: 192 taškas 168 taškas 1 taškas 1."* Balsas `192.168.0.1` skaitė kaip
+vieną didelį skaičių: klientas tokio adreso neįveda, o ilgas skaičius dar ir ištęsia ėjimą.
+
+Prieš sintezę (ir tik prieš ją — ekrane, trace'e ir tikete tekstas nekinta) sakinys einamas per
+`adapters/tts/sentences.py::speakable`:
+
+| Tekste | Balse |
+|---|---|
+| `192.168.0.1` | „192 taškas 168 taškas 0 taškas 1" |
+| `admin/admin` | „admin, admin" (pauzė, ne „arba" — tai vardas IR slaptažodis, ir ne „slash") |
+| `19.99`, `Tilžės g. 60`, `***2353` | nekeičiama |
+
+**Tikrinta:** 1473 passed, 1 skipped; eval 195/195.
+
+## Banga 8c — tiketas pasako, kas jau bandyta; mirusios atšakos išimtos (šaka `fix/wave-8-assist`, 2026-10-05)
+
+Perėjus VISUS `GraphState` laukus (skaitomi kode, bet niekada nerašomi) išlindo dar keturi tos
+pačios šeimos radiniai kaip `step_perception_options`, `resolution.bridge_bound`,
+`case.step_said`, `progress_key` ir `dialog.awaiting`: elgsena rašyta v1 vedliui ir prie v2
+neprijungta. Andrius: *„padarom D1, o jei D2 ir D4 nereikalingi — galime ištrinti; dėl likusių
+reikia pagalvoti, kiek tai dabar aktualu."*
+
+### D1 · „Kas jau bandyta" tikete neatsirasdavo niekada
+
+`executor_flow` eilutę `ticket.details.tried` statė iš `diagnosis.failed_hypotheses` ir
+`rejected_hypotheses`, o v2 variklyje juos tik **išvalo** (`identification.py:40–41`) — niekas
+nepildo. Tad meistras niekada negavo to, dėl ko ir buvo kurtas apibendrinimas: ko nekartoti.
+
+Dabar skaitoma iš Case'o (`executor_flow._tried_causes`):
+
+| Šaltinis | Ką reiškia |
+|---|---|
+| `case.spent` | gedimai, kurių sprendimas BUVO paleistas ir nepadėjo |
+| `case.announced` ∩ dabar `ruled_out` | gedimai, apie kuriuos kalbėjome su klientu ir kuriuos faktai nuo tada atmetė |
+
+Visų `ruled_out` kortelių **nevardijam** sąmoningai: išmatuota, kad tipiniame skambutyje
+telemetrija jų atmeta 10–11 iš 12, ir meistrui tai ne žinia, o triukšmas. Dabartinis gedimas
+sąraše nefigūruoja — jis tikete jau yra kaip priežastis.
+
+### D2, D4 · išimta
+
+| # | Kas | Kodėl išimta |
+|---|---|---|
+| **D2** | `context_card` atšaka „2+ kartus nesupranta" (`dialog.step_confusions >= 2`) | skaitliuko niekas nedidino, tad atšaka niekada nesuveikė — o jos tekstas dar siūlė meistrą tuo metu, kai klientas dirba, ką 8 banga kaip tik uždraudė. Pakopą dabar veda `case.stall` per `_assist_the_caller` |
+| **D4** | sutikimo vartai: `gate.py` patikra, `Action.consent`, `dialog.consents`, v1 `Step.consent` (`resolution.py`, `faults.py`, `schema.py`, viena `consent: not_required` eilutė kortelėje) | `dialog.consents` niekada nebuvo rašomas, tad **bet kuris** veiksmas su `consent: required` būtų užblokuotas amžinai. Kliento sutikimo klausia PASIŪLYMO moduliai (`offer_bridge`, `offer_guide` → `*_consent` skaitytuvai) — tai ir yra v2 būdas |
+
+`policies.yaml` komentaras, teigęs, kad sutikimą tikrina vartai, pataisytas.
+
+### Palikta kitiems etapams (Andrius: „reikia pagalvoti, kiek tai dabar aktualu")
+
+**D3** `diagnosis.evidence_ask_counts` tik mažinamas, niekada nedidinamas (`delivery.py:70`,
+`speak/node.py:201`) · **H2** eval'o `reply_len` matuoja `turn.reply`, kuris nesutampa su trace'u ·
+**K1** `understand._ALLOWED` ranka surašyti 6 faktai prieš 14 kortelėse deklaruotų · **K2** nėra
+testo „vienas žodis — viena reikšmė" · **S1** `fast_path` suveikia ~1 iš 36 skaitymų ·
+**G15**, **G26** iš §6.
+
+**Tikrinta:** 1482 passed, 1 skipped; eval 195/195.
+
+## Banga 8b — ne mano sritis ir neperskaitomas laikas (šaka `fix/wave-8-assist`, 2026-10-05)
+
+Du skambučiai (`logs/sessions/20261005-16*`): *„atrodo, kaip ir viskas suveikė"*. Abu gedimai
+išspręsti telefonu, IP adresas diktuojamas, laukimas veikia. Liko dvi vietos, kur agentas
+nuskriaudė save pats.
+
+### C1 · „Tai ne mano sritis" tvarkant gedimą
+
+Klientas sumurmėjo neįskaitomą sakinį (ASR grąžino kratinį), ir agentas atsakė, kad tai ne jo
+sritis — nors pats ką tik davė žingsnį ir laukė atsakymo. Nesupratimas buvo **ASR**, o atsakymas
+rėmėsi į temos ribą: klientui tai skamba kaip „čia ne mano reikalas", kai jis kaip tik vykdo
+agento nurodymą.
+
+Įgūdžių promptuose (`ask_fact`, `reexplain_confused`) dabar parašyta tiesiai: **sakinys, kurio
+nenugirdai, nėra kita sritis** — pasakom, kad neišgirdom, ir pakartojam savo klausimą paprasčiau.
+Riba (`< 7000` simbolių promptui) neleido šito dėti į bendrą `partials/identity.md` — ta eilutė
+`instruct_step` būtų išpūtusi iki 7102, tad ji guli tik tuose dviejuose įgūdžiuose, kuriems
+reikalinga.
+
+### C2 · Laikas tikete buvo neperskaitomas
+
+Į tiketą pakliuvo **„na dvylikos, iki trilykos, valandos"**, anksčiau — **„po penkiu aroktos
+valandos"** ir **„6 00 123 0"**. Visi trys praėjo patikimumo patikrą, nes ji klausė tik *„ar yra
+skaitmuo arba žodis „val"?"*. Meistras iš to laiko nesurenka.
+
+Dabar laikas ne *praleidžiamas*, o **surenkamas** (`decide/rules/ticket.py::hours_words`):
+
+| Klientas pasakė | Tikete |
+|---|---|
+| „na dvylikos, iki trilykos, valandos" | „nuo 12 iki 13 val." |
+| „nuo septyniolikos iki astuoniolikos", „17-18" | „nuo 17 iki 18 val." |
+| „po penkiu aroktos valandos" | „po 5 val." |
+| „iki 15 valandos", „apie 15" | „iki 15 val.", „apie 15 val." |
+| „per pietus arba ryte", „vakarais" | kliento žodžiais (dienos dalis skaitoma) |
+| „kada tik norit", „nesvarbu kada", „visą dieną" | „bet kada" |
+| **„6 00 123 0"**, „99 val", „aaa nu nežinau" | **nieko** → perklausiam |
+
+Valandų žodžiai paverčiami skaičiais lyginant **žodžio pradžią** (`hour_words` žodynas:
+`dvylik`→12, `trilyk`→13, `septyniolik`→17…), nes ASR galūnes darko — būtent dėl to „trilykos"
+anksčiau nebuvo niekas. Kai laiko atsakyme nėra **visai**, grąžinama `""`, ir suveikia jau
+esantis **vienas** perklausimas; po jo — „bet kada". Dienos dalys (`hours_when_words`) ir
+„bet kada" sinonimai (`hours_anytime_words`) — žodyne, ne kode.
+
+**Tikrinta:** 1479 passed, 1 skipped; eval 195/195. Nauji testai:
+`test_rules_ticket.py::TestTheHoursAnswerIsAssembled` (6), vienas `test_understand.py` tikslinimas
+(„po 17 valandos" → „po 17 val." — tyčia).
+
+### Pakeliui: eval'as gali tyliai dirbti su DEMO baze
+
+Paleidus `python -m agent.eval.run_eval`, Python pirma importuoja paketą `agent` (o tas per
+`graph_v2` — `tools.py`, kur `DB_PATH = database_path()` nuskaitomas **importo metu**) ir tik tada
+vykdo `run_eval` kūną, kuris nustato `DATABASE_PATH=…eval.db`. Rezultatas: harness'as sėja ir
+atkuria `isp_database.eval.db`, o agentas skaito ir rašo `isp_database.db` — demo bazę. Scenarijai
+pradeda matyti `open_ticket_exists` iš ankstesnių pravedimų, ir kiekvienas pravedimas daro kitą
+blogesnį (matyta: 195/195 → 175/195 → 153/195, o tas pats scenarijus atskirai su teisingu
+paleidimu — 6/6).
+
+Dokumentuotas būdas (`python src/agent/eval/run_eval.py`) veikia, bet tylus kritimas į demo bazę
+yra spąstai — harness'as turėtų **patikrinti**, kad `agent.tools.DB_PATH` sutampa su
+`DATABASE_PATH`, ir nutraukti darbą, jei ne. Įrašyta į atvirų darbų sąrašą.
+
 ## Banga 5 — valymas (šaka `fix/wave-5`, 2026-09-28)
 
 Andrius: *„manau galime apjungti tuos tris“* — penktoji banga sujungia tai, kas iki šiol gulo

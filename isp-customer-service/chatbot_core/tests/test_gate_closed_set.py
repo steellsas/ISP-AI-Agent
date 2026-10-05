@@ -49,14 +49,6 @@ def test_role_outside_the_active_procedure_is_dropped(make_state, make_runtime):
     assert plan.action.type == "none"
 
 
-def test_consent_required_needs_the_recorded_consent(make_state, make_runtime):
-    state, rt, _ = _call(make_state, make_runtime)
-    action = Action(type="procedure_step", name="reboot", consent="required")
-    assert check_plan(state, rt, _plan(action)).action.type == "none"
-    state.dialog.consents["reboot"] = True
-    assert check_plan(state, rt, _plan(action)).action == action
-
-
 def test_forbidden_action_is_dropped(make_state, make_runtime, monkeypatch):
     from agent.contract import policies
 

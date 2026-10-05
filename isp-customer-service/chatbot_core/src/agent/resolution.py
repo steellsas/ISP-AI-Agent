@@ -73,11 +73,6 @@ class Step:
     # INSTRUCT/ACTION only: explicit next step (overrides fall-through), so two
     # instruct chains can converge on the same verify step.
     goto: str = ""
-    # ESCALATE only: ask the caller's consent before registering (default). False =
-    # the registration is a NECESSITY, not an offer (e.g. register_after_bridge after a
-    # working bridge — the router IS dead): the engine registers on arrival and the
-    # narrator only ANNOUNCES it ("užregistravau, kolegos susisieks ir paaiškins").
-    consent: bool = True
 
 
 @dataclass(frozen=True)

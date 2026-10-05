@@ -12,7 +12,7 @@ from typing import Any
 
 from ...closing import close_call
 from ...contract import limits
-from ...contract.locale import phrase_or, vocab
+from ...contract.locale import phrase_or, vocab, vocab_map
 from ..plan import Action, Say, TurnPlan
 
 STAGE = "ticket"
@@ -221,9 +221,8 @@ def ticket_capture(state, rt, user_input: str) -> None:
                         state.ticket.stage = "hours"
                         return
                 else:
-                    s.ticket.contact_hours = _hours_only(re.sub(r"[?!]", " ", value).strip(" .,"))[
-                        :80
-                    ]
+                    said = re.sub(r"[?!]", " ", value).strip(" .,")
+                    s.ticket.contact_hours = (hours_words(said) or _hours_only(said))[:80]
                     rt.tracer.emit("decision", intent="ticket_dialogue", action="hours_captured")
                     state.ticket.stage = "done"
                     return
@@ -304,10 +303,8 @@ def ticket_capture(state, rt, user_input: str) -> None:
         # STT sticks "?" mid-string too ("Bet kada? Bet kurio laiko?") —
         # scrub ALL question/exclamation marks before the ticket/announce.
         clean = re.sub(r"\s+", " ", re.sub(r"[?!]", " ", clean)).strip(" .,")
-        low_h = clean.lower()
-        plausible = bool(re.search(r"\d", low_h)) or any(
-            m in low_h for m in vocab("contact_hours_marks")
-        )
+        when = hours_words(clean)
+        plausible = bool(when)
         if not plausible and not ctx.hours_retry:
             ctx.hours_retry = True
             ctx.ask_retry = "hours"
@@ -316,15 +313,70 @@ def ticket_capture(state, rt, user_input: str) -> None:
         # Strip trailing STT punctuation — "Bet kada?" landed on the ticket
         # (and in the announce) with the question mark. Second unclear
         # answer defaults to "bet kada" (spoken back in the announce).
-        s.ticket.contact_hours = _hours_only(clean)[:80] if plausible else "bet kada"
+        s.ticket.contact_hours = when[:80] if plausible else "bet kada"
         rt.tracer.emit("decision", intent="ticket_dialogue", action="hours_captured")
         state.ticket.stage = "done"
     return
 
 
+# Laiko atsakymo skaitymas (hours_words): paliekam tik raides, skaitmenis, dvitaškį ir brūkšnį.
+_CLEAN_RE = re.compile(r"[^\w\s:\-\u2013]")
+_SPACE_RE = re.compile(r"\s+")
+_HOUR = r"(\d{1,2})(?::\d{2})?"
+_HOUR_RE = re.compile(_HOUR)
+_NUO_IKI_RE = re.compile(r"(?:nuo\s+)?" + _HOUR + r"[^\d]{0,14}?iki\s+" + _HOUR)
+_DASH_RE = re.compile(_HOUR + r"\s*[-\u2013]\s*" + _HOUR)
+_PO_RE = re.compile(r"(po)\s+(?:\w+\s+){0,2}?" + _HOUR)
+_IKI_RE = re.compile(r"(iki)\s+(?:\w+\s+){0,2}?" + _HOUR)
+_APIE_RE = re.compile(r"(apie)\s+(?:\w+\s+){0,2}?" + _HOUR)
+
+
 # Escalate reasons after which nothing was done at the device: the ticket must
 # not claim the pack's post-action wording.
 NOTHING_DONE_REASONS = frozenset({"caller_refused", "cannot_now", "cannot_now_asks_ticket"})
+
+
+def hours_words(text: str) -> str:
+    """Kada skambinti — perskaitoma eilutė, arba "" jei atsakyme laiko nėra.
+
+    Gyvai 2026-10-05 į tiketą pakliuvo „na dvylikos, iki trilykos, valandos", anksčiau —
+    „6 00 123 0"; abu atrodė „patikimi", nes turėjo skaitmenį ar žodį „val". Meistrui tai
+    neperskaitoma, tad laikas dabar SURENKAMAS: valandų žodžiai paverčiami skaičiais (ASR juos
+    darko, tad lyginama žodžio pradžia), o iš jų statoma „nuo 12 iki 13 val.", „po 17 val."
+    arba dienos dalis („bet kada", „vakarais"). Neperskaitomas atsakymas grąžina "" — tada
+    suveikia esamas vienas perklausimas, o po jo „bet kada".
+    """
+    low = _CLEAN_RE.sub(" ", (text or "").lower())
+    low = _SPACE_RE.sub(" ", low).strip()
+    if not low:
+        return ""
+    words = vocab_map("hour_words")
+    spelled = [
+        next((digits for stem, digits in words.items() if token.startswith(stem)), token)
+        for token in low.split()
+    ]
+    low = " ".join(spelled)
+    anytime = any(w in low for w in vocab("hours_anytime_words"))
+    when = [w for w in vocab("hours_when_words") if w in low]
+    span = _NUO_IKI_RE.search(low) or _DASH_RE.search(low)
+    if span:
+        first, second = int(span.group(1)), int(span.group(2))
+        if first <= 24 and second <= 24:
+            return f"nuo {first} iki {second} val."
+    one = _PO_RE.search(low) or _IKI_RE.search(low) or _APIE_RE.search(low)
+    if one and int(one.group(2)) <= 24:
+        return f"{one.group(1)} {int(one.group(2))} val."
+    if anytime:
+        return "bet kada"
+    if when:
+        # Dienos dalis perskaitoma ir kliento žodžiais („per pietus arba ryte"), tad sakinys su
+        # ja paliekamas, o ne suvienodinamas iki vieno žodžio.
+        said = _hours_only(_SPACE_RE.sub(" ", re.sub(r"[?!]", " ", text or "")).strip(" .,"))
+        return said if len(said.split()) <= 6 else when[0]
+    hours = [int(h) for h in _HOUR_RE.findall(low) if int(h) <= 24]
+    if len(hours) == 1:
+        return f"apie {hours[0]} val."
+    return ""  # nei laiko, nei dienos dalies — perklausiam
 
 
 def _hours_only(text: str) -> str:

@@ -886,9 +886,12 @@ class TestAStepThatKeepsBeingRepeated:
         case_rule.plan(state, rt)
         said(state, rt, "reachable", "yes")
 
-        rules = [case_rule.plan(state, rt).rule for _ in range(4)]
+        # 8 banga: tylos ėjimas yra kantrus (jis gauna savo žodžius, ne tą patį nurodymą), tad
+        # kol kortelė imasi savo pakartojimo, ėjimų yra daugiau.
+        rules = [case_rule.plan(state, rt).rule for _ in range(7)]
 
         assert rules[0] == "case.reboot"
+        assert "case.last_chance" in rules, f"pirma — dar vienas šansas: {rules}"
         assert "case.retry" in rules, f"the card's own second attempt never came: {rules}"
 
     def test_with_nothing_left_to_try_it_ends_honestly(self, call):
@@ -898,7 +901,9 @@ class TestAStepThatKeepsBeingRepeated:
         record_client(state, rt, "reachable", "yes")
         state.case.fault, state.case.solution, state.case.step = "no_mac_observed", 0, 0
 
-        rules = [case_rule.plan(state, rt).rule for _ in range(6)]
+        # 8 banga: tyla yra kantri (savo žodžiai, ne tas pats nurodymas) + „dar vienas šansas",
+        # tad iki sąžiningos pabaigos ėjimų daugiau.
+        rules = [case_rule.plan(state, rt).rule for _ in range(9)]
 
         assert rules[0] == "case.check_lights"
         assert any(r.startswith("ticket.") or r == "case.escalate" for r in rules), rules
@@ -916,12 +921,12 @@ def test_a_step_given_up_on_does_not_send_the_call_back_into_itself(make_state, 
     state.case.said += ["panel_device", "guide_agreed"]
 
     rules = []
-    for _ in range(8):
+    for _ in range(9):
         plan = case_rule.plan(state, rt)
         rules.append(plan.rule if plan else None)
         state.dialog.turn_count += 1
 
-    assert rules.count("case.guide") <= 4, f"the same step over and over: {rules}"
+    assert rules.count("case.guide") <= 6, f"the same step over and over: {rules}"
     assert any(r and (r.startswith("ticket.") or r == "case.escalate") for r in rules), rules
 
 

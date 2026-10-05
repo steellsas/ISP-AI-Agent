@@ -1,7 +1,9 @@
 # Business policies — what the agent must not do.
 #
-# Filled with the owner; it starts with what the code enforced before. Consent for a
-# procedure step is declared on the step (`consent:`) and checked by the gate.
+# Filled with the owner; it starts with what the code enforced before. The caller's
+# agreement is asked for by the OFFER modules (`offer_bridge`, `offer_guide` -> the
+# `*_consent` detectors), not by a flag on the step: the gate's `consent:` check was
+# removed in wave 8c because nothing ever recorded an agreement for it.
 
 # Who may call which tool now lives in the tool's own manifest
 # (knowledge/tools/<name>.yaml -> requires: [identified]).

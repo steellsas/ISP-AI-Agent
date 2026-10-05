@@ -140,12 +140,10 @@ def register_ticket_from_state(state: Any, rt: Any, step_id: str | None) -> None
     reason = (s.resolution.procedure or {}).get("escalate_reason")
     if reason:
         details += f" {phrase(f'ticket.reason.{reason}')}"
-    # What was already TRIED and ruled out — the human taking over must not redo
-    # it (after-hours philosophy 2026-08-03: the agent attempts, a person takes
-    # over via the ticket with the full attempt history).
-    tried = list(s.diagnosis.failed_hypotheses) + [
-        x.get("cause") for x in s.diagnosis.rejected_hypotheses if x.get("cause")
-    ]
+    # What was already TRIED — the human taking over must not redo it (after-hours
+    # philosophy 2026-08-03: the agent attempts, a person takes over via the ticket with
+    # the full attempt history).
+    tried = _tried_causes(s)
     if tried:
         glosses = ", ".join(phrase_or(f"verdict.{c}.gloss", c) for c in dict.fromkeys(tried))
         details += phrase("ticket.details.tried", causes=glosses)
@@ -183,6 +181,31 @@ def register_ticket_from_state(state: Any, rt: Any, step_id: str | None) -> None
 def _fold(text: str) -> str:
     """Lowercased, for the "is this the same sentence again" check."""
     return " ".join((text or "").lower().split()).strip(" .")
+
+
+def _tried_causes(s: Any) -> list[str]:
+    """Ką ŠIS skambutis jau bandė ir ką pakeliui atmetė — meistrui, kad nedarytų to paties.
+
+    Iki 8c bangos tai buvo skaitoma iš `diagnosis.failed_hypotheses` ir
+    `rejected_hypotheses`, kuriuos v2 variklis tik IŠVALO (`identification.py`) ir niekada
+    nepildo — tad `ticket.details.tried` tikete neatsirasdavo niekada. Case'as tą pačią
+    informaciją turi:
+
+    * `case.spent` — gedimai, kurių sprendimas BUVO paleistas ir nepadėjo;
+    * `case.announced` — gedimai, apie kuriuos jau kalbėjome su klientu; jei faktai juos nuo
+      tada atmetė, tai ir yra „patikrinta ir atmesta".
+
+    Visų `ruled_out` kortelių nevardijam sąmoningai: telemetrija jų atmeta po dešimt, ir
+    meistrui tai ne žinia, o triukšmas. Dabartinis gedimas sąraše nefigūruoja — jis tikete
+    jau yra kaip priežastis.
+    """
+    from .case import candidates
+
+    closed = {c.fault for c in candidates(s.case.facts or {}) if c.status == "ruled_out"}
+    fault = s.case.fault
+    spent = [f for f in (s.case.spent or []) if f != fault]
+    rejected = [f for f in (s.case.announced or []) if f in closed and f != fault]
+    return list(dict.fromkeys(spent + rejected))
 
 
 def _unanswered_and_assumed(s: Any) -> str:

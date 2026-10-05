@@ -44,8 +44,6 @@ def _rejection(state, action) -> str | None:
     if action.type == "procedure_step" and action.name not in PROCEDURE_ACTIONS:
         if action.name not in _active_roles(state):
             return f"no step role {action.name!r} in the active procedure"
-    if action.consent == "required" and not state.dialog.consents.get(action.name or ""):
-        return f"no consent for {action.name!r}"
     return None
 
 

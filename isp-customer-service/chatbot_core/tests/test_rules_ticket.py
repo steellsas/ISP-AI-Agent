@@ -91,3 +91,49 @@ class TestTheHoursFieldKeepsOnlyTheTime:
         from agent.decide.rules.ticket import _hours_only
 
         assert _hours_only("Nežinau. Nesuprantu.") == "Nežinau. Nesuprantu."
+
+
+class TestTheHoursAnswerIsAssembled:
+    """Live 2026-10-05: the ticket said "na dvylikos, iki trilykos, valandos", and earlier
+    "6 00 123 0" — both passed the old "has a digit" test, neither can be read by a
+    technician. The time is now assembled from what was heard."""
+
+    def test_a_garbled_span_becomes_a_span(self):
+        from agent.decide.rules.ticket import hours_words
+
+        assert hours_words("na dvylikos, iki trilykos, valandos") == "nuo 12 iki 13 val."
+        assert hours_words("nuo septyniolikos iki astuoniolikos") == "nuo 17 iki 18 val."
+        assert hours_words("17-18") == "nuo 17 iki 18 val."
+
+    def test_one_edge_keeps_its_word(self):
+        from agent.decide.rules.ticket import hours_words
+
+        assert hours_words("po penkiu aroktos valandos") == "po 5 val."
+        assert hours_words("iki 15 valandos") == "iki 15 val."
+        assert hours_words("apie 15") == "apie 15 val."
+
+    def test_a_part_of_the_day_stays_a_part_of_the_day(self):
+        from agent.decide.rules.ticket import hours_words
+
+        assert hours_words("vakarais") == "vakarais"
+        assert hours_words("Bet kada? Bet kurio laiko?") == "bet kada"
+        assert hours_words("kada tik norit") == "bet kada"
+
+    def test_digit_soup_is_not_a_time(self):
+        from agent.decide.rules.ticket import hours_words
+
+        assert hours_words("6 00 123 0") == ""
+        assert hours_words("aaa nu nežinau") == ""
+        assert hours_words("99 val") == ""
+
+    def test_unreadable_hours_retry_once_then_default(self, make_state, make_runtime):
+        state, plan = _plan(make_state, make_runtime, "hours", "6 00 123 0", None)
+        assert plan.rule == "ticket.retry_hours" and plan.say.text
+        state, plan = _plan(make_state, make_runtime, "hours", "6 00 123 0", None, hours_retry=True)
+        assert state.ticket.contact_hours == "bet kada"
+
+    def test_the_assembled_time_lands_on_the_ticket(self, make_state, make_runtime):
+        state, _plan_ = _plan(
+            make_state, make_runtime, "hours", "na dvylikos, iki trilykos, valandos", None
+        )
+        assert state.ticket.contact_hours == "nuo 12 iki 13 val."

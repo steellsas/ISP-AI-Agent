@@ -453,9 +453,63 @@ class TestALostCallerIsNotAnIdentificationProblem:
         state.case.worked = ["guide"]
         state.case.did = ["guide"]
         state.dialog.stuck_count = 3
+        state.case.stall = 2  # ir tušti ėjimai: klientas nebepriduria nieko (8 banga)
 
         plan = case_rule.plan(state, rt)
 
         assert plan.rule == "case.summary"
         told = state.turn.directives.summary
         assert "pabaigti nepavyko" in told["nepavyko"]
+
+
+class TestTheTicketSaysWhatWasAlreadyTried:
+    """8c banga: `ticket.details.tried` eilutė tikete neatsirasdavo NIEKADA — ji skaitė
+    `diagnosis.failed_hypotheses` / `rejected_hypotheses`, kuriuos v2 tik išvalo. Dabar
+    skaitoma iš Case'o: ką bandėme (`spent`) ir ką pakeliui atmetėme (`announced` + faktai)."""
+
+    def test_a_fix_that_ran_and_did_not_help_is_listed(self, call):
+        from agent.executor_flow import _tried_causes
+
+        state, _rt = call
+        state.case.spent = ["router_hung"]
+        state.case.fault = "no_mac_observed"
+        assert _tried_causes(state) == ["router_hung"]
+
+    def test_a_cause_we_discussed_and_the_facts_then_excluded_is_listed(self, call):
+        from agent.executor_flow import _tried_causes
+
+        state, _rt = call
+        # Srautas vaikšto -> `healthy_to_router` nebeatmestas, o `router_hung` jau ne.
+        state.case.facts = {
+            "area_outage": "no",
+            "service_suspended": "no",
+            "node_reachable": "yes",
+            "line_link": "up",
+            "device_seen": "yes",
+            "dhcp": "ok",
+            "traffic": "flowing",
+            "line_errors": "low",
+            "device_registered": "own",
+        }
+        state.case.announced = ["router_hung"]
+        state.case.fault = "healthy_to_router"
+        assert _tried_causes(state) == ["router_hung"]
+
+    def test_the_current_fault_is_not_listed_as_tried(self, call):
+        from agent.executor_flow import _tried_causes
+
+        state, _rt = call
+        state.case.fault = "router_hung"
+        state.case.spent = ["router_hung"]
+        state.case.announced = ["router_hung"]
+        assert _tried_causes(state) == []
+
+    def test_the_ten_causes_telemetry_excludes_are_not_noise_on_the_ticket(self, call):
+        from agent.executor_flow import _tried_causes
+
+        state, _rt = call
+        # Vien telemetrija atmeta pusę katalogo; nieko apie tai nekalbėjome, tad tiketui tai
+        # ne žinia, o triukšmas.
+        state.case.facts = {"area_outage": "no", "service_suspended": "no", "line_link": "down"}
+        state.case.fault = "link_down_local"
+        assert _tried_causes(state) == []

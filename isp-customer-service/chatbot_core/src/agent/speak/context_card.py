@@ -738,6 +738,8 @@ def _dialogue_state(state, rt) -> list[str]:
     out += _recheck_to_ask(state)
     out += _summary_to_tell(state)
     out += _question_mid_fix(state)
+    out += _assist_the_caller(state)
+    out += _one_more_chance(state)
     if s.dialog.clarity_level == "basic" and not s.closing.case_closed:
         out.append(
             "PLAIN WORDS: the caller said they do not follow technical words. Speak "
@@ -797,6 +799,69 @@ def _stuck(state, rt) -> list[str]:
         "SILENCE (the caller said nothing): do NOT say „neišgirdau“ — they may just be "
         "listening or thinking. Calmly, without apologising, ask for what is needed (e.g. "
         "the street), or check in with „Ar mane girdite?“. Do not rush." + extra
+    ]
+
+
+def _assist_the_caller(state) -> list[str]:
+    """Agento repertuaras, kol kliento atsakymo dar nėra — ir tylos kelias.
+
+    Andrius (2026-10-05): *„vieni klientai padarys iš karto, kitiems gal reikės padėti ir 10
+    klausimų… jei klientas tyli, reikia suprasti kodėl: nežino, ką pasakyti, ir pan.
+    Pasiteirauti, pasitikslinti — panašiai kaip identifikacijoje: klausiame, tiksliname,
+    paaiškiname, kodėl ta informacija svarbi."*
+
+    Tad eilė yra agento, ne kliento: perfrazuoti → mažiausia dalis → kaip surasti IR kodėl to
+    reikia. Kol klientas dirba, ši eilė tiesiog eina giliau — niekas nenutraukiama.
+    """
+    from ..contract import limits
+
+    case = state.case
+    if not case.in_progress or state.closing.case_closed:
+        return []
+    out: list[str] = []
+    if case.silence_asks:
+        # Tyla NĖRA tuščias ėjimas. Pirma — ar jis dar čia ir kaip sekasi; paskui — kodėl to
+        # prašome (žmogus, kuris žino, kodėl, atsako geriau).
+        if case.silence_asks == 1:
+            out.append(
+                "SILENCE: they said nothing. Do NOT repeat the instruction and do NOT apologise "
+                "at them — ask warmly whether they are still there and how it is going („Ar "
+                "pavyksta? Gal pasakykite, ką matote“). Nothing else in this reply."
+            )
+        else:
+            out.append(
+                "STILL SILENT: now say WHY you need this and what it changes, in one short "
+                "sentence, then ask the smallest possible question about it (something they can "
+                "answer with yes or no). Do NOT mention a technician yet."
+            )
+    elif case.waits >= limits.get("waits_before_help"):
+        out.append(
+            "THEY ARE STILL ON THIS STEP: do not say the same sentence again. Go one level "
+            "DEEPER: name WHERE to look and what the thing looks like, break the step into the "
+            "smallest piece they can confirm, and say in half a sentence why it matters. They "
+            "are working with you — do NOT hurry them, do NOT conclude anything, and do NOT "
+            "offer a technician while they are still trying."
+        )
+    return out
+
+
+def _one_more_chance(state) -> list[str]:
+    """Nepavyksta išsiaiškinti — pasakom tai sąžiningai ir duodam dar vieną šansą.
+
+    Andrius (2026-10-05): *„agentas gali pasakyti, kad mums nepavyksta surasti routerio, jūs
+    negalite pasakyti — klientas turi dar šansą pabandyti… dar vienas šansas visada, kad
+    išvengtume, kai agentas nesuprato arba klientas nesuprato, ko nori agentas."*
+    """
+    told = state.turn.directives.last_chance
+    if not told:
+        return []
+    what = told.get("kas") or "to, ko reikia"
+    why = f" Why it matters: {told['kodel']}." if told.get("kodel") else ""
+    return [
+        f"WE ARE NOT GETTING THERE — say it plainly and give ONE more try: name what we could "
+        f"not establish together ({what}), without blaming them.{why} Then ask them to try that "
+        "one thing once more, and say that if it does not work you will register a technician. "
+        "Do NOT register anything in this reply — this is the last try."
     ]
 
 
@@ -950,19 +1015,15 @@ def _awaiting(state, rt) -> list[str]:
             "return to what you asked for. Never repeat your question without answering."
         )
     elif s.dialog.last_intent == INTENT_CONFUSED:
-        if s.dialog.step_confusions >= 2:
-            out.append(
-                "STILL NOT FOLLOWING (2+ times): stop explaining the same thing. Take the "
-                "SMALLEST possible piece — one physical action doable in a second („Ar matote "
-                "dėžutę su lemputėmis? Tiesiog pasakykite taip ar ne“) — and go one such step "
-                "at a time. If that fails too, offer to register a technician visit."
-            )
-        else:
-            out.append(
-                "THE CALLER DID NOT FOLLOW: do NOT repeat the same words. Break this step into "
-                "a SMALLER one — first lead them to WHERE to look and what it looks like, and "
-                "ask for that one thing only."
-            )
+        # Antros pakopos („2+ kartus nesupranta — imk mažiausią įmanomą dalį, paskui siūlyk
+        # meistrą") čia nebėra: ji skaitė `dialog.step_confusions`, kurio v2 niekada nerašė,
+        # ir dar siūlė meistrą tuo metu, kai klientas dirba — o 8 banga būtent tai uždraudė.
+        # Pakopą dabar veda `case.stall` per `_assist_the_caller`.
+        out.append(
+            "THE CALLER DID NOT FOLLOW: do NOT repeat the same words. Break this step into "
+            "a SMALLER one — first lead them to WHERE to look and what it looks like, and "
+            "ask for that one thing only."
+        )
     if s.dialog.awaiting_turns >= 3:
         out.append(
             "LONG WAIT: several turns without progress. Check in like a human, ask how it is "

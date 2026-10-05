@@ -41,6 +41,17 @@ reading_confirm_confidence: 0.45
 # išvada, ką padarėm, ir meistru. Iki 7f bangos tai darė identifikacijos kopėčia — pasiūlydavo
 # abonento kodą ir uždarydavo skambutį vedimo viduryje.
 stuck_fix_gives_up: 3
+# Po kiek TUŠČIŲ ėjimų (klientas nieko nepridėjo — nei fakto, nei veiksmo, nei klausimo) agentas
+# pradeda vyniotis: pirma sąžiningai pasako, ko nepavyksta išsiaiškinti, ir duoda DAR VIENĄ šansą,
+# ir tik tada registruoja. Tai ne ėjimų skaičius: klientas, kuris ieško ir pasakoja, gali ieškoti
+# kiek reikia (Andrius, 2026-10-05).
+stall_before_last_chance: 2
+# Tyla nėra tuščias ėjimas (pirma reikia suprasti, KODĖL klientas tyli), bet ir ji negali tęstis
+# amžinai: po tiek tylos ėjimų agentas irgi pasiūlo dar vieną šansą ir vyniojasi.
+silence_before_last_chance: 2
+# Kiek ėjimų laukiame ŠIO žingsnio, kol agentas perlipa į gilesnį repertuarą (kaip rasti + kodėl
+# to reikia). Čia skaičiuojami visi ėjimai, nes tai apie AGENTO žodžius, ne apie kliento norą.
+waits_before_help: 2
 # Kiek paskutinių atsakymų laikom pakartojimo lange (žr. speak/postprocess.py::track_stuck).
 reply_repeat_window: 3
 reply_stop_chars: 200               # past this, a streamed reply ends at its next sentence end
