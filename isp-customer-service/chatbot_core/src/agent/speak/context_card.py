@@ -228,12 +228,9 @@ def _mark_written_step_said(state) -> None:
     never heard (2026-09-23). The same holds for every card step — a step whose question was
     never asked must not have its readers applied to somebody else's answer (2026-09-30).
     """
-    rule = str((state.turn.plan or {}).get("rule") or "")
-    if not rule.startswith("case."):
-        return
-    state.case.step_said = state.case.step
-    if rule == "case.guide":
-        state.case.guide_said = state.case.guide_step
+    from ..execute.step import mark_case_step_said
+
+    mark_case_step_said(state)
 
 
 def _asked_how(state, rt) -> list[str]:

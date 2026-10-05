@@ -22,6 +22,24 @@ def emit_rag_injection(state, rt, doc: str | None, section: int, step_id: str, t
     rt.tracer.emit("rag", doc=doc, section=section, step=step_id, preview=preview)
 
 
+def mark_case_step_said(state, rt=None) -> None:
+    """Kortelės žingsnis skaitomas NUSKAMBĖJUSIU tik tada, kai atsakymas jam tikrai statomas.
+
+    Žymėti plano sudarymo metu neteisinga: ėjimą gali pasiimti identifikacija ar tiketas, planas
+    niekada nenuskamba, o kliento kiti žodžiai tada palaikomi atsakymu į niekada neužduotą
+    klausimą (2026-09-23 ir 09-30). Nuo 9 bangos tą pačią žymę naudoja ir parašytų žodžių kelias
+    (L2), tad ji gyvena vienoje vietoje.
+    """
+    rule = str((state.turn.plan or {}).get("rule") or "")
+    if not rule.startswith("case."):
+        return
+    state.case.step_said = state.case.step
+    if rule == "case.guide":
+        state.case.guide_said = state.case.guide_step
+    if rt is not None:
+        rt.tracer.emit("case", move="step_said", step=state.case.step, rule=rule)
+
+
 def mark_step_presented(state, rt) -> None:
     """After the agent replies while on a strategy step, record that the step's
     message (a CONFIRM question, an INSTRUCT instruction, or the ACTION announce)

@@ -26,6 +26,21 @@ def speak(state: Any, rt: Any, plan: Any, action_text: str | None) -> str | None
     user_input = state.turn.user_input
     if say.kind == "phrase":
         text = phrase(say.key, **say.vars) if say.key else (say.text or action_text)
+        if text and say.written:
+            # L2: parašyti žodžiai eina kaip yra, bet VISA kita ėjimo apskaita turi likti —
+            # žingsnio žymė, pakartojimų sargas, atsakymų istorija. Be `finalize` scenarinis
+            # atsakymas sargui yra nematomas.
+            from ..speak.postprocess import finalize, trim_to_cap
+
+            text = trim_to_cap(state, rt, text)
+            _speak_text(state, rt, say, user_input, text)
+            if say.stage in ("intake", "diagnosis"):
+                from .step import mark_case_step_said, mark_step_presented
+
+                mark_case_step_said(state, rt)
+                mark_step_presented(state, rt)
+            finalize(state, rt, text, trace_reply=False)
+            return text
         if text and say.committed:
             _stream(text)  # the engine already put the words on the history and trace
             return text
