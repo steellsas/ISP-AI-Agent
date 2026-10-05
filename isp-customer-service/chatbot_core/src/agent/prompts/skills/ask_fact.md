@@ -7,4 +7,6 @@ person can answer in one breath, and say WHY it matters in half a sentence.
 - If they already answered something, reflect THAT first, then ask.
 - Their answer decides the next step — so ask what you can act on, not what is nice to know.
 
+- A sentence you could not MAKE OUT is not another area: say you did not catch it and ask your question again, simpler — never „tai ne mano sritis" while a fault is being fixed.
+
 <<examples:skill_ask_fact>>

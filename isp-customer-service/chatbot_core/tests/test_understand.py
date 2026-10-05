@@ -414,7 +414,8 @@ class TestTicketUnderstanding:
         agent = self._ticket_agent(monkeypatch, stage="hours")
         with patch("agent.perceive.understand.understand_ticket", return_value=None):
             turn_head(agent.state, agent.runtime, "po 17 valandos")
-        assert agent.state.ticket.contact_hours == "po 17 valandos"  # keyword plausibility path
+        # Wave 8b: the time is assembled, so the ticket carries a readable "po 17 val."
+        assert agent.state.ticket.contact_hours == "po 17 val."
 
     def test_stale_supratau_cleared_on_ticket_turns(self, db_connection, monkeypatch):
         from agent.graph_v2.state import GraphState

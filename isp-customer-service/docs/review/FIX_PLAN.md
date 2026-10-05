@@ -796,6 +796,67 @@ Prieš sintezę (ir tik prieš ją — ekrane, trace'e ir tikete tekstas nekinta
 
 **Tikrinta:** 1473 passed, 1 skipped; eval 195/195.
 
+## Banga 8b — ne mano sritis ir neperskaitomas laikas (šaka `fix/wave-8-assist`, 2026-10-05)
+
+Du skambučiai (`logs/sessions/20261005-16*`): *„atrodo, kaip ir viskas suveikė"*. Abu gedimai
+išspręsti telefonu, IP adresas diktuojamas, laukimas veikia. Liko dvi vietos, kur agentas
+nuskriaudė save pats.
+
+### C1 · „Tai ne mano sritis" tvarkant gedimą
+
+Klientas sumurmėjo neįskaitomą sakinį (ASR grąžino kratinį), ir agentas atsakė, kad tai ne jo
+sritis — nors pats ką tik davė žingsnį ir laukė atsakymo. Nesupratimas buvo **ASR**, o atsakymas
+rėmėsi į temos ribą: klientui tai skamba kaip „čia ne mano reikalas", kai jis kaip tik vykdo
+agento nurodymą.
+
+Įgūdžių promptuose (`ask_fact`, `reexplain_confused`) dabar parašyta tiesiai: **sakinys, kurio
+nenugirdai, nėra kita sritis** — pasakom, kad neišgirdom, ir pakartojam savo klausimą paprasčiau.
+Riba (`< 7000` simbolių promptui) neleido šito dėti į bendrą `partials/identity.md` — ta eilutė
+`instruct_step` būtų išpūtusi iki 7102, tad ji guli tik tuose dviejuose įgūdžiuose, kuriems
+reikalinga.
+
+### C2 · Laikas tikete buvo neperskaitomas
+
+Į tiketą pakliuvo **„na dvylikos, iki trilykos, valandos"**, anksčiau — **„po penkiu aroktos
+valandos"** ir **„6 00 123 0"**. Visi trys praėjo patikimumo patikrą, nes ji klausė tik *„ar yra
+skaitmuo arba žodis „val"?"*. Meistras iš to laiko nesurenka.
+
+Dabar laikas ne *praleidžiamas*, o **surenkamas** (`decide/rules/ticket.py::hours_words`):
+
+| Klientas pasakė | Tikete |
+|---|---|
+| „na dvylikos, iki trilykos, valandos" | „nuo 12 iki 13 val." |
+| „nuo septyniolikos iki astuoniolikos", „17-18" | „nuo 17 iki 18 val." |
+| „po penkiu aroktos valandos" | „po 5 val." |
+| „iki 15 valandos", „apie 15" | „iki 15 val.", „apie 15 val." |
+| „per pietus arba ryte", „vakarais" | kliento žodžiais (dienos dalis skaitoma) |
+| „kada tik norit", „nesvarbu kada", „visą dieną" | „bet kada" |
+| **„6 00 123 0"**, „99 val", „aaa nu nežinau" | **nieko** → perklausiam |
+
+Valandų žodžiai paverčiami skaičiais lyginant **žodžio pradžią** (`hour_words` žodynas:
+`dvylik`→12, `trilyk`→13, `septyniolik`→17…), nes ASR galūnes darko — būtent dėl to „trilykos"
+anksčiau nebuvo niekas. Kai laiko atsakyme nėra **visai**, grąžinama `""`, ir suveikia jau
+esantis **vienas** perklausimas; po jo — „bet kada". Dienos dalys (`hours_when_words`) ir
+„bet kada" sinonimai (`hours_anytime_words`) — žodyne, ne kode.
+
+**Tikrinta:** 1479 passed, 1 skipped; eval 195/195. Nauji testai:
+`test_rules_ticket.py::TestTheHoursAnswerIsAssembled` (6), vienas `test_understand.py` tikslinimas
+(„po 17 valandos" → „po 17 val." — tyčia).
+
+### Pakeliui: eval'as gali tyliai dirbti su DEMO baze
+
+Paleidus `python -m agent.eval.run_eval`, Python pirma importuoja paketą `agent` (o tas per
+`graph_v2` — `tools.py`, kur `DB_PATH = database_path()` nuskaitomas **importo metu**) ir tik tada
+vykdo `run_eval` kūną, kuris nustato `DATABASE_PATH=…eval.db`. Rezultatas: harness'as sėja ir
+atkuria `isp_database.eval.db`, o agentas skaito ir rašo `isp_database.db` — demo bazę. Scenarijai
+pradeda matyti `open_ticket_exists` iš ankstesnių pravedimų, ir kiekvienas pravedimas daro kitą
+blogesnį (matyta: 195/195 → 175/195 → 153/195, o tas pats scenarijus atskirai su teisingu
+paleidimu — 6/6).
+
+Dokumentuotas būdas (`python src/agent/eval/run_eval.py`) veikia, bet tylus kritimas į demo bazę
+yra spąstai — harness'as turėtų **patikrinti**, kad `agent.tools.DB_PATH` sutampa su
+`DATABASE_PATH`, ir nutraukti darbą, jei ne. Įrašyta į atvirų darbų sąrašą.
+
 ## Banga 5 — valymas (šaka `fix/wave-5`, 2026-09-28)
 
 Andrius: *„manau galime apjungti tuos tris“* — penktoji banga sujungia tai, kas iki šiol gulo

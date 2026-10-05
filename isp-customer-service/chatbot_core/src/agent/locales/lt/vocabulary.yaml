@@ -1158,6 +1158,43 @@ ticket_offscript_question: ["kodėl", "kodel", "kiek", "kam ", "kas čia", "kas 
 # An explicit "do not register" (one confirm round first).
 ticket_cancel: ["neregistruok", "nereikia regi", "nereikia tiket", "atšauk", "atsauk"]
 # A plausible call-back-hours answer (a digit or one of these).
+# VALANDOS, pasakytos žodžiais. ASR jas dažnai darko („trilykos" = trylikos, „penkiu" = penkių),
+# tad lyginama PRADŽIA — 5–6 pirmos raidės. Gyvai 2026-10-05 į tiketą pakliuvo „na dvylikos, iki
+# trilykos, valandos" ir „6 00 123 0" — meistrui neperskaitoma.
+hour_words:
+  vienuolik: "11"
+  dvylik: "12"
+  trylik: "13"
+  trilyk: "13"
+  keturiolik: "14"
+  penkiolik: "15"
+  šešiolik: "16"
+  sesiolik: "16"
+  septyniolik: "17"
+  aštuoniolik: "18"
+  astuoniolik: "18"
+  devyniolik: "19"
+  dvidešim: "20"
+  dvidesim: "20"
+  dešimt: "10"
+  desimt: "10"
+  devyni: "9"
+  aštuoni: "8"
+  astuoni: "8"
+  septyni: "7"
+  šeši: "6"
+  sesi: "6"
+  penki: "5"
+  ketur: "4"
+  trij: "3"
+  dviej: "2"
+  vienos: "1"
+
+# Dienos dalys ir dienos, kurias verta išsaugoti tikete.
+# „Kada tik norit", „nesvarbu" — tiketui tai ta pati „bet kada".
+hours_anytime_words: ["bet kada", "bet kuriuo", "kada tik", "kada jums", "nesvarbu", "visada", "visą dieną", "visa dieną", "visa diena"]
+hours_when_words: ["bet kada", "rytais", "ryte", "vakare", "vakarais", "po pietų", "po pietu", "darbo dienomis", "savaitgalį", "savaitgali", "šiandien", "siandien", "rytoj"]
+
 contact_hours_marks: ["bet kada", "bet kad", "kada nor", "visada", "ryt", "vakar", "val", "darbo", "diena", "dien", "po ", "iki ", "nuo ", "savait", "pirmad", "antrad", "trečiad", "treciad", "ketvirtad", "penktad", "šeštad", "sestad", "sekmad", "dabar", "šiandien", "siandien"]
 # Wait/consent-only replies to "who is calling?" are not a name ("Taip.", "Laukiu, laukiu").
 not_a_name: ["taip", "ne", "gerai", "laukiu", "aha", "mhm", "jo", "ačiū", "aciu", "ok", "okey", "nesu", "na", "nu", "tai"]
