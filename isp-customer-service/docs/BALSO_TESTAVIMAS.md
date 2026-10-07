@@ -37,8 +37,29 @@ Išmatuota tame pačiame projekte:
 Patikrinimas prieš testą (turi išvesti visus, be `MISSING`):
 
 ```powershell
-uv run python -c "import importlib.util as u; [print(m, 'ok' if u.find_spec(m) else 'MISSING') for m in ('edge_tts','faster_whisper','gtts','qdrant_client','sentence_transformers','pytest')]"
+uv run python -c "import importlib.util as u; [print(m, 'ok' if u.find_spec(m) else 'MISSING') for m in ('edge_tts','piper','lameenc','faster_whisper','gtts','qdrant_client','sentence_transformers','pytest')]"
 ```
+
+### Vietinis balsas — Piper (Reginutė / Ingutė)
+
+Numatytasis TTS nuo 2026-10-07 — **Piper**, veikia CPU, be interneto (MODELIAI.md S2). Balsai ir jų
+kirčiuojantis fonemizatorius git'e nelaikomi (63 MB `.onnx`, GPL-3.0 kodas) — vieną kartą:
+
+```powershell
+uv run python scripts/get_piper_voices.py
+```
+
+Failai nusileidžia į `models/tts/piper/` (užfiksuota versija, tikrinama SHA256). Jei jų nėra arba
+nėra `piper-tts`, serveris žurnale parašo `piper unavailable` ir kalba per edge-tts.
+
+Konfigūracijos puslapyje: **TTS variklis** `piper|edge|gtts`, **Piper balsas** `reginute|ingute`
+(nuo kito skambučio), **Piper išraiškingumas** (0.5 lygiau · 0.667 · 0.8 gyviau) ir **tempo
+lyginimas** (`off` ≈ 90 ms greičiau sakiniui). **Kalbėjimo greitis** galioja abiem varikliams,
+**tonas** — tik edge.
+
+Išmatuota 2026-10-07 (i5-14600K, po įšilimo): sakinys p50 ~180 ms su lyginimu, ~90 ms be jo
+(edge-tts buvo p50 1,27 s / p90 4,3 s). Balsas sintetinis — klientui sakom, kad kalba DI
+(ES DI aktas, 50 str.).
 
 ### Serveris
 

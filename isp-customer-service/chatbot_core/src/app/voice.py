@@ -52,11 +52,27 @@ def _build_asr():
 
 @functools.lru_cache(maxsize=1)
 def _build_tts():
-    if os.environ.get("TTS_ENGINE", "edge").lower() == "gtts":
+    engine = os.environ.get("TTS_ENGINE", "piper").lower()
+    if engine == "gtts":
         from adapters.tts import GTTSProvider
 
         logger.info("voice tts: gtts")
         return GTTSProvider(default_language=_LANGUAGE)
+    if engine == "piper":
+        # Local Lithuanian voice (MODELIAI.md S2, 2026-10-05: be independent of the
+        # unofficial edge endpoint). Not downloaded or no `piper-tts` -> edge-tts.
+        from adapters.tts import PiperTTSProvider
+
+        piper_voice = os.environ.get("TTS_PIPER_VOICE", "reginute").lower()
+        try:
+            provider = PiperTTSProvider(voice=piper_voice, default_language=_LANGUAGE)
+            import lameenc  # noqa: F401 - fail here, not mid-call
+            import piper  # noqa: F401
+
+            logger.info(f"voice tts: piper {piper_voice} (local)")
+            return provider
+        except (ImportError, FileNotFoundError, ValueError) as exc:
+            logger.warning(f"voice tts: piper unavailable ({exc}); falling back to edge-tts")
     from adapters.tts import EdgeTTSProvider
 
     voice = os.environ.get("TTS_VOICE", "lt-LT-LeonasNeural")
