@@ -60,6 +60,14 @@ os.environ.setdefault("TRACE_DIR", str(TEST_TRACE_DIR))
 # cached sentence from an earlier run must not satisfy an adapter test).
 os.environ.setdefault("TTS_PREWARM", "off")
 os.environ.setdefault("TTS_CACHE_DIR", "off")
+# The model the suite assumes, whatever .env picks for the demo (the app imports load
+# .env, which never overrides an existing variable): tests patch the transport of an
+# OpenAI name and must not be routed to Scaleway or a fallback behind their back.
+os.environ.setdefault("LLM_MODEL", "gpt-4o-mini")
+os.environ.setdefault("LLM_FALLBACK_MODEL", "")
+os.environ.setdefault("LLM_WARMUP", "off")  # no provider request at app start in tests
+# Ops log of test runs stays out of logs/ops (same reason as the traces).
+os.environ.setdefault("OPS_LOG_DIR", str(Path(tempfile.gettempdir()) / "isp_agent_test_ops"))
 
 # Imported only NOW, after every env default above: this is the first line that pulls in
 # `agent`, and `agent/__init__` reads some of those switches at import time.

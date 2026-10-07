@@ -35,6 +35,9 @@ MODEL_PRICES_USD_PER_1M: dict[str, tuple[float, float]] = {
     "gpt-4o-mini": (0.15, 0.60),
     "gpt-4o": (2.50, 10.00),
     "gpt-4.1-mini": (0.40, 1.60),
+    # Scaleway price list is in EUR (2026-10-06); counted as $ — an approximate counter.
+    # A `local/` model matches nothing here and costs 0 (fixed GPU cost instead).
+    "scaleway/gemma-4-26b": (0.25, 0.50),
     "claude-haiku": (0.80, 4.00),
     "claude-sonnet": (3.00, 15.00),
 }

@@ -17,7 +17,8 @@ Usage:
     update_config(temperature=0.5)
 """
 
-from dataclasses import dataclass
+import os
+from dataclasses import dataclass, field
 
 
 @dataclass
@@ -66,7 +67,9 @@ class AgentConfig:
     # =========================================================================
     # LLM Model Settings
     # =========================================================================
-    model: str = "gpt-4o-mini"
+    # LLM_MODEL in .env picks it (e.g. scaleway/gemma-4-26b-a4b-it, later local/…);
+    # LLM_FALLBACK_MODEL takes over when it fails (services/llm/client.py).
+    model: str = field(default_factory=lambda: os.getenv("LLM_MODEL") or "gpt-4o-mini")
     # R4c model tiering: the SOLVER (the reasoner) may run on a stronger model
     # than the fast narrator/perception calls. None = same as `model`.
     solver_model: str | None = None

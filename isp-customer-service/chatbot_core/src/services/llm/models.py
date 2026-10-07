@@ -53,6 +53,22 @@ MODEL_REGISTRY: dict[str, ModelInfo] = {
         description="Fast and affordable, good for most tasks",
     ),
     # =========================================================================
+    # Open models — Scaleway Generative APIs (Paris, EU). Priced in EUR
+    # (€0.25 / €0.50 per 1M, price list 2026-10-06); the counter treats € ≈ $.
+    # =========================================================================
+    "scaleway/gemma-4-26b-a4b-it": ModelInfo(
+        id="scaleway/gemma-4-26b-a4b-it",
+        name="Gemma 4 26B-A4B (Scaleway)",
+        provider="scaleway",
+        input_cost_per_1k=0.00025,
+        output_cost_per_1k=0.0005,
+        max_tokens=256000,
+        default_temperature=0.3,
+        supports_json_mode=True,
+        supports_vision=True,
+        description="Open model (Apache-2.0), EU-hosted demo of the model we deploy locally",
+    ),
+    # =========================================================================
     # Google Gemini Models
     # =========================================================================
     "gemini/gemini-2.5-pro": ModelInfo(
@@ -187,6 +203,8 @@ def get_model_info(model_id: str) -> ModelInfo:
 
 def calculate_cost(model_id: str, input_tokens: int, output_tokens: int) -> float:
     """Calculate cost for a request in USD."""
+    if model_id.startswith("local/"):
+        return 0.0  # our own server: no per-token price (the GPU is a fixed cost)
     model = get_model_info(model_id)
     input_cost = (input_tokens / 1000) * model.input_cost_per_1k
     output_cost = (output_tokens / 1000) * model.output_cost_per_1k

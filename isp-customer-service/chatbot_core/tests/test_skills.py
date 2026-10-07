@@ -63,10 +63,14 @@ def test_every_skill_has_a_prompt_and_examples():
 
 
 def test_a_skill_prompt_is_far_smaller_than_the_old_owner_prompt():
-    """The whole point: ~1.2-1.4k tokens instead of ~2.3-3.5k."""
+    """The whole point: ~1.2-1.5k tokens instead of ~2.3-3.5k.
+
+    7000 -> 7300 (2026-10-07): the Lithuanian grammar rules for open models (Gemma 4)
+    cost ~220 chars and instruct_step had 15 left. Temporary headroom — a prompt
+    size/quality review is planned; bring this back down after it."""
     for skill in SKILLS:
         text = speak_prompt(skill, "+37060000000", "lt")
-        assert len(text) < 7000, f"{skill}: {len(text)} chars"
+        assert len(text) < 7300, f"{skill}: {len(text)} chars"
 
 
 # Every family a decide rule can name (grep 'rule="' in agent/decide) plus the plan owners.

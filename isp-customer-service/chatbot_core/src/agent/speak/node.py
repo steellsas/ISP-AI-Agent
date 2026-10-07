@@ -222,4 +222,6 @@ def record_llm_stats(state: Any, rt: Any) -> None:
         output_tokens=s.get("output_tokens", 0),
         latency_ms=round(s.get("latency_ms", 0)),
         cached=s.get("cached", False),
+        # a reply cut short (reply guard) never got the provider's usage: counted locally
+        **({"estimated": True} if s.get("estimated") else {}),
     )
