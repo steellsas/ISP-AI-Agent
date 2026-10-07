@@ -17,6 +17,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import os
 import sys
 import time
 from contextlib import asynccontextmanager, suppress
@@ -51,6 +52,32 @@ from .config import ApiSettings
 from .events import SessionEventHub
 from .sessions import SessionManager, SessionNotFound
 
+
+def _ops_log():
+    """services.ops_log under whichever root this process imports `src` code by."""
+    try:
+        from src.services import ops_log
+    except ImportError:  # pragma: no cover - launched as app.main
+        from services import ops_log
+    return ops_log
+
+
+# Normal goodbyes: 1000 closed, 1001 tab/page left, 1005 closed without a code.
+_WS_NORMAL_CLOSE = {1000, 1001, 1005}
+
+
+def _socket_gone(ws: WebSocket, error: Exception) -> bool:
+    """True when a send failed only because the socket is already closed."""
+    from starlette.websockets import WebSocketState
+
+    if isinstance(error, WebSocketDisconnect):
+        return True
+    if WebSocketState.DISCONNECTED in (ws.client_state, ws.application_state):
+        return True
+    # uvicorn: "Unexpected ASGI message 'websocket.send', after sending 'websocket.close'…"
+    return "after sending 'websocket.close'" in str(error)
+
+
 settings = ApiSettings()
 hub = SessionEventHub()
 manager = SessionManager(hub, settings)
@@ -59,10 +86,23 @@ manager = SessionManager(hub, settings)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     hub.set_loop(asyncio.get_running_loop())
+    # Operations log (logs/ops/ops.log): connection drops, provider failures, model
+    # fallbacks — apart from the conversation traces.
+    ops_log = _ops_log()
+    ops_log.install()
     # Restore config-page overrides (hosted demo keeps settings across restarts).
     from . import runtime_config
 
     runtime_config.load_persisted()
+    from agent.config import get_config
+
+    ops_log.event(
+        "app",
+        "start",
+        logging.INFO,
+        model=get_config().model,
+        fallback=os.getenv("LLM_FALLBACK_MODEL") or "-",
+    )
     # Every knowledge file, the locale and the prompts are validated here: a broken
     # pack stops the app with a readable error instead of failing inside a call.
     from agent.contract import loader
@@ -75,6 +115,14 @@ async def lifespan(app: FastAPI):
     from .voice import prewarm_tts
 
     threading.Thread(target=prewarm_tts, name="tts-prewarm", daemon=True).start()
+    # The LLM connection too: the first request of a process costs ~3 s (litellm import +
+    # client + TLS) — paid here, not by the first caller. Doubles as a provider check.
+    if os.getenv("LLM_WARMUP", "on").lower() == "on":
+        from src.services.llm.client import warm_up
+
+        threading.Thread(
+            target=warm_up, args=(get_config().model,), name="llm-warmup", daemon=True
+        ).start()
     cleanup = asyncio.create_task(manager.cleanup_loop())
     try:
         yield
@@ -711,7 +759,13 @@ async def ws_call(ws: WebSocket, session_id: str):
                 _arm_checkin()
         except SessionNotFound:
             pass
-        except Exception:  # voice deps missing / ASR failure — keep the socket
+        except Exception as e:
+            if _socket_gone(ws, e):
+                # The caller hung up while the reply was on its way (live 2026-10-07:
+                # logged as a failed turn with a traceback). Nothing broke — a fact.
+                _ops_log().event("ws", "caller hung up mid-turn", logging.INFO, session=session_id)
+                return
+            # voice deps missing / ASR failure — keep the socket
             logger.exception("voice turn failed")
             with suppress(Exception):
                 await ws.send_json({"type": "error", "detail": "voice turn failed"})
@@ -848,8 +902,9 @@ async def ws_call(ws: WebSocket, session_id: str):
                     except SessionNotFound:
                         break
                     await ws.send_json({"type": "reply", **result})
-    except WebSocketDisconnect:
-        pass
+    except WebSocketDisconnect as e:
+        if e.code not in _WS_NORMAL_CLOSE:  # 1006 = dropped: network, sleep, crash
+            _ops_log().event("ws", "connection lost", session=session_id, code=e.code)
     finally:
         _disarm_checkin()
         try:

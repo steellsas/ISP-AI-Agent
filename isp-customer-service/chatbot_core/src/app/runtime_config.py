@@ -37,7 +37,7 @@ SCHEMA: list[dict[str, Any]] = [
     {
         "key": "agent_model",
         "label": "Agento LLM modelis",
-        "options": ["gpt-4o-mini", "gpt-4o", "gpt-4.1-mini"],
+        "options": ["scaleway/gemma-4-26b-a4b-it", "gpt-4o-mini", "gpt-4o", "gpt-4.1-mini"],
         "scope": "new_calls",
         "kind": "agent_model",
     },
@@ -46,7 +46,13 @@ SCHEMA: list[dict[str, Any]] = [
         # the fast narrator/perception calls. "(kaip agento)" = same model.
         "key": "solver_model",
         "label": "Solverio LLM modelis (mąstytojas)",
-        "options": ["(kaip agento)", "gpt-4o", "gpt-4.1-mini", "gpt-4o-mini"],
+        "options": [
+            "(kaip agento)",
+            "scaleway/gemma-4-26b-a4b-it",
+            "gpt-4o",
+            "gpt-4.1-mini",
+            "gpt-4o-mini",
+        ],
         "scope": "new_calls",
         "kind": "solver_model",
     },
@@ -58,6 +64,7 @@ SCHEMA: list[dict[str, Any]] = [
         "label": "Percepcijos LLM modelis (supratimas)",
         "options": [
             "default",
+            "scaleway/gemma-4-26b-a4b-it",
             "groq/openai/gpt-oss-120b",
             "groq/openai/gpt-oss-20b",
             "groq/qwen/qwen3.6-27b",
