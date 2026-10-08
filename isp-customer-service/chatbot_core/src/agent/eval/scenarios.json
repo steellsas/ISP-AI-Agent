@@ -243,6 +243,37 @@
       }
     },
     {
+      "id": "S4b_dead_router_goodbye_after_summary",
+      "phone": "+37060012353",
+      "desc": "9 banga (gyvai 2026-10-07): po tilto ir išvados klientas atsako ir paklausia vienu sakiniu, paskui atsisveikina — registracija (telefonas, laikas) turi įvykti PRIEŠ pabaigą, o ne pažadas be tiketo.",
+      "turns": [
+        "Labas, neveikia internetas",
+        "Šįryt dingo, po audros",
+        "Taip",
+        "Giedrius, taip, mano sutartis",
+        "Galėtume kartu patikrinti",
+        "Ne, nešviečia jokia lemputė",
+        "Vis tiek nedega",
+        "Neturiu kito routerio, tik kompiuterį",
+        "Gerai",
+        "Turiu kabelį rankoje",
+        "Įkišau į kompiuterį",
+        "Gerai, ačiū, veikia. Alio, kada dėl routerio paskambinsit?",
+        "Sutariam, viskas ačiū.",
+        "Taip, tinka šis numeris",
+        "Bet kada",
+        "Ačiū, viso gero"
+      ],
+      "expect": {
+        "verdict_in": "no_mac_observed",
+        "disposition": "ticket",
+        "tool_used": [
+          "update_mac"
+        ],
+        "record_outcome": "ticket"
+      }
+    },
+    {
       "id": "S3_switch_unreachable_inform",
       "phone": "+37060020103",
       "desc": "Switch nepasiekiamas (avarija neregistruota) — informuoti (nieko daryti nereikia, informuosime), variklis PATS sukuria tiketą (Andrius 2026-09-11)",
@@ -331,6 +362,30 @@
           "skol"
         ],
         "reply_none": [],
+        "record_outcome": "informed_debt"
+      }
+    },
+    {
+      "id": "S8b_billing_how_much_unpaid",
+      "phone": "+37060020101",
+      "desc": "9 banga (gyvai 2026-10-07): po skolos žinios „kiek nemokėjau?“ — pakartoti sumą iš faktų, ne ginčo pasiūlymas ir ne „nematau“.",
+      "turns": [
+        "Labas, neveikia internetas",
+        "Vakar pastebėjau",
+        "Taip",
+        "Petras, nuomininkas",
+        "O ho, kiek ne mokėjau?",
+        "Aišku, ačiū, viso gero"
+      ],
+      "expect": {
+        "verdict_in": "billing_suspended",
+        "disposition": "inform",
+        "reply_any": [
+          "49"
+        ],
+        "reply_none": [
+          "nematau"
+        ],
         "record_outcome": "informed_debt"
       }
     },

@@ -101,6 +101,7 @@ interrupt_ack_after_s: {value: 0.8, env: INTERRUPT_ACK_AFTER_S}
 voice_checkin_after_s: {value: 35, env: VOICE_CHECKIN_AFTER_S}  # caller silence before the agent speaks
 overlay_silence_ms: {value: 4000, env: OVERLAY_SIL_MS}   # silence window for speech over the agent
 echo_overlap_threshold: 0.8         # token overlap with our own last words that reads as echo
+echo_min_words: 4                   # without a barge-in only a sentence can be our own echo
 barge_consent_max_words: 3          # a longer interruption is content, not a backchannel
 overlay_notes_max: 6                # overlay utterances queued for the next turn
 overlay_apply_max: 3                # overlay utterances handed to the engine per turn
