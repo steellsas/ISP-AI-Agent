@@ -148,7 +148,7 @@ SCHEMA: list[dict[str, Any]] = [
         # Balso tonas: žemesnis (-10Hz) skamba dalykiškiau/techniškiau,
         # aukštesnis — energingiau. Tik edge varikliui.
         "key": "TTS_PITCH",
-        "label": "Balso tonas (žemesnis = techniškesnis)",
+        "label": "Edge balso tonas (žemesnis = techniškesnis)",
         "options": ["+0Hz", "-10Hz", "-20Hz", "+10Hz"],
         "scope": "immediate",
         "kind": "env",
@@ -179,13 +179,37 @@ SCHEMA: list[dict[str, Any]] = [
     {
         "key": "TTS_ENGINE",
         "label": "TTS variklis",
-        "options": ["edge", "gtts"],
+        "options": ["piper", "edge", "gtts"],
         "scope": "new_calls",
         "kind": "env+voice",
     },
     {
+        # Vietiniai lietuviški Piper balsai (scripts/get_piper_voices.py).
+        "key": "TTS_PIPER_VOICE",
+        "label": "Piper balsas",
+        "options": ["reginute", "ingute"],
+        "scope": "new_calls",
+        "kind": "env+voice",
+    },
+    {
+        # Intonacijos įvairumas: mažiau = lygiau ir ramiau, daugiau = gyviau.
+        "key": "TTS_PIPER_NOISE",
+        "label": "Piper išraiškingumas",
+        "options": ["0.667", "0.5", "0.8"],
+        "scope": "immediate",
+        "kind": "env",
+    },
+    {
+        # Tempo lyginimas tarp frazių (be „bangų"); off = ~120 ms greičiau.
+        "key": "TTS_PIPER_LEVEL",
+        "label": "Piper tempo lyginimas",
+        "options": ["on", "off"],
+        "scope": "immediate",
+        "kind": "env",
+    },
+    {
         "key": "TTS_VOICE",
-        "label": "Balsas",
+        "label": "Edge balsas",
         "options": ["lt-LT-LeonasNeural", "lt-LT-OnaNeural"],
         "scope": "new_calls",
         "kind": "env+voice",

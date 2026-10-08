@@ -97,3 +97,6 @@ eval_*.txt
 fuzz_*.txt
 fuzz_*.json
 chatbot_core/.api_config.json
+
+# Local Piper voices + their GPL phonemizer (scripts/get_piper_voices.py)
+/models/

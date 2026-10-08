@@ -49,6 +49,8 @@ voice = [
     "faster-whisper>=1.0.0",
     "gTTS>=2.5.0",
     "edge-tts>=6.1.0",  # free neural streaming TTS (LT voices), no key/model
+    "piper-tts>=1.8.0",  # local LT voices (Reginute/Ingute), scripts/get_piper_voices.py
+    "lameenc>=1.7.0",  # Piper PCM -> MP3, the wire format of every TTS adapter
 ]
 
 [tool.uv.sources]
