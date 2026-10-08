@@ -39,7 +39,15 @@ def disputes_debt(text: str | None) -> bool:
     from ...contract.locale import vocab
 
     low = (text or "").lower()
-    return any(m in low for m in vocab("debt_dispute"))
+    if not any(m in low for m in vocab("debt_dispute")):
+        return False
+    # „O kiek nemokėjau?" asks for the amount we have just said — it is answered from the news,
+    # not offered to the responsible person. Live 2026-10-07 the bare „mokėjau" inside
+    # „ne mokėjau" read as „aš mokėjau", and the caller heard „sąskaitų detalių aš nematau"
+    # right after being told 49,98 € (wave 9, T5). A real objection still wins.
+    if any(m in low for m in vocab("debt_amount_question")):
+        return any(m in low for m in vocab("debt_dispute_strong"))
+    return True
 
 
 def debt_dispute_due(state: Any, user_input: str | None) -> bool:

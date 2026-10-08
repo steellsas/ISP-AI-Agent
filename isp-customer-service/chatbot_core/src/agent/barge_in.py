@@ -70,3 +70,20 @@ def classify_interruption(transcript: str, agent_text: str | None) -> str:
     ):
         return "consent"
     return "substantive"
+
+
+def is_echo(transcript: str, agent_text: str | None) -> bool:
+    """Our own words heard back WITHOUT an interruption (wave 9, T4).
+
+    The barge-in check above only runs on the utterance that cut the agent off. Live
+    2026-10-07 the reply had finished, the speaker's tail reached the microphone, and
+    „Atsakingas žmogus su jumis susisieks ir aptars skolą." became a caller turn — read as
+    „no" to the registration offer. With no interruption a short „taip, gerai" must never be
+    swallowed, so only a sentence-length utterance (`echo_min_words`) can be echo here.
+    """
+    toks = _tokens(transcript)
+    return bool(
+        agent_text
+        and len(toks) >= limits.get("echo_min_words")
+        and token_overlap(transcript, agent_text) >= limits.get("echo_overlap_threshold")
+    )

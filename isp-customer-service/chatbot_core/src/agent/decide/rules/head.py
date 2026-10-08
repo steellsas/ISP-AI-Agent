@@ -34,6 +34,32 @@ def _escalate_step(s: Any) -> Any:
     return strat.by_role("escalate") if strat else None
 
 
+def case_owes_ticket(s: Any) -> bool:
+    """The v2 Case has summed the fix up for a technician and nothing is registered yet —
+    the call may not end before the registration."""
+    return bool(
+        s.case.fault and s.case.summarised and not s.ticket.ticket_id and not s.ticket.stage
+    )
+
+
+def _case_can_escalate(s: Any) -> bool:
+    """A goodbye in the middle of a v2 Case fix: registering a technician is still open.
+
+    `_escalate_step` only knows v1's strategies; without this the confirmed goodbye closed
+    a Case call as „declined" and never offered the technician."""
+    return s.resolution.procedure is None and s.case.in_progress and not s.ticket.ticket_id
+
+
+def _begin_case_ticket(state: Any, rt: Any) -> None:
+    """The contact dialogue for the Case's fault, with the card's note for the technician."""
+    from ...contract import cards
+
+    card = cards.card(state.case.fault) if state.case.fault else None
+    if card is not None and card.escalate and card.escalate.note:
+        state.case.facts.setdefault("_ticket_note", card.escalate.note)
+    begin_ticket_dialogue(state, rt, None)
+
+
 def end_confirm_answer(state: Any, rt: Any, user_input: str) -> bool:
     """The answer to the end-confirm question (§5 row 4). True when it owns the rest of the turn head."""
     s = state
@@ -48,9 +74,13 @@ def end_confirm_answer(state: Any, rt: Any, user_input: str) -> bool:
             # F-27: the answer to "register the fault?" — only a yes registers.
             state.dialog.end_ticket_offer = False
             esc = _escalate_step(s)
-            if detect_ticket_consent(user_input) == "yes" and esc is not None:
+            consent = detect_ticket_consent(user_input) == "yes"
+            if consent and esc is not None:
                 s.resolution.procedure["escalate_reason"] = "caller_ended_call"
                 begin_ticket_dialogue(state, rt, esc)  # contacts, then register+close
+                rt.tracer.emit("decision", intent="end_ticket_offer", action="register")
+            elif consent and _case_can_escalate(s):
+                _begin_case_ticket(state, rt)
                 rt.tracer.emit("decision", intent="end_ticket_offer", action="register")
             else:
                 close_call(state, rt, "declined")
@@ -65,6 +95,11 @@ def end_confirm_answer(state: Any, rt: Any, user_input: str) -> bool:
                     rt.tracer.emit("decision", intent="end_confirmed", action="offer_ticket")
                     return True
                 close_call(state, rt, "declined")
+            elif _case_can_escalate(s):
+                state.dialog.end_confirm_pending = True
+                state.dialog.end_ticket_offer = True
+                rt.tracer.emit("decision", intent="end_confirmed", action="offer_ticket")
+                return True
             else:
                 close_call(state, rt, "declined")
             rt.tracer.emit("decision", intent="end_confirmed", action="close")
@@ -198,6 +233,13 @@ def farewell_mid_process(state: Any, rt: Any, user_input: str) -> bool:
             else None
         )
         if _qa_role != "homework":
+            if case_owes_ticket(s):
+                # The Case has already said a technician is needed: a goodbye now does not
+                # need „Ar tikrai norite baigti?" — the registration is what is left, and it
+                # goes first (live 2026-10-07: the router was summed up, „Sutariam, viskas
+                # ačiū" ended the call, and nobody was sent). The Case escalates this turn.
+                rt.tracer.emit("decision", intent="farewell_mid_process", action="ticket_first")
+                return True
             state.dialog.end_confirm_pending = True
             rt.tracer.emit("decision", intent="farewell_mid_process", action="confirm_end")
             return True

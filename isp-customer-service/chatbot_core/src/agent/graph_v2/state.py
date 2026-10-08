@@ -373,6 +373,9 @@ class TurnScratch(BaseModel):
     user_input: str | None = None
     reply: str | None = None
     side_topic_active: bool = False
+    # The caller answered AND asked in one breath while the Case planned its step: the step
+    # stays, and the question gets one short answer first (wave 9, T2).
+    also_asked: bool = False
     active_node: str | None = None  # which graph node is running (trace/debug)
     # A background telemetry read that finished between turns (folded in at turn start).
     bg_diagnosis: str | None = None

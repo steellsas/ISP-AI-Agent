@@ -40,6 +40,14 @@ def plan(state: Any, rt: Any) -> TurnPlan:
     # eval, S1).
     if str(stage_plan.rule).startswith("case.") and _is_fault_script(scripted.rule):
         return stage_plan
+    # An answer and a question in one breath („Gerai, veikia. Kada dėl routerio paskambinsit?"):
+    # the question used to take the whole turn, so the Case's move was dropped and the model
+    # improvised „užregistruosiu" (live 2026-10-07). The Case keeps the turn; the question gets
+    # one short answer in the same reply.
+    if str(stage_plan.rule).startswith("case.") and scripted.rule == "dialog.question_passthrough":
+        state.turn.also_asked = True
+        rt.tracer.emit("decision", intent="question_mid_case", action="answer_then_step")
+        return stage_plan
     return scripted
 
 

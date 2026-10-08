@@ -1282,9 +1282,11 @@ polarity_yes: ["turiu", "turim", "taip", "yra"]
 # --- agent/execute/ticket.py, decide/procedure_guards.py, decide/rules/diagnosis.py, barge_in.py ---
 
 # The narrator CLAIMED a registration ("Užregistravau gedimą…") ...
-registration_claim: ["užregistrav", "uzregistrav", "registruoju gedim"]
+# A PROMISE counts too („užregistruosiu jūsų klausimą", live 2026-10-07): words may not
+# outrun the engine in either tense — the promise becomes the contact dialogue.
+registration_claim: ["užregistrav", "uzregistrav", "registruoju gedim", "užregistruosiu", "uzregistruosiu", "registruosiu", "užregistruosim", "uzregistruosim"]
 # ... about the ticket/technician (not a MAC bind "užregistravau routerį").
-registration_claim_subject: ["gedim", "meistr", "tiket", "koleg", "technik"]
+registration_claim_subject: ["gedim", "meistr", "tiket", "koleg", "technik", "klausim", "prašym", "prasym", "atsaking"]
 # "ne aš sudariau sutartį" — explicitly not the contract holder.
 caller_not_holder: ["ne sutart", "nesu sudar", "ne aš sudar", "ne as sudar"]
 # A plain yes to "ar jūs sutartį sudaręs asmuo?".
@@ -1310,7 +1312,7 @@ problem_triggers_ticket_status: ["kada atvažiuos meistras", "kada atvyks meistr
 # --- knowledge/faq.yaml: side-topic keywords -----------------------------------
 
 faq_keywords_price: ["kainuo", "kaina", "mokam", "mokėti", "moketi", "sumokė", "apmokestin"]
-faq_keywords_debt_amount: ["skol", "sąskait", "saskait", "suma"]
+faq_keywords_debt_amount: ["skol", "sąskait", "saskait", "suma", "nemokėj", "nemokej", "ne mokėj", "ne mokej", "kiek mokė", "kiek moke"]
 faq_keywords_duration: ["užtruks", "uztruks", "ilgai", "greitai sutvarky"]
 faq_keywords_technician: ["meistr", "technik", "atvažiuo", "atvaziuo", "vizit"]
 faq_keywords_working_hours: ["darbo laik", "kada dirbat", "iki keliu", "iki kelių"]
@@ -1354,6 +1356,9 @@ repeat_nobody_came: ["niekas neatvyko", "niekas neatvažiavo", "neatvažiavo", "
 
 # The caller disputes the debt they were told about, or does not understand it (D-11).
 debt_dispute: ["nesutink", "neteising", "klaid", "sumokėjau", "sumokejau", "apmokėjau", "apmokejau", "mokėjau", "mokejau", "nesuprantu", "neaišku", "neaisku", "kodėl tiek", "kodel tiek", "kodėl tokia", "kodel tokia", "per didel", "ne mano skola", "neturiu skol", "iš kur skola", "is kur skola", "kaip tai skola"]
+# „Kiek…?" after the news asks for the amount, not a dispute — unless a clear objection is there too.
+debt_amount_question: ["kiek"]
+debt_dispute_strong: ["nesutink", "neteising", "klaid", "sumokėjau", "sumokejau", "apmokėjau", "apmokejau", "aš mokėjau", "as mokejau", "per didel", "ne mano skola", "neturiu skol", "iš kur skola", "is kur skola", "kaip tai skola", "kodėl tiek", "kodel tiek", "kodėl tokia", "kodel tokia"]
 
 # --- agent/intents.py ------------------------------------------------------------------------
 

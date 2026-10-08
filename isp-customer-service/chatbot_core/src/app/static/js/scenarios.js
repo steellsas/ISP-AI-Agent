@@ -99,5 +99,5 @@ const Scenarios = (() => {
     Brain.onAny(onEvent);
     load();
   });
-  return { callStarted, select };
+  return { callStarted, select, current: () => current };
 })();

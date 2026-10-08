@@ -247,13 +247,22 @@ def run_voice_turn_stream(
     # off mid-reply, classify it — a bare backchannel/echo re-anchors the
     # standing question instead of derailing the dialogue (default-deny:
     # anything unclear processes normally).
-    interruption = None
-    if bool(getattr(pipeline, "prev_cancelled", False)):
+    barge_in = bool(getattr(pipeline, "prev_cancelled", False))
+    if barge_in:
 
         def interruption(transcript: str) -> str | None:
             from agent.barge_in import classify_interruption
 
             return classify_interruption(transcript, ms.session.last_spoken_text())
+
+    else:
+        # No barge-in, but the speaker's tail can still reach the microphone (wave 9, T4):
+        # our own sentence heard back is echo — the standing question is re-anchored.
+
+        def interruption(transcript: str) -> str | None:
+            from agent.barge_in import is_echo
+
+            return "echo" if is_echo(transcript, ms.session.last_spoken_text()) else None
 
     # Filler (live 2026-08-14: "gaps between questions" — tts_first 5–10 s is
     # the LLM thinking): if no real audio is ready within VOICE_FILLER_AFTER_S,
@@ -309,7 +318,7 @@ def run_voice_turn_stream(
             logger.debug("interrupt ack failed", exc_info=True)
 
     ack_timer = None
-    if interruption is not None and os.environ.get("INTERRUPT_ACK", "on").lower() == "on":
+    if barge_in and os.environ.get("INTERRUPT_ACK", "on").lower() == "on":
         ack_delay = limits.get("interrupt_ack_after_s")
         ack_timer = threading.Timer(ack_delay, _maybe_ack)
         ack_timer.daemon = True

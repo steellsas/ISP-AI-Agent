@@ -737,6 +737,7 @@ def _dialogue_state(state, rt) -> list[str]:
     out += _proof_to_tell(state)
     out += _recheck_to_ask(state)
     out += _summary_to_tell(state)
+    out += _also_asked(state, rt)
     out += _question_mid_fix(state)
     out += _assist_the_caller(state)
     out += _one_more_chance(state)
@@ -862,6 +863,32 @@ def _one_more_chance(state) -> list[str]:
         f"not establish together ({what}), without blaming them.{why} Then ask them to try that "
         "one thing once more, and say that if it does not work you will register a technician. "
         "Do NOT register anything in this reply — this is the last try."
+    ]
+
+
+def _also_asked(state, rt) -> list[str]:
+    """Klientas atsakė ir tame pačiame sakinyje paklausė, o ėjimą paliko Case (9 banga, T2).
+
+    Gyvai 2026-10-07: „Gerai, ačiū, veikia. Alio, kada dėl routerio paskambinsit?" — klausimas
+    paėmė visą ėjimą, Case išvada nukrito, o modelis pažadėjo „užregistruosiu jūsų klausimą".
+    Klausimas „kaip…" gauna žinių bazės atsakymą, kaip ir perduotame ėjime (eval K1).
+    """
+    if not state.turn.also_asked:
+        return []
+    heard = (state.dialog.last_heard or "").strip()
+    said = _kb_answer(state, rt)
+    if said and not said.startswith("(NOT SURE"):
+        return [
+            f"THE CALLER ALSO ASKED („{heard}“): answer it FIRST in ONE or TWO sentences using ONLY "
+            f"this written knowledge — {said} KEEP the concrete detail it names (an address like "
+            "192.168.0.1, a setting's name, where to look). Invent nothing and promise no "
+            "registration. Then do what this reply is for (below)."
+        ]
+    return [
+        f"THE CALLER ALSO ASKED SOMETHING („{heard}“): answer it FIRST in ONE short sentence from "
+        "what you already know. If it is not yours to know (a date, a price, when someone will "
+        "call), say plainly that the colleague who takes it over will tell them — invent no date "
+        "and promise no registration of your own. Then do what this reply is for (below)."
     ]
 
 

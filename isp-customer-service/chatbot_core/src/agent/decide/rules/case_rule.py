@@ -72,6 +72,13 @@ def plan(state: Any, rt: Any) -> TurnPlan | None:
         if status == "reopen":
             facts = ledger.facts_of(state)  # the verification's own reading is part of them now
         if status == "handed_over":
+            from .head import case_owes_ticket
+
+            if case_owes_ticket(state):
+                # The summary turn returns before the contact dialogue starts, so "handed over"
+                # was handed to nobody: the caller heard „Ar dar galiu kuo padėti?" after the
+                # router was declared dead (wave 9, eval S4b). The registration starts now.
+                return _escalate(state, rt, state.case.fault)
             return None  # the ticket dialogue owns the rest of the call
         if status == "escalating":
             return _escalate(state, rt, state.case.fault)

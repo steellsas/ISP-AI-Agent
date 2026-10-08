@@ -149,6 +149,12 @@ def maybe_close_inform(state: Any, rt: Any, user_input: str | None) -> None:
         state.identity.result_pending
         or state.ticket.stage
         or not (state.diagnosis.news_delivered or s.diagnosis.outage_reported)
+        # A fault the Case is still fixing — or has summed up for a technician — is not
+        # news. `resolution.procedure` below is v1's marker and the v2 Case leaves it empty:
+        # live 2026-10-07 a dead router was summed up, the caller said „Sutariam, viskas
+        # ačiū", and this close beat the registration the Case started in the same turn.
+        or s.case.in_progress
+        or s.case.summarised
     ):
         return
     reason = (s.diagnosis.verdicts.get("network") or {}).get("reason")

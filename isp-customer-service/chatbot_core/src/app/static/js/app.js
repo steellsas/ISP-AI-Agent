@@ -96,6 +96,15 @@ $("start").onclick = async () => {
   try{
     await teardown();                        // a previous call never bleeds in
     resetUI();
+    // A scenario starts from the seeded DB (wave 9, T6): live 2026-10-07 the dead-router call
+    // bound the computer, and the next call on the same number met a healthy line and talked
+    // about the cable instead. Only when the number is the picked scenario's own.
+    const scen = Scenarios.current();
+    if(scen && $("phone").value === scen.phone){
+      const r = await fetch("/admin/db/reset", {method:"POST"}).catch(()=>null);
+      addMsg("note", r && r.ok ? `♻️ DB atstatyta scenarijui „${scen.title}“`
+                                : "♻️ DB atstatyti nepavyko"+(r?` (${r.status})`:"")+" — duomenys gali likti iš ankstesnio skambučio");
+    }
     let data;
     try{
       const resp = await fetch("/sessions", {method:"POST",

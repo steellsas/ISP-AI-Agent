@@ -97,6 +97,14 @@ def finish_ticket_dialogue(state: Any, rt: Any) -> str:
     return phrase(done, phone=fmt_phone(s.ticket.contact_phone), hours=val) + note
 
 
+def _debt_news_told(state: Any) -> bool:
+    """The caller has heard the debt news in this call."""
+    from ..faults import verdict_flag
+
+    reason = (state.diagnosis.verdicts.get("network") or {}).get("reason")
+    return bool(state.diagnosis.news_delivered and verdict_flag(reason, "inform") == "debt")
+
+
 def registration_claim_guard(state: Any, rt: Any, content: str) -> str | None:
     """The LLM narrator CLAIMED a registration that never happened (observed
     live 2026-08-05: "Užregistravau gedimą…" at dr_recheck, ticket_id None,
@@ -120,15 +128,32 @@ def registration_claim_guard(state: Any, rt: Any, content: str) -> str | None:
         or not s.identity.customer_id
     ):
         return None
-    if s.resolution.procedure is None:
-        return None
     from ..contract.locale import phrase
-    from ..resolution import get_strategy
 
-    strat = get_strategy(s.resolution.procedure.get("verdict"))
-    esc = strat.by_role("escalate") if strat else None
-    s.resolution.procedure.setdefault("escalate_reason", "phone_fix_failed")
-    begin_ticket_dialogue(state, rt, esc)
+    if s.resolution.procedure is not None:
+        from ..resolution import get_strategy
+
+        strat = get_strategy(s.resolution.procedure.get("verdict"))
+        esc = strat.by_role("escalate") if strat else None
+        s.resolution.procedure.setdefault("escalate_reason", "phone_fix_failed")
+        begin_ticket_dialogue(state, rt, esc)
+    elif s.case.fault and (s.case.in_progress or s.case.summarised):
+        # The v2 Case leaves `resolution.procedure` empty, so this guard was blind to every
+        # Case call: live 2026-10-07 the agent said „užregistruosiu" about the router and the
+        # caller left with no ticket (wave 9, T3).
+        from ..decide.rules.head import _begin_case_ticket
+
+        _begin_case_ticket(state, rt)
+    elif _debt_news_told(state):
+        # The same promise after the debt news is a question for the responsible person.
+        from ..decide.rules.requests import start_request
+
+        state.ticket.request_note = (
+            state.ticket.request_note or (state.dialog.last_heard or "")[:200]
+        )
+        start_request(state, rt, "billing_request")
+    else:
+        return None
     if state.ticket.stage != "phone":
         return None  # could not start (defensive) — nothing to append
     rt.tracer.emit("decision", intent="ticket_dialogue", action="claim_guard")
