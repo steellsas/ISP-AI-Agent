@@ -796,6 +796,82 @@ Prieš sintezę (ir tik prieš ją — ekrane, trace'e ir tikete tekstas nekinta
 
 **Tikrinta:** 1473 passed, 1 skipped; eval 195/195.
 
+## Banga 9 — be modelio ten, kur modelis nieko nebeprideda (šaka `fix/wave-8-assist`, 2026-10-05)
+
+Andrius: *„noriu pagalvoti apie delsą, kas ją sumažintų, nes dar yra taip, kad laukiame atsakymo
+1–2 sekundes… o tu dabar padaryk L1 ir L2."*
+
+### Kur delsa yra (išmatuota, 3 gyvi skambučiai, 59 ėjimai)
+
+| Sluoksnis | mediana | p90 |
+|---|---|---|
+| ASR | 546 ms | 730 |
+| **skaitymas modeliu** | **1 556 ms** | 1 883 |
+| decide + execute (variklis) | **2 ms** | 7 |
+| **žodžiai modeliu** | **1 156 ms** | 1 745 |
+| pirmas garsas klientui | **3 009 ms** | 4 476 |
+
+Variklis nekliudo. Visa delsa — trys I/O sluoksniai, iš jų 2,7 s yra **du nuoseklūs LLM
+skambučiai**. TTS prie pirmo garso prideda ~270 ms.
+
+### L1 · uždarą atsakymą skaito žodynas, ne modelis — ĮGYVENDINTA
+
+Variklyje žodynas jau buvo PIRMAS (`case_rule`: *„žodynas lieka pirmas, jis nemokamas ir
+tikslus"*), o modelis — antra eilė. Vadinasi, kai šio žingsnio skaitytuvas sakinį perskaito,
+modelio kvietimas tam ėjimui nieko neprideda. Dabar `perceive/perception.py::_closed_answer`:
+
+* veikia tik v2 Case kelyje, kur klausimas yra modulio ir jo skaitytuvas deklaruotas kortelėje;
+* nurodymo žingsniui „padariau" / „einu" skaito `detect_turn_intent` (tie patys signalai, kuriais
+  eina ir variklis);
+* **modelis lieka** klausimui, nesupratimui, kontaktų dialogui, nežinomai problemai ir ilgesniam
+  nei `fast_read_max_words: 8` sakiniui (ilgame gali būti pasakyta dar kažkas pakeliui);
+* patvirtinimo pusė sakinio („lemputės nedega") dabar statoma iš **pakuotės reikšmių**, o ne iš
+  modelio — ir tik tada, kai pakuotė tą faktą įvardija žmonių kalba (be šito ėjo „Supratau —
+  wan_link down").
+
+**Matavimas:** greitasis skaitymas 2/53 → **24/180** ėjimų (4 % → 13 %); pilnas eval'as 195/195.
+
+### L2 · žingsnio sakinys taip, kaip parašytas — PARAŠYTA, bet IŠJUNGTA
+
+Įgyvendinta (`case_rule._say_as_written`, `_written_plan`, `Say.written`, `execute/say.py`), bet
+gyvai **išjungta** (`scripted_step_words: 0`, įjungiama `SCRIPTED_STEP_WORDS=1`), nes matavimas
+parodė regresiją ir priežastis nėra tai, ką buvau numatęs:
+
+| Pravedimas | S6 (pakibęs routeris) |
+|---|---|
+| bazė (be L1/L2) | **5/5** |
+| su L2 | **0/5** |
+| su L2, bet `scripted_step_words: 0` | 3/3 |
+
+Mechanizmas, atsektas iš trace'ų: parašytas atsakymas nuskamba be patvirtinimo („**Gerai, Pauliau.
+Dabar** ištraukite…" → „Ištraukite…"), o **kito** ėjimo modelio skaitymas nuo to pasikeičia — iš
+to paties kliento sakinio „Mirksi, puslapis atsidaro — veikia" jis ištraukia kitą faktų rinkinį
+(`{lights}` vietoj `{lights, device_present}`). Tada lieka tik lempučių **prieštara** (telemetrija
+sakė `on`, klientas sako `blinking`), prieštaros kelias laiko žingsnį, ir vedimas pakimba vietoje.
+
+Taigi pats parašytas sakinys nėra klaida — klaida yra tai, kad **patvirtinimas nebuvo pakeistas**
+duomenimis. Dvi išeitys (sprendimas — Andriaus):
+
+1. **Patvirtinimą statyti iš duomenų** ir visada (dabar jis dedamas tik tada, kai pakuotė faktą
+   įvardija teiginiu; `reachable` įvardintas klausimu, tad iškrinta). Tada parašytas atsakymas
+   skamba kaip ir anksčiau, tik be modelio.
+2. **Pataisyti prieštaros kelią**: kliento pranešta lemputė PO perkrovimo nėra prieštara senam
+   telemetrijos `lights=on` — tai naujesnis faktas.
+
+Antrasis taisymas vertingas savaime (jis ir dabar gali pakibti gyvame skambutyje), tad jį darytume
+pirmiau.
+
+### Pakeliui
+
+* `mark_case_step_said` — viena vieta, kuri žymi „žingsnis nuskambėjo" (buvo dubliuota
+  `context_card` ir naujame kelyje); žymė dedama tik ten, kur atsakymas tikrai statomas.
+* `postprocess.finalize(..., trace_reply=False)` — scenarinis atsakymas nebedubliuoja
+  `agent_reply` trace įvykio.
+* Naujas trace: `case move=narrator_words why=…` pasako, KODĖL ėjimą vedė modelis, ir
+  `case move=step_said` — kada žingsnis pažymėtas nuskambėjusiu.
+
+**Tikrinta:** 1494 passed, 1 skipped; eval 195/195 (L1 įjungtas, L2 išjungtas).
+
 ## Banga 8c — tiketas pasako, kas jau bandyta; mirusios atšakos išimtos (šaka `fix/wave-8-assist`, 2026-10-05)
 
 Perėjus VISUS `GraphState` laukus (skaitomi kode, bet niekada nerašomi) išlindo dar keturi tos

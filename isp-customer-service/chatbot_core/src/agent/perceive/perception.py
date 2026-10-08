@@ -73,7 +73,12 @@ class Perception(BaseModel):
         }
 
 
-def fast_read(state: Any, utterance: str, options: dict[str, str] | None) -> Perception | None:
+def fast_read(
+    state: Any,
+    utterance: str,
+    options: dict[str, str] | None,
+    step: Any = None,
+) -> Perception | None:
     """A closed answer to a standing question, read without the model. None = this turn
     needs the full reading.
 
@@ -105,10 +110,99 @@ def fast_read(state: Any, utterance: str, options: dict[str, str] | None) -> Per
             understood=_said(key, value),
             confidence=1.0,
         )
-    # A bare yes/no with NO evidence question pending is NOT enough: the step's answer
-    # often implies a fact the pack declares, and only the model reads that from a
-    # garbled utterance ("ne daganiai viena" = lights off). The full reading takes it.
-    return None
+    return _closed_answer(state, text, options, step)
+
+
+def _closed_answer(
+    state: Any, text: str, options: dict[str, str] | None, step: Any
+) -> Perception | None:
+    """Atsakymas į UŽDARĄ klausimą, perskaitytas žingsnio paties skaitytuvu (L1, 2026-10-05).
+
+    Variklyje žodynas jau yra PIRMAS (`case_rule`: *„Žodynas lieka pirmas — jis nemokamas ir
+    tikslus"*), o modelis — antra eilė. Vadinasi, kai šio žingsnio skaitytuvas sakinį perskaito,
+    modelio kvietimas tam ėjimui nieko neprideda, tik kainuoja ~1,6 s. Išmatuota 2026-10-05:
+    `fast_path` suveikdavo 2 ėjimuose iš 53.
+
+    Modelis paliekamas visur, kur jis tikrai reikalingas: klausimui (`is_real_question` —
+    aukščiau), nesupratimui, kontaktų dialogui, nežinomai problemai ir ilgam sakiniui, kuriame
+    be atsakymo gali būti pasakyta dar kažkas.
+    """
+    from ..contract import limits
+    from ..modules import label_from
+    from .detectors import INTENT_DONE, INTENT_IN_PROGRESS, detect_confusion, detect_turn_intent
+
+    if not options or getattr(step, "module", None) is None:
+        # Tik v2 Case kelias: ten klausimas yra modulio, jo skaitytuvas deklaruotas kortelėje,
+        # ir variklis tuo skaitytuvu eina pirmas. v1 vedlio žingsnį kaip anksčiau skaito modelis.
+        return None
+    if state.ticket.stage in ("phone", "hours") or not state.intake.problem_type:
+        return None  # kontaktų dialogą ir problemos atpažinimą skaito modelis
+    if detect_confusion(text):
+        return None  # „nesupratau" — ne atsakymas, o darbas narratoriui
+    if len(text.split()) > limits.get("fast_read_max_words"):
+        return None
+    if set(options) == {"done", "waiting"}:
+        # Nurodymo žingsnis: „padariau" ir „einu" žodynas skaito pats (INTENT_*), ir variklis
+        # būtent tais signalais ir eina (`_reported_done`, `_model_says_still_working`).
+        intent = detect_turn_intent(text)
+        if intent == INTENT_DONE:
+            label, is_answer = "done", True
+        elif intent == INTENT_IN_PROGRESS:
+            label, is_answer = "waiting", False
+        else:
+            return None
+    else:
+        label = label_from(getattr(step, "detector", None), text)
+        if label is None or label not in options:
+            return None
+        is_answer = True
+    return Perception(
+        source="fast_path",
+        turn_type="answer",
+        step={
+            "label": label,
+            "is_answer": is_answer,
+            "internally_inconsistent": False,
+            "confidence": 1.0,
+        },
+        # Patvirtinimo pusė sakinio („lemputės nedega") iki šiol atėjo iš modelio; be jos
+        # atsakymas nustotų atliepti tai, ką klientas ką tik pasakė. Ji statoma iš pakuotės
+        # pačios reikšmių, lygiai kaip kitame greitajame kelyje.
+        understood=_said_from_step(state, label) or "",
+        confidence=1.0,
+    )
+
+
+def _said_from_step(state: Any, label: str) -> str | None:
+    """Ką ši etiketė reiškia pakuotės žodžiais — arba None, jei nieko."""
+    from .. import modules
+    from ..contract import cards as catalog
+    from ..equipment import for_signals
+
+    case = getattr(state, "case", None)
+    if case is None or not case.fault or case.solution is None:
+        return None
+    card = catalog.card(case.fault)
+    if card is None:
+        return None
+    steps = card.solution[case.solution].steps
+    if not 0 <= case.step < len(steps):
+        return None
+    signals = ((state.diagnosis.verdicts or {}).get("network") or {}).get("signals") or {}
+    call = steps[case.step]
+    # Patvirtinam tai, kas yra KLIENTO („lemputės nedega"), ne tai, ką iš to supranta linija
+    # (`wan_link=down`): be šito ėjo „Supratau — wan_link down".
+    answer = modules.client_fact(call, state.dialog.last_heard) or modules.answer_from_label(
+        call, label, device=for_signals(signals)
+    )
+    if not answer:
+        return None
+    key, value = answer
+    from ..evidence import gloss_label, gloss_value
+
+    if gloss_label(key) == key or gloss_value(value, key) == value:
+        return None  # pakuotė šio fakto žmonių kalba neįvardija — tada geriau nieko
+    return _said(key, value)
 
 
 def _said(key: str, value: str) -> str:
@@ -189,7 +283,7 @@ def read_turn(state: Any, rt: Any, utterance: str | None) -> Perception | None:
     if not utterance or not utterance.strip():
         return None
     options, active_step = step_perception_options(state, rt)
-    quick = fast_read(state, utterance, options)
+    quick = fast_read(state, utterance, options, active_step)
     if quick is not None:
         return _record(state, rt, quick, active_step, utterance)
     if not _und.enabled() or not _needs_reading(state):

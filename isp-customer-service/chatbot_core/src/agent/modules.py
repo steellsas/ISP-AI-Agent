@@ -251,6 +251,14 @@ def answer_from_label(call: ModuleCall, label: str, *, device=None) -> tuple[str
     return fact, value
 
 
+def label_from(detector: str | None, text: str | None) -> str | None:
+    """Šio skaitytuvo etiketė šiam sakiniui, arba None. Viešas `_detect` vardas: tą pačią
+    etiketę skaito ir perception greitasis kelias (L1), ne tik modulio atsakymas."""
+    if not detector or not text:
+        return None
+    return _detect(detector, text)
+
+
 def _detect(detector: str, text: str) -> str | None:
     """Run one of the deterministic readers (perceive/detectors.py) and return its label."""
     from .perceive import detectors

@@ -659,6 +659,12 @@ equipment:
     lights:
       power: "Ar priedėlyje dega lemputė?"
 
+# L2 (2026-10-05): parašyto atsakymo dalys. Kai ėjimas neturi ką kita pasakyti, atsakymą
+# surenka variklis iš šių eilučių ir žingsnio sakinio — be modelio (−1,2 s ėjimui).
+case:
+  heard: "Gerai — {said}."
+  say_when_done: "Pasakykite, kai padarysite."
+
 verdict:
   # How a verdict is named to the caller (gloss) and why a ticket is needed.
   billing_suspended:

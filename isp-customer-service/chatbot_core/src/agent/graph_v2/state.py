@@ -399,6 +399,9 @@ class TurnScratch(BaseModel):
     # Atsakymas, kurį perskaitė modelis VIDUTINIU pasitikėjimu: užskaitom, bet atsakyme
     # pakeliui patvirtinam, kad klientas galėtų pataisyti („Supratau — lemputės nedega.").
     confirm_reading: str | None = None
+    # L2: faktas, kurį klientas ką tik pasakė, jo reikšmės žodžiais („lemputės nedega") — kad
+    # parašytas atsakymas galėtų jį patvirtinti be modelio.
+    heard_said: str | None = None
     # The evidence key the caller reported as done this turn.
     done_report_key: str | None = None
     directives: TurnDirectives = Field(default_factory=TurnDirectives)

@@ -44,7 +44,7 @@ def trim_to_cap(state: Any, rt: Any, text: str) -> str:
     return trimmed
 
 
-def finalize(state: Any, rt: Any, text: str) -> None:
+def finalize(state: Any, rt: Any, text: str, *, trace_reply: bool = True) -> None:
     """Shared end-of-turn bookkeeping for a customer-facing reply: the repeat guard, the
     case snapshot and the reply trace.
 
@@ -56,7 +56,9 @@ def finalize(state: Any, rt: Any, text: str) -> None:
     track_stuck(state, rt, text)
     _note_unclosed_goodbye(state, rt, text)
     emit_case(rt.tracer, state)
-    rt.tracer.emit("agent_reply", text=text)
+    if trace_reply:
+        # Parašytas atsakymas (L2) jau įrašytas ten, kur ištartas — čia jo nedubliuojam.
+        rt.tracer.emit("agent_reply", text=text)
 
 
 def track_stuck(state: Any, rt: Any, reply: str) -> None:

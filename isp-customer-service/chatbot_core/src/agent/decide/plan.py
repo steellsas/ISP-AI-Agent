@@ -44,6 +44,9 @@ class Say(BaseModel):
     # A stage directive: the narrator's own scripted exits (stuck backstop, the scripted
     # reply layer, the wait acknowledgement) still run before the LLM words it.
     reply_layer: bool = False
+    # L2: šie žodžiai jau PARAŠYTI (kortelės / dokumento / katalogo sakinys), tad eina kaip yra
+    # — be modelio. Narratorius reikalingas tada, kai reikia atsakyti ar sudėti kelis dalykus.
+    written: bool = False
 
 
 class Action(BaseModel):

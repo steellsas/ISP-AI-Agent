@@ -20,7 +20,7 @@ from typing import Any
 from ... import ledger, modules
 from ...case import judge, next_move
 from ...contract import cards as catalog
-from ...contract.locale import maybe_phrase
+from ...contract.locale import maybe_phrase, phrase, vocab
 from ..plan import Action, Say, TurnPlan
 
 
@@ -1123,9 +1123,117 @@ def _reflect_plan(state: Any, rt: Any) -> TurnPlan | None:
     )
 
 
+def _remember_what_we_heard(state: Any) -> None:
+    """Faktas, kurį klientas ką tik pasakė, jo reikšmės žodžiais („lemputės nedega").
+
+    Tą pačią eilutę jau statėm dviejose vietose (`_model_read` patvirtinimui ir santraukai);
+    L2 ją naudoja parašytame atsakyme, kad „Gerai — lemputės nedega" nebereikėtų modelio.
+    """
+    from ...evidence import gloss_label, gloss_value
+
+    state.turn.heard_said = None
+    key = state.case.awaiting
+    value = ledger.facts_of(state).get(key) if key else None
+    if not key or not value:
+        return
+    label, said = gloss_label(key), gloss_value(value, key)
+    # Dalis faktų pakuotėje pavadinti KLAUSIMU („ar gali dabar prieiti prie įrenginio"), nes iš
+    # jų statomas klausimas klientui. Teiginiu jie neskaitomi: gyvai per eval'ą 2026-10-05 iš to
+    # išėjo „Gerai — ar gali dabar prieiti prie įrenginio turite." Tokių nepatvirtinam — geriau
+    # nieko, nei sulūžęs sakinys.
+    if not label or not said or "?" in label or label.lower().startswith("ar "):
+        return
+    state.turn.heard_said = f"{label} {said}".strip() or None
+
+
+def _asked_to_repeat(state: Any) -> bool:
+    """Ar klientas PATS paprašė pakartoti. Tada teisingas atsakymas yra tie PATYS žodžiai —
+    žmogus pakartoja sakinį, o ne perfrazuoja jį iš naujo (gyvai 2026-10-02)."""
+    heard = (state.dialog.last_heard or "").lower()
+    return bool(heard) and any(mark in heard for mark in vocab("repeat_request"))
+
+
+def _say_as_written(state: Any, step: Any, rt: Any = None) -> bool:
+    """Ar šį ėjimą galima pasakyti PARAŠYTAIS žodžiais, be narratoriaus (L2, 2026-10-05)?
+
+    Taip — kai ėjimas neturi ką kita pasakyti: žingsnio sakinys yra kataloge ar dokumente,
+    klausimas dar nenuskambėjo, klientas tik atsakė, ir nė viena kita direktyva nelaukia žodžių.
+    Visais kitais atvejais — kaip iki šiol, per modelį: narratorius reikalingas būtent tada, kai
+    reikia ATSAKYTI, perfrazuoti, paaiškinti ar sudėti kelis dalykus į vieną atsakymą.
+
+    Pamatuota 2026-10-05: 49 ėjimai iš 62 ėjo per modelį, nors 16 iš jų buvo nurodymas, kurio
+    sakinys kataloge jau parašytas — ir būtent tas sakinys yra tai, ko klientas turi išgirsti
+    nepakeisto (7d banga: modelis buvo išradęs mygtuką, kurio dokumente nėra).
+    """
+    from ...contract import limits
+    from ...perceive.detectors import INTENT_CONFUSED, INTENT_QUESTION
+
+    d = state.turn.directives
+    why = None
+    if not limits.get("scripted_step_words"):
+        why = "off"
+    elif step.kind not in ("ask", "instruct"):
+        why = f"kind={step.kind}"
+    elif state.case.step_said == state.case.step:
+        why = "already_said"  # jau sakyta — perfrazuoti moka modelis
+    elif any(
+        (
+            d.evidence,
+            d.findings,
+            d.recap,
+            d.ident,
+            d.ticket,
+            d.proof,
+            d.recheck,
+            d.summary,
+            d.last_chance,
+        )
+    ):
+        why = "directive"
+    elif state.turn.confirm_reading or state.turn.side_topic_active:
+        why = "confirm_or_side"
+    elif state.case.finding or state.case.delivered != state.case.step:
+        why = "finding"  # išvada dar nepasakyta — ji eina su šiuo atsakymu, per narratorių
+    elif state.dialog.last_intent in (INTENT_QUESTION, INTENT_CONFUSED):
+        why = f"intent={state.dialog.last_intent}"
+    elif state.case.stall or state.case.silence_asks or state.case.retrying:
+        why = "assisting"
+    elif state.case.waits >= limits.get("waits_before_help"):
+        why = "waiting"  # jau laukiam antrą ėjimą — reikia asistavimo, ne to paties sakinio
+    elif state.identity.result_pending or state.identity.holder_clarify_open or state.ticket.stage:
+        why = "other_owner"
+    if why and rt is not None:
+        rt.tracer.emit("case", move="narrator_words", why=why)
+    return why is None
+
+
+def _written_words(state: Any, step: Any, asked: str | None) -> str:
+    """Parašytas atsakymas: ką ką tik išgirdom + žingsnio sakinys + („pasakykite, kai
+    padarysite") nurodymui. Visos trys dalys — iš frazių katalogo, ne iš kodo."""
+    said = (asked or step.text or "").strip()
+    lead = phrase("case.heard", said=state.turn.heard_said) if state.turn.heard_said else ""
+    tail = phrase("case.say_when_done") if step.kind == "instruct" else ""
+    return " ".join(part for part in (lead, said, tail) if part).strip()
+
+
+def _written_plan(state: Any, rt: Any, call, step, asked: str | None, rule: str) -> TurnPlan:
+    """Žingsnio planas, kurio žodžiai eina kaip parašyti (L2)."""
+    words = _written_words(state, step, asked)
+    # Žymės, kad klausimas nuskambėjo, čia NEDEDAM: planą gali perimti kita taisyklė, ir tada
+    # šie žodžiai niekada nenuskambės. Ją padeda `say.py`, kai atsakymas tikrai ištariamas.
+    rt.tracer.emit("case", move="said_as_written", module=call.module, chars=len(words))
+    return TurnPlan(
+        owner="procedure",
+        rule=rule,
+        say=Say(kind="phrase", text=words, stage="diagnosis", written=True),
+        awaiting=step.awaits,
+    )
+
+
 def _advance(state: Any, rt: Any, *, by_words: bool = False, ran: bool = True) -> str:
     if by_words:
         state.case.moved_on_turn = state.dialog.turn_count
+        _remember_what_we_heard(state)
     state.case.retrying = False
     state.case.unclear = -1
     state.case.stall, state.case.waits, state.case.silence_asks = 0, 0, 0
@@ -1469,6 +1577,8 @@ def _module_plan(state: Any, rt: Any, call, facts: dict[str, str], *, rule: str)
 def _module_plan_inner(state: Any, rt: Any, call, facts: dict[str, str], *, rule: str) -> TurnPlan:
     """What this module asks of the turn. `on_fail` retries are the card's business, and a
     step the equipment catalogue cannot word is skipped rather than improvised."""
+    from ...contract import limits
+
     model = _device_model(state)
     call = _at_guide_step(state, call)
     step = modules.plan_step(call, model=model)
@@ -1545,6 +1655,25 @@ def _module_plan_inner(state: Any, rt: Any, call, facts: dict[str, str], *, rule
             ),
             awaiting=step.awaits,
         )
+    if (
+        step.kind in ("ask", "instruct")
+        and limits.get("scripted_step_words")
+        and _asked_to_repeat(state)
+        and (asked or step.text)
+    ):
+        # Klientas paprašė pakartoti: tie patys žodžiai, be modelio ir be naujos redakcijos.
+        rt.tracer.emit("case", move="repeat_as_asked", module=call.module)
+        return TurnPlan(
+            owner="procedure",
+            rule=rule,
+            say=Say(
+                kind="phrase",
+                text=(asked or step.text or "").strip(),
+                stage="diagnosis",
+                written=True,
+            ),
+            awaiting=step.awaits,
+        )
     if step.kind in ("ask", "instruct"):
         chance = _last_chance(state, rt, call, step)
         if chance is not None:
@@ -1589,6 +1718,8 @@ def _module_plan_inner(state: Any, rt: Any, call, facts: dict[str, str], *, rule
             awaiting=step.awaits,
             redecide_after_action=True,
         )
+    if (asked or step.text) and _say_as_written(state, step, rt):
+        return _written_plan(state, rt, call, step, asked, rule)
     return TurnPlan(
         owner="procedure",
         rule=rule,
