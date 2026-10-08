@@ -47,17 +47,6 @@ def test_unknown_limit_fails():
         limits.get("nope")
 
 
-def test_gate_policy_comes_from_limits():
-    from agent.decide.solver_guard import default_policy
-
-    assert default_policy() == {
-        "confidence_floor": 0.4,
-        "low_conf_max": 3,
-        "cycles_max": 3,
-        "internal_hops_max": 2,
-    }
-
-
 def test_identification_gated_tools_come_from_the_manifests():
     """Wave 2c: who may call a tool is the tool's own contract, not a list in policies."""
     from agent.contract import tools as manifests

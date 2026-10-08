@@ -232,7 +232,9 @@ def farewell_mid_process(state: Any, rt: Any, user_input: str) -> bool:
             if _qa is not None and _qa.key.startswith("step:")
             else None
         )
-        if _qa_role != "homework":
+        # v2: the Case's homework question („ar tiks?") has no v1 role — the same rule holds
+        # there: a goodbye on it is the consent (wave 10).
+        if _qa_role != "homework" and s.case.awaiting != "later_agreed":
             if case_owes_ticket(s):
                 # The Case has already said a technician is needed: a goodbye now does not
                 # need „Ar tikrai norite baigti?" — the registration is what is left, and it
@@ -424,6 +426,25 @@ def unidentified_address(state: Any, rt: Any, user_input: str) -> bool:
                             "nepavyko (žr. HEARD ADDRESS) — patikslink trūkstamą "
                             "dalį arba paprašyk pakartoti."
                         )
+                elif verdict is None and s.identity.phone_candidate and not heard_open:
+                    # Neither yes nor no, and no other address heard („Tad svarbiausiai",
+                    # „Šįryt dingo, po audros"): the question was yes/no, so it is asked AGAIN
+                    # as yes/no. An open „dėl kokio adreso?" made the caller dictate an
+                    # address we already had (live 2026-10-07; wave 10, V7).
+                    asked = last_agent_question(state) or ""
+                    state.turn.address_confirm_note = (
+                        "- ATSAKYMAS NEAIŠKUS: klientas nei patvirtino, nei paneigė pasiūlyto "
+                        "adreso. Trumpai atsiliepk į tai, ką pasakė, ir PAKARTOK TĄ PATĮ "
+                        f"taip/ne klausimą su tuo pačiu adresu: „{asked}“. NEklausk "
+                        "„dėl kokio adreso skambinate?“."
+                    )
+                    trace_note(
+                        rt.tracer,
+                        state,
+                        "address_confirm",
+                        "offer answer unclear; re-ask the same yes/no",
+                        level="warn",
+                    )
                 else:
                     state.turn.address_confirm_note = (
                         "- ADRESAS NEPATVIRTINTAS: kliento atsakymas AIŠKIAI "

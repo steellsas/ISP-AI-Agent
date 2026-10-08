@@ -52,11 +52,16 @@ def finalize(state: GraphState, rt: AgentRuntime, transport_end: str | None = No
         s.identity.customer_id
         and not s.ticket.ticket_id
         and not s.closing.case_closed
-        and role_of(
-            (s.resolution.procedure or {}).get("verdict"),
-            (s.resolution.procedure or {}).get("step"),
+        and (
+            role_of(
+                (s.resolution.procedure or {}).get("verdict"),
+                (s.resolution.procedure or {}).get("step"),
+            )
+            == "homework"
+            # v2: the Case's homework has been told and waits for „tinka?" (wave 10, S5) —
+            # without this a hang-up there registered a technician over the agreed callback.
+            or s.case.awaiting == "later_agreed"
         )
-        == "homework"
     ):
         close_call(state, rt, "callback")
         rt.tracer.emit("decision", intent="hangup_net", action="callback_close")

@@ -414,7 +414,9 @@ class TestBargeInCancel:
                 try:
                     for i in range(50):
                         _t.sleep(0.02)
-                        yield f"tok{i} "
+                        # Whole sentences: the reply guard lets a reply out a sentence at a
+                        # time (wave 10), so a word without an end is held, not yielded.
+                        yield f"Sakinys {i}. "
                     return _fake_message(content="pilnas atsakymas")
                 except GeneratorExit:
                     closed["v"] = True

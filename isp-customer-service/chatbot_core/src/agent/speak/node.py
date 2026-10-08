@@ -159,15 +159,26 @@ def _stream_tokens(state: Any, rt: Any, messages: list[dict]):
         # early (review finding AC); a lower configured max_tokens still wins.
         max_tokens=min(rt.config.max_tokens, limits.get("speak_max_tokens")),
     )
-    from .guard import ReplyGuard
+    from ..execute.ticket import unbacked_promise
+    from .guard import ReplyGuard, latin_lookalikes
 
     streamed: list[str] = []
-    guard = ReplyGuard(stop_chars=limits.get("reply_stop_chars"))
+    guard = ReplyGuard(
+        stop_chars=limits.get("reply_stop_chars"),
+        drop=lambda sentence: unbacked_promise(state, sentence),
+        fix=latin_lookalikes,
+    )
     while True:
         try:
             token = next(inner)
-        except StopIteration as done:
-            return (getattr(done.value, "content", None) or "").strip()
+        except StopIteration:
+            tail = guard.flush()
+            if tail:
+                streamed.append(tail)
+                yield tail
+            _trace_dropped(rt, guard)
+            # What the caller HEARD is the reply — a withheld sentence is not history either.
+            return guard.text.strip()
         if rt.cancel.is_set():
             with suppress(Exception):
                 inner.close()
@@ -184,7 +195,14 @@ def _stream_tokens(state: Any, rt: Any, messages: list[dict]):
             with suppress(Exception):
                 inner.close()
             rt.tracer.emit("reply_guard", reason=guard.stopped, chars=len(guard.text))
+            _trace_dropped(rt, guard)
             return guard.text.strip()
+
+
+def _trace_dropped(rt: Any, guard) -> None:
+    """A sentence the engine withheld is visible in the trace, never silent."""
+    for sentence in guard.dropped:
+        rt.tracer.emit("reply_guard", reason="unbacked_promise", dropped=sentence[:160])
 
 
 def on_turn_cancelled(state: Any, rt: Any, spoken_text: str) -> None:

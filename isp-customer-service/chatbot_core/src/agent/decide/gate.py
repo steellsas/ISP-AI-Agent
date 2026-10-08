@@ -2,15 +2,13 @@
 
 Every effect of a turn is an `Action` on its TurnPlan, and every Action comes through
 here: an action outside the closed set, a forbidden one, or one that needs a consent the
-caller has not given is dropped (its words stay). The solver's own proposals are judged
-by `decide/solver_guard.py`.
+caller has not given is dropped (its words stay).
 """
 
 from __future__ import annotations
 
-# Engine actions a plan may name besides the tool catalog and the active procedure's roles.
+# Engine actions a plan may name besides the tool catalog.
 ENGINE_TOOLS = frozenset({"preflight_phone"})
-PROCEDURE_ACTIONS = frozenset({"run_due_action", "escalate"})
 # Why a call may close (Action(type="close", name=...)): the contact record's reasons
 # plus the stuck ladder's own close.
 CLOSE_REASONS = frozenset(
@@ -41,9 +39,6 @@ def _rejection(state, action) -> str | None:
         return f"unknown tool {action.name!r}"
     if action.type == "close" and action.name not in CLOSE_REASONS:
         return f"unknown close reason {action.name!r}"
-    if action.type == "procedure_step" and action.name not in PROCEDURE_ACTIONS:
-        if action.name not in _active_roles(state):
-            return f"no step role {action.name!r} in the active procedure"
     return None
 
 
@@ -53,10 +48,3 @@ def _tool_names() -> frozenset[str]:
     from ..contract import tools as manifests
 
     return frozenset(manifests.names())
-
-
-def _active_roles(state) -> set[str]:
-    from ..resolution import get_strategy
-
-    strat = get_strategy((state.resolution.procedure or {}).get("verdict"))
-    return {s.role for s in strat.steps} if strat else set()

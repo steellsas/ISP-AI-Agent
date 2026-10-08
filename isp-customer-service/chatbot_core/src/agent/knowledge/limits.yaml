@@ -4,12 +4,7 @@
 # environment variable that wins over the file when set (the dashboard sets some of
 # them at runtime, so they are read on every use).
 
-# --- Solver gate ------------------------------------------------------------------
-solver_confidence_floor: 0.4        # a decision below this counts toward the low-confidence streak
-solver_low_conf_max: 3              # this many low-confidence decisions in a row -> bail out
-solver_cycles_max: 3                # more turns than this on the same step -> bail out
-solver_internal_hops_max: 2         # silent actions in a row before a caller-facing action is forced
-solver_max_tokens: 400
+# --- Case steps ------------------------------------------------------------------
 
 step_repeat_max: 3                  # kiek kartų tas pats žingsnis gali nuskambėti; paskui — kortelės `on_fail` arba meistras
 

@@ -32,25 +32,26 @@ def plan(state: Any, rt: Any) -> TurnPlan | None:
         user_input
         and detect_refuse_or_ticket(user_input) == "demand"
         and not s.ticket.ticket_id
-        and s.resolution.procedure is not None
+        and _was_a_fault(s)
     ):
         s.closing.case_closed = False
         rt.tracer.emit("decision", intent="ticket_demand", action="reopen_at_closing")
-        return _escalate("closing.ticket_demand_reopen")
+        return _escalate(state, rt, "closing.ticket_demand_reopen")
     # A "still not working" at the goodbye contradicts a resolved close — never wave
     # it off (live 2026-09-11: "Internetas neveikia." got "Geros dienos!").
     if (
         user_input
         and s.closing.closed_reason == "resolved"
         and not s.ticket.ticket_id
-        and s.resolution.procedure is not None
+        and _was_a_fault(s)
         and _still_down(user_input)
     ):
         s.closing.case_closed = False
         s.closing.is_complete = False
-        s.resolution.procedure["escalate_reason"] = "still_down_at_closing"
+        if s.resolution.procedure is not None:
+            s.resolution.procedure["escalate_reason"] = "still_down_at_closing"
         rt.tracer.emit("decision", intent="still_down", action="reopen_at_closing")
-        return _escalate("closing.still_down_reopen")
+        return _escalate(state, rt, "closing.still_down_reopen")
     maybe_finish(state, rt, user_input)
     from ...perceive.detectors import is_real_question
 
@@ -92,13 +93,33 @@ def plan(state: Any, rt: Any) -> TurnPlan | None:
     )
 
 
-def _escalate(rule: str) -> TurnPlan:
-    return TurnPlan(
-        owner="closing",
-        rule=rule,
-        action=Action(type="procedure_step", name="escalate"),
-        say=Say(kind="phrase", stage=STAGE),
+def _was_a_fault(s: Any) -> bool:
+    """The call worked on a fault (v1 strategy or v2 Case), not news — a technician fits."""
+    return s.resolution.procedure is not None or bool(s.case.fault)
+
+
+def _escalate(state: Any, rt: Any, rule: str) -> TurnPlan:
+    """Reopen into the contact dialogue and ask its first question in this reply.
+
+    It used to plan `Action(procedure_step, escalate)`, which nothing executes (execute
+    raised „no executor"), and both reopen rules were gated on v1's `resolution.procedure`,
+    so on a Case call „vis tiek neveikia" at the goodbye got „Geros dienos!" (wave 10, S3/S4).
+    """
+    from ...execute.ticket import begin_ticket_dialogue
+    from .head import _begin_case_ticket, _escalate_step
+    from .ticket import ticket_question_turn
+
+    if state.resolution.procedure is not None:
+        begin_ticket_dialogue(state, rt, _escalate_step(state))
+    else:
+        _begin_case_ticket(state, rt)
+    _rule, words = ticket_question_turn(state, rt)
+    say = (
+        Say(kind="phrase", text=words, stage="ticket")
+        if words
+        else Say(kind="directive", stage="ticket")
     )
+    return TurnPlan(owner="closing", rule=rule, say=say)
 
 
 def _goodbye(rule: str) -> TurnPlan:

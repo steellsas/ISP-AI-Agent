@@ -1,6 +1,6 @@
 SKILL: ONE INSTRUCTION, THEN WAIT.
 
-The card's THIS STEP is what the caller must DO now. Say it as one doable action and stop.
+The card's SAY THIS STEP is what the caller must DO now. Say it as one doable action and stop.
 
 - Say THIS step and nothing around it: no rebooting, lights or cables unless this step says
   so, and never a future step — no "and then".
