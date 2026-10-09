@@ -1,7 +1,7 @@
 # Agento struktūra v3 — fazės, tyrimo ciklas, pokalbio sluoksnis
 
-**Būsena:** PATVIRTINTA kryptis (Andrius, 2026-10-09; atsakymai — §11). Etapas 0 atliktas (10 banga),
-daromas etapas 2.
+**Būsena:** PATVIRTINTA kryptis (Andrius, 2026-10-09; atsakymai — §11). Etapai 0, 2, 3, 4 atlikti;
+toliau etapas 5 (pokalbio sluoksnis).
 **Iš kur:** 2026-10-08 struktūrinė peržiūra (4 tyrimai: LLM kvietimai, fazių savininkai, mazgų
 vidus, seni radiniai) ir Andriaus pokalbis tą pačią dieną. Ankstesnis kontekstas —
 [PERZIURA.md](PERZIURA.md) (radiniai A–AU, principai P-1…P-9), [AGENTO_VEIKIMAS.md](../AGENTO_VEIKIMAS.md).
@@ -130,21 +130,29 @@ geriausiai atskiria likusius kandidatus, ir tik tada DARYTI.
                                                      └ ne ───► kandidatai patikslinti, ciklas tęsiasi
 ```
 
-Patikra turi teisę užbaigti gedimą **bet kurioje kortelės vietoje**, ne tik pabaigoje. Dabar
-kortelė `no_mac_observed` to negali (jos 2b komentaras: žingsnis „perskaityti liniją, jei
-maitinimas buvo ištrauktas" išimtas, nes `verify` nesėkmė užbaigia visą kortelę).
+Patikra turi teisę užbaigti gedimą **bet kurioje kortelės vietoje**, ne tik pabaigoje. Iki 4
+etapo kortelė `no_mac_observed` to negalėjo (`verify` nesėkmė užbaigdavo visą kortelę, G26) —
+dabar tai daro `fixes:` patikra (§3.3).
 
-### 3.3 Kortelės papildymas: `fixes:`
+### 3.3 Kortelės papildymas: `run_when:` + `fixes:` (✅ 4 etapas)
+
+Įgyvendinta ne `needs:` lauke (kaip pirmame juodraštyje), o pačiuose kortelės žingsniuose —
+taip DARYTI ir patikra yra matomi žingsniai su savo eile:
 
 ```yaml
-needs:
-  power_cable:
-    values: {plugged: confirms, unplugged: confirms}
-    fixes:                       # NAUJA: šis atsakymas yra veiksmas, po jo — patikra
-      unplugged:
-        verify: true             # perskaityti liniją po šio atsakymo
-        cause: "pack.no_mac_observed.cause.power"   # „Routeris buvo be maitinimo"
+- module: plug_power              # DARYTI: „Įkiškite maitinimo laidą…"
+  args: {device: router}
+  run_when: [power_cable=unplugged]   # NAUJA: žingsnis tik kai VISOS sąlygos tenkinamos
+- module: verify                  # STEBĖTI: perskaityti liniją
+  args: {evidence: [device_seen=yes, traffic=flowing], ask: restored}
+  run_when: [power_cable=unplugged]
+  fixes: pack.no_mac_observed.cause.power   # NAUJA: pavyko → IŠSPRĘSTA su šia priežastimi
 ```
+
+- `fixes:` patikra **pavyko** → `case.cause` = priežastis, gedimas išspręstas (`fixed_by` trace),
+  `_resolved` pasako, kad veikia, ir **kodėl** (U10).
+- **Nepavyko** → kortelė NEišnaudojama (`fix_check_negative` trace), einama toliau (tiltas, meistras).
+- Demo: mygtukas „⚡ Maitinimas" / `simulate_router_power_on` (routeris vėl matomas linijoje).
 
 ### 3.4 Priežasties santrauka
 
@@ -289,7 +297,7 @@ struktūra (sąrašas su vienu nariu), elgsena — vėliau.
 | **1** | Šis dokumentas → Andriaus patvirtinimas | — |
 | **2** ✅ | `state.phase` šešėlyje: skaičiuojama iš esamų žymių, trace + dashboard (fazių juosta, dabartinė užsidega spalva, neleistinas perėjimas — raudonai), nieko nevaldo | eval: fazių seka kiekvienam scenarijui atitinka lūkestį |
 | **3** ✅ | 3a: pabaigos taisyklės U3/U6/U8/U10; 3c: v1 vedlys ištrintas (`resolution.procedure`, strategijos, 7 v1 paketai; `unclear_fault` → Case kortelė); 3b: vienas tiketo įėjimas `request_ticket(why)`, pabaigos būsena tik `agent/closing.py` (sargas-testas) | testai + eval 207–208/208; laukia Andriaus gyvo testo |
-| **4** | Tyrimo ciklas: DARYTI → patikra bet kur, `fixes:`, priežasties santrauka | naujas eval „įkišo laidą — veikia" |
+| **4** ✅ | Tyrimo ciklas: `run_when:` + `fixes:` patikra bet kurioje kortelės vietoje, `case.cause` → pabaigoje pasakoma priežastis; `plug_power` modulis + demo „⚡ Maitinimas" | eval S4d „įkišo laidą — veikia"; pytest 1590, eval 219/221 (I2, K1 — Gemma flaky, pakartotinai praeina) |
 | **5** | Pokalbio sluoksnis (§4) | eval + gyvas testas |
 | **6** | Promptai pagal fazę (§7) | A/B + vėlavimas |
 | **7** | Kelios problemos (§8), LLM siūlymai šešėlyje (§3.5 C) | šešėlio žurnalas |

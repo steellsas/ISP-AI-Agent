@@ -718,10 +718,9 @@ class TestWhenTheFactsTurnTheCardWrong:
 class TestThePowerQuestionIsAlwaysAsked:
     """Wave 6: „ar ateina elektra" is part of the diagnosis, not an optional extra.
 
-    (The re-read of the line after a lead was found unplugged — G26 — was tried as a
-    `verify` step and taken out again: a failed verification spends the whole card, so the
-    caller lost the offer of a temporary line just because the router had not come back yet.
-    It needs a read that does not close the card; it stays in FIX_PLAN §6.)
+    A lead found out is plugged in and the line read again (v3 stage 4, G26): back — solved,
+    with the cause; not back — the card goes on to the offer. That read (`fixes:`) does not
+    spend the card the way a failed `verify` would.
     """
 
     def _dead(self, call):
@@ -739,12 +738,60 @@ class TestThePowerQuestionIsAlwaysAsked:
 
         assert case_rule.plan(state, rt).rule == "case.check_power"
 
-    def test_and_then_the_offer_whatever_the_power_answer_was(self, call):
+    def test_power_in_goes_to_the_offer(self, call):
+        state, rt = self._dead(call)
+        case_rule.plan(state, rt)
+        said(state, rt, "power_cable", "plugged")
+
+        assert case_rule.plan(state, rt).rule == "case.offer_bridge"
+
+    def test_a_lead_found_out_is_plugged_in_and_the_line_read(self, call):
+        """v3 stage 4 — the read that does not close the card (the G26 gap above)."""
         state, rt = self._dead(call)
         case_rule.plan(state, rt)
         said(state, rt, "power_cable", "unplugged")
 
-        assert case_rule.plan(state, rt).rule == "case.offer_bridge"
+        assert case_rule.plan(state, rt).rule == "case.plug_power"
+
+    def _at_the_fix_check(self, call, line, *, asked=True):
+        """The lead was out, the caller put it in, and the line is read again."""
+        from agent.decide.rules.case_rule import _absorb, _current
+
+        state, rt = self._dead(call)
+        case_rule.plan(state, rt)
+        said(state, rt, "power_cable", "unplugged")
+        case_rule.plan(state, rt)  # plug_power
+        while _current(state).module != "verify":
+            state.case.step += 1
+        state.case.awaiting_probe = False
+        if asked:  # „ar atsigavo?" already out
+            state.case.step_said = state.case.step
+        record_telemetry(state, rt, {**BASE, **line})
+        return state, rt, _absorb(state, rt, case_rule.ledger.facts_of(state))
+
+    def test_the_line_back_solves_it_with_the_cause(self, call):
+        from agent.decide.rules.case_rule import _resolved
+
+        state, rt, status = self._at_the_fix_check(
+            call, {"device_seen": True, "traffic": "flowing"}
+        )
+        assert status == "solved"
+        assert state.case.cause == "pack.no_mac_observed.cause.power"
+        assert "ištrauktas" in _resolved(state, rt).say.goal  # the caller hears WHY
+
+    def test_the_line_back_is_told_before_it_is_solved(self, call):
+        _, _, status = self._at_the_fix_check(
+            call, {"device_seen": True, "traffic": "flowing"}, asked=False
+        )
+        assert status == "waiting"
+
+    def test_the_line_not_back_goes_on_to_the_offer(self, call):
+        from agent.decide.rules.case_rule import _current
+
+        state, _, status = self._at_the_fix_check(call, {"device_seen": False})
+        assert status not in ("solved", "reopen")  # the card is not spent (the G26 gap)
+        assert state.case.cause is None
+        assert _current(state).module == "offer_bridge"
 
 
 class TestAnUnclearAnswerIsNotAnAnswer:
@@ -978,3 +1025,29 @@ class TestIdentificationFinishesBeforeTheCaseAsks:
         plan = case_rule.plan(state, rt)
 
         assert plan is not None and plan.rule == "case.check_lights"
+
+
+@pytest.mark.parametrize(
+    ("facts", "skipped"),
+    [
+        ({"power_cable": "unplugged"}, False),
+        ({"power_cable": "plugged"}, True),
+        ({}, True),  # not known yet — a `run_when` step waits for its reason
+    ],
+)
+def test_run_when_runs_the_step_only_when_all_of_it_holds(facts, skipped):
+    """v3 stage 4: `run_when` is the opposite of `skip_when` — AND, and unknown means no."""
+    from agent.contract.schema import ModuleCall
+    from agent.decide.rules.case_rule import _skip_now
+
+    call = ModuleCall(
+        module="plug_power", args={"device": "router"}, run_when=["power_cable=unplugged"]
+    )
+    assert _skip_now(call, facts) is skipped
+
+
+def test_resolved_without_a_cause_says_no_cause(make_state, make_runtime):
+    from agent.decide.rules.case_rule import _resolved
+
+    state = make_state("+37060020112")
+    assert "why it happened" not in _resolved(state, make_runtime()).say.goal

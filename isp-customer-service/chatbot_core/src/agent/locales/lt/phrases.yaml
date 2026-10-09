@@ -293,6 +293,9 @@ pack:
           "yes": "interneto lemputė užsidegė / internetas atsirado"
           "no": "lemputė toliau nedega / internetas neatsirado"
   no_mac_observed:
+    # v3 4 etapas: kodėl įvyko, kai įkišus maitinimą linija atsigavo (išvada klientui ir įrašui).
+    cause:
+      power: "routeris buvo be maitinimo — maitinimo laidas buvo ištrauktas; jį įkišus, routeris vėl prisijungė prie linijos"
     confirm: "Ar routerio lemputės dabar visai nedega?"
     recent_events:
       label: "įvykiai prieš dingstant"
@@ -644,6 +647,8 @@ equipment:
     cable:
       reseat: "Ištraukite iš sienos ateinantį laidą iš routerio ir tvirtai įkiškite atgal."
     reach: "Ar galite dabar prieiti prie routerio?"
+    power:
+      plug: "Įkiškite maitinimo laidą tvirtai į routerį ir į veikiančią rozetę. Routeris įsijungs per minutę ar dvi — pasakykite, kai užsidegs lemputės."
     lights:
       power: "Ar dega maitinimo lemputė?"
       internet: "Ar interneto lemputė dega?"

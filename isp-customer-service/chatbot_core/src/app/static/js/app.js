@@ -40,7 +40,7 @@ function addMsg(cls, text){
 }
 function setLive(on){
   $("statusDot").className="dot"+(on?" live":"");
-  for(const id of ["stop","send","text","mic","simPlug","simReboot"]) $(id).disabled=!on;
+  for(const id of ["stop","send","text","mic","simPlug","simReboot","simPower"]) $(id).disabled=!on;
   $("start").disabled=on; $("phone").disabled=on;
 }
 
@@ -214,6 +214,15 @@ $("simReboot").onclick = async () => {
   if(r && r.ok){ addMsg("note","🔄 routeris perkrautas — portas mirktelėjo, srautas atsistato"); }
   else if(r && r.status===409){ addMsg("note","🔄 klientas dar neidentifikuotas — palaukite adreso patvirtinimo"); }
   else{ addMsg("note","🔄 imitacija nepavyko"+(r?` (${r.status})`:"")); }
+};
+// DEMO (v3 stage 4): the caller plugs the router's power lead back in — the dead router
+// shows on the line again. Press it when the caller says „įkišau maitinimą".
+$("simPower").onclick = async () => {
+  if(!sid) return;
+  const r = await fetch(`/sessions/${sid}/simulate-power`, {method:"POST"}).catch(()=>null);
+  if(r && r.ok){ addMsg("note","⚡ maitinimas įkištas — routeris vėl linijoje, srautas eina"); }
+  else if(r && r.status===409){ addMsg("note","⚡ klientas dar neidentifikuotas — palaukite adreso patvirtinimo"); }
+  else{ addMsg("note","⚡ imitacija nepavyko"+(r?` (${r.status})`:"")); }
 };
 $("send").onclick = sendText;
 $("text").addEventListener("keydown", e=>{ if(e.key==="Enter") sendText(); });

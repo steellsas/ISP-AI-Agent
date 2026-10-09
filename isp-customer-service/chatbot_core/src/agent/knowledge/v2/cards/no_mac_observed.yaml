@@ -82,10 +82,19 @@ solution:
   #    lemputės vienodai reiškia ištrauktą laidą, mirusią rozetę ir mirusią dėžutę.
   - module: check_power
     args: {device: router}
-  # 2b. Žingsnis „perskaityti liniją, jei maitinimas buvo ištrauktas" (G26) išimtas 2026-09-30:
-  #     `verify` nesėkmė išnaudoja visą kortelę (`fix_failed`), tad klientas netekdavo laikino
-  #     interneto pasiūlymo vien dėl to, kad linija dar tyli. Reikia kitokio mechanizmo —
-  #     perskaitymo, kuris NEUŽDARO kortelės. Lieka FIX_PLAN 6 bangoje.
+  # 2b. v3 4 etapas (Andrius, 2026-10-08): laidas buvo ištrauktas → klientas jį įkiša → linija
+  #     perskaitoma. Atsigavo — gedimas IŠSPRĘSTAS, ir klientas išgirsta, kodėl jis įvyko. Ne —
+  #     kortelė eina toliau (tiltas, meistras); ši patikra kortelės neišnaudoja.
+  - module: plug_power
+    args: {device: router}
+    run_when: [power_cable=unplugged]
+  - module: verify
+    args:
+      evidence: [device_seen=yes, traffic=flowing]
+      ask: restored
+    run_when: [power_cable=unplugged]
+    fixes: pack.no_mac_observed.cause.power
+  # (Senas 2b komentaras: tokio perskaitymo trūko — jį įgyvendina aukščiau esanti `fixes` patikra.)
   # 3. Laikinas internetas — PASIŪLYMAS. Atsisakius visi tilto žingsniai praleidžiami.
   - module: offer_bridge
     args: {to: computer}

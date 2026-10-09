@@ -388,6 +388,8 @@ done_actions:
 #
 # Čia ĮEINA ir esamasis laikas („perkraunu"), nes tai irgi reiškia, kad žingsnis prasidėjo — variklis
 # tada laukia rezultato, o ne kartoja instrukciją.
+# The caller says the power lead is back in / the router came on (plug_power).
+reported_plug_power: ["įkišau", "ikisau", "įjungiau", "ijungiau", "įsijungė", "isijunge", "užsidegė", "uzsidege", "dega lemput", "lemputės dega", "lemputes dega", "jau dega"]
 reported_reboot:
   - "perkroviau"
   - "perkrovėme"

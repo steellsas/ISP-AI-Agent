@@ -572,6 +572,8 @@ class CaseState(BaseModel):
     # *„klientas atsimins galutinį pokalbį — svarbi informacija, ką agentas padėjo ir ko
     # nepadarė."* Ji sakoma VIENĄ kartą, savo ėjimu, prieš registraciją.
     summarised: bool = False
+    # Why the fault happened, when a fix check found it (a phrase key; v3 stage 4).
+    cause: str | None = None
     # Pati išvada. Ji NEIŠTRINAMA ją pasakius, nes turi antrą adresatą: tą patį sąrašą gauna ir
     # tiketas — meistras turi matyti, kas buvo ir kas padaryta (Andrius, 2026-10-02: *„tuomet
     # tiketai bus informatyvūs ir meistrams bus aiškiau, kas ten įvyko"*).

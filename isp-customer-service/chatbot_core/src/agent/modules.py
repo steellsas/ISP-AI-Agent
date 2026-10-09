@@ -138,6 +138,8 @@ def _action_key(spec: ModuleSpec, args: dict[str, Any]) -> str | None:
         return f"device_check.{args.get('what', 'wifi')}"
     if spec.module == "connect_direct":
         return "connect_direct"
+    if spec.module == "plug_power":
+        return "power.plug"
     return None
 
 

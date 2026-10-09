@@ -16,6 +16,7 @@ from src.ports.tools import ToolSpec
 ENGINE_TOOLS = (
     "append_ticket_note",
     "simulate_router_reboot",
+    "simulate_router_power_on",
     "simulate_bridge_connect",
     "simulate_bridge_disconnect",
 )

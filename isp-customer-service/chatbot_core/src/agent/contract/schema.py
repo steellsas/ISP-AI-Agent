@@ -345,6 +345,13 @@ class ModuleCall(_Model):
     # poreikiu, ne kliento sakiniu, ir tai išmatuota: poreikiu hit@1 90 %, sakiniu 54 %.
     # Startinis validatorius tikrina, kad poreikis ką nors randa — pažadas be atsakymo neleidžiamas.
     knowledge_need: str | None = None
+    # v3 stage 4: this step applies ONLY when every condition holds (IR). „Įkiškite maitinimą"
+    # makes sense only when the caller said the lead was out.
+    run_when: list[str] = []
+    # v3 stage 4: this step is a FIX CHECK — the line coming back here means the fault is
+    # SOLVED, and this phrase says why it happened („routeris buvo be maitinimo"). When it does
+    # not come back, the card simply goes on (the check never spends the card).
+    fixes: str | None = None
 
 
 class Solution(_Model):

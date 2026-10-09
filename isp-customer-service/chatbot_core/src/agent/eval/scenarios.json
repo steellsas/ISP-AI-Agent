@@ -301,6 +301,40 @@
       }
     },
     {
+      "id": "S4d_dead_router_power_lead_out",
+      "phone": "+37060012353",
+      "desc": "v3 4 etapas (Andrius, 2026-10-08): tikrinant maitinimą paaiškėja, kad laidas ištrauktas — klientas jį įkiša, linija perskaitoma, routeris vėl matomas: gedimas IŠSPRĘSTAS, ir agentas pasako, kodėl tai nutiko. Jokio tilto, jokio meistro.",
+      "turns": [
+        "Labas, neveikia internetas",
+        "Šįryt dingo, po audros",
+        "Taip",
+        "Giedrius, taip, mano sutartis",
+        "Galėtume kartu patikrinti",
+        "Ne, nešviečia jokia lemputė",
+        "Oi, maitinimo laidas ištrauktas iš rozetės",
+        "Įkišau, lemputės jau dega",
+        "Taip, veikia",
+        "Ne, ačiū, viso gero"
+      ],
+      "expect": {
+        "verdict_in": "no_mac_observed",
+        "disposition": "resolved",
+        "reply_any": [
+          "ištrauktas",
+          "maitinim"
+        ],
+        "reply_none": [
+          "užregistravau",
+          "meistr",
+          "laikin",
+          "kabel"
+        ],
+        "tool_used": [
+          "simulate_router_power_on"
+        ]
+      }
+    },
+    {
       "id": "S3_switch_unreachable_inform",
       "phone": "+37060020103",
       "desc": "Switch nepasiekiamas (avarija neregistruota) — informuoti (nieko daryti nereikia, informuosime), variklis PATS sukuria tiketą (Andrius 2026-09-11)",

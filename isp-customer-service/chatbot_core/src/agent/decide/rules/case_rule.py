@@ -660,6 +660,12 @@ def _absorb(state: Any, rt: Any, facts: dict[str, str]) -> str:
     if state.case.awaiting_probe:
         return "waiting"  # its own reading has not come back yet
     settled = modules.step_done(call, facts)
+    if settled is True and getattr(call, "fixes", None) and not _verify_must_be_told(state, call):
+        # A FIX CHECK came back (v3 stage 4): the fault is solved by what the caller just did,
+        # and the cause is known — it goes into the conclusion they hear.
+        state.case.cause = call.fixes
+        rt.tracer.emit("case", move="fixed_by", fault=state.case.fault, cause=call.fixes)
+        return "solved"
     if settled is True:
         if _verify_must_be_told(state, call):
             # Įrodymas yra, bet klientas jo dar NEIŠGIRDO. Gyvai 2026-10-02: po pririšimo
@@ -676,6 +682,11 @@ def _absorb(state: Any, rt: Any, facts: dict[str, str]) -> str:
             # dabar neskubam (Andrius, 2026-10-05: *„kad agentas neskubėtų su veiksmais ir
             # nenubėgtų į išvadas"*).
             return "waiting"
+        if getattr(call, "fixes", None):
+            # The fix check did not bring the line back: that is information, not a spent
+            # card — the card goes on to its next step (v3 stage 4).
+            rt.tracer.emit("case", move="fix_check_negative", fault=state.case.fault)
+            return _advance(state, rt)
         return _retry_or_give_up(state, rt)
     walked = _jumped_ahead(state, rt)
     if walked is not None:
@@ -1421,7 +1432,9 @@ def _skip_now(call: Any, facts: dict[str, str]) -> bool:
     for text in getattr(call, "skip_when", None) or []:
         if Condition.parse(text).holds(facts) is True:
             return True
-    return False
+    # v3 stage 4: `run_when` — the step applies only when ALL of it holds.
+    run_when = [Condition.parse(text) for text in (getattr(call, "run_when", None) or [])]
+    return bool(run_when) and not all(c.holds(facts) is True for c in run_when)
 
 
 def _already_done(call: Any, facts: dict[str, str]) -> bool:
@@ -1633,6 +1646,14 @@ def _proof_plan(state: Any, rt: Any, call: Any, facts: dict[str, str], step: Any
     )
 
 
+def _cause_words(state: Any) -> str:
+    """WHY it happened, when a fix check found it (U10: the ending carries its conclusion)."""
+    from ...contract.locale import phrase_or
+
+    cause = phrase_or(state.case.cause, None) if state.case.cause else None
+    return f" and, in one sentence, why it happened: {cause}" if cause else ""
+
+
 def _resolved(state: Any, rt: Any) -> TurnPlan:
     """The solution ran and the line agrees: say it works and close warmly. The engine
     closes on ITS verdict, never on the caller's word alone (D-07)."""
@@ -1643,8 +1664,10 @@ def _resolved(state: Any, rt: Any) -> TurnPlan:
         action=Action(type="close", name="resolved"),
         say=Say(
             kind="directive",
-            goal="say briefly that the service is back, then ask whether you can help with "
-            "anything else — the goodbye comes when they decline",
+            goal="say briefly that the service is back"
+            + _cause_words(state)
+            + ", then ask whether you can help with anything else — the goodbye comes when "
+            "they decline",
             stage="diagnosis",
         ),
     )
