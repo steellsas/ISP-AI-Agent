@@ -106,3 +106,53 @@ def test_the_dashboard_draws_the_phases():
     assert html.count('class="b-phases"') == 2  # live call and archive
     for key in phase.PHASES:
         assert f'"{key}"' in js
+
+
+class TestHangUpWithATechnicianDecided:
+    """Andrius 2026-10-09: a hang-up during the fault fix still gets its ticket — with what was
+    done and when the caller put the receiver down. Eval S4/A1 had closed it as „resolved",
+    because a bridged computer makes the line look healthy."""
+
+    def _call(self, make_state, make_runtime, created):
+        def tools(name, args):
+            if name == "create_ticket":
+                created.append(args)
+                return {"success": True, "ticket_id": "TKT-HANG"}
+            if name == "diagnose_connection":
+                return {"verdict": None}  # the bridge: traffic flows, nothing to report
+            return {}
+
+        tracer = _Tracer()
+        state, rt = make_state("+37060012353"), make_runtime(fake_tools=tools, tracer=tracer)
+        state.identity.customer_id = "CUST009"
+        state.intake.problem_type = "internet_down"
+        state.diagnosis.verdicts["network"] = {"reason": "no_mac_observed"}
+        state.case.fault, state.case.solution = "no_mac_observed", 0
+        state.dialog.phase = phase.TICKET
+        return state, rt, tracer
+
+    def test_the_ticket_is_registered_with_the_hang_up(self, make_state, make_runtime):
+        from agent.call_record import finalizer
+
+        created = []
+        state, rt, tracer = self._call(make_state, make_runtime, created)
+        state.case.summarised = True
+        state.ticket.stage = "phone"  # the contact questions were running
+        finalizer.finalize(state, rt)
+
+        assert state.ticket.ticket_id == "TKT-HANG"
+        assert state.closing.closed_reason == "registered"
+        description = created[0]["problem_description"]
+        assert "padėjo ragelį" in description and "registruojant gedimą" in description
+        assert any(e.get("action") == "registration_decided" for e in tracer.events)
+
+    def test_a_healthy_line_without_a_decision_is_still_resolved(self, make_state, make_runtime):
+        from agent.call_record import finalizer
+
+        created = []
+        state, rt, _ = self._call(make_state, make_runtime, created)
+        state.dialog.phase = phase.INVESTIGATE
+        finalizer.finalize(state, rt)
+
+        assert created == []
+        assert state.closing.closed_reason == "resolved"

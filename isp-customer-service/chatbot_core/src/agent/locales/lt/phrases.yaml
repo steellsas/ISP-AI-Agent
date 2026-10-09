@@ -749,6 +749,14 @@ solver:
   bridged_ticket_note: " Internetas kol kas veiks per kompiuterį; kai turėsite naują routerį, paskambinkite — pririšime, ir veiks visi namai."
   reboot_check_question: "Ar interneto lemputė mirksi? Ar atsidaro puslapis?"
 
+# Pokalbio fazės (STRUKTURA_V3) — kaip jos vadinamos tikete ir žmonėms.
+phase:
+  greeting: "pasisveikinimo metu"
+  intake: "aiškinantis, kodėl skambina"
+  identify: "identifikacijos metu"
+  investigate: "tikrinant gedimą"
+  ticket: "registruojant gedimą (kontaktų metu)"
+  closing: "baigiant pokalbį"
 ticket:
   # Ticket dialogue and the ticket text a technician reads.
   declined: "Gerai — gedimo neregistruoju. "
@@ -790,6 +798,9 @@ ticket:
     not_done: " Nepavyko / nebuvo daryta: {items}."
     bridge_live: " Laikinas internetas PALEISTAS per kliento kompiuterį — veikia tik jame; routerį reikia keisti."
     unanswered: " Klientas neatsakė: {items}."
+    # Padėtas ragelis (Andrius, 2026-10-09: *„parašyta, kas buvo atlikta ir kada klientas padėjo
+    # ragelį"*): kada ir kurioje pokalbio dalyje ryšys nutrūko.
+    hung_up: " Klientas padėjo ragelį {time} ({phase}) — pokalbis nutrūko nebaigtas."
     assumed_item: "{fact} (dirbome su prielaida: {value})"
     tried: " Bandyta/atmesta: {causes}."
     extra: " Papildomai patikrinti: {items}."
