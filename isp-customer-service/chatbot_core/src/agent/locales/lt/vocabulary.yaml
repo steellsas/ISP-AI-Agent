@@ -183,6 +183,8 @@ lights_no:
   - "vis tiek ne"
   - "negyv"
 
+# A negative pronoun („jokia", „nė viena") makes the answer „no" even when ASR lost the „ne".
+lights_none_pronoun: ["joki", "nė vien", "ne viena", "nei viena", "niekas"]
 lights_yes:
   - "dega"
   - "šviečia"
@@ -1144,6 +1146,10 @@ ticket_words: ["registr", "meistr"]
 # After the news: a turn with these is CONTENT, not a goodbye (closing wave
 # block 2: payment claims and follow-up asks were swallowed by the goodbye).
 inform_wants_more: ["klausim", "palauk", "dar ", "noriu", "minut", "sekund", "skol", "sumokėj", "sumokej", "apmokėj", "apmokej", "kiek", "kada", "anks", "neveik", "kain"]
+# Our own „anything else?" offer — a plain yes to it means the caller has more to ask.
+# A how-to question the knowledge base answers („kaip pakeisti…", „kur rasti…", „ką daryti…").
+how_question_words: [" kaip ", " kur ", "ką daryti", "ka daryti", "ką man daryti", "ka man daryti"]
+offer_more_markers: ["ar dar", "kitų klausim", "kitu klausim", "kokių nors klausim", "kokiu nors klausim", "kuo nors padėti", "kuo nors padeti", "kuo dar", "daugiau klausim"]
 
 # --- agent/perceive/evidence.py, decide/rules/ticket.py, decide/rules/head.py ---
 
@@ -1290,6 +1296,8 @@ registration_claim_subject: ["gedim", "meistr", "tiket", "koleg", "technik", "kl
 # "ne aš sudariau sutartį" — explicitly not the contract holder.
 caller_not_holder: ["ne sutart", "nesu sudar", "ne aš sudar", "ne as sudar"]
 # A plain yes to "ar jūs sutartį sudaręs asmuo?".
+# The caller names THEMSELVES (a correction of the misheard name), not the holder.
+caller_own_name_markers: ["mano vardas", "mano vardu", "vardas mano", "aš esu", "as esu", "mane vadina", "vadinuosi", "mano pavard"]
 caller_plain_yes: ["taip", "aš", "as "]
 # Homework step: consent words; a ticket/technician wish blocks the consent.
 # "pririškite tada" — asks for the bind itself.

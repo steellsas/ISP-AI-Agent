@@ -44,11 +44,29 @@ def plan(state: Any, rt: Any) -> TurnPlan:
     # the question used to take the whole turn, so the Case's move was dropped and the model
     # improvised „užregistruosiu" (live 2026-10-07). The Case keeps the turn; the question gets
     # one short answer in the same reply.
-    if str(stage_plan.rule).startswith("case.") and scripted.rule == "dialog.question_passthrough":
+    if (
+        str(stage_plan.rule).startswith("case.")
+        and scripted.rule == "dialog.question_passthrough"
+        and _case_heard_an_answer(state, stage_plan.rule)
+    ):
         state.turn.also_asked = True
         rt.tracer.emit("decision", intent="question_mid_case", action="answer_then_step")
         return stage_plan
     return scripted
+
+
+# Case moves that only happen because the caller's words settled something.
+_OUTCOME_MOVES = ("case.summary", "case.escalate", "case.resolved")
+
+
+def _case_heard_an_answer(state: Any, rule: str) -> bool:
+    """The Case took an ANSWER from this very utterance — so the turn is answer + question.
+
+    A turn that is only a question („O sakykite, kaip pakeisti wifi slaptažodį?") keeps the
+    old path: the answer from the knowledge base, then the standing question again. Keeping
+    the Case's step there stacked a second question onto the answer (eval K1: 330 chars).
+    """
+    return state.case.moved_on_turn == state.dialog.turn_count or rule in _OUTCOME_MOVES
 
 
 def _is_fault_script(rule: str) -> bool:

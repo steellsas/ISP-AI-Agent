@@ -180,6 +180,23 @@ def device_trouble_only(text: str) -> bool:
     return symptom and not service
 
 
+def _asked_in_words(heard: str, turn_type: str) -> bool:
+    """The model labelled the turn an ANSWER, but the words ask („O sakykite, kaip pakeisti wifi
+    slaptažodį?", eval K1 2026-10-08: Gemma said „answer" two runs of three, and the knowledge base
+    stayed shut). Only an answer that asks HOW is overridden — frustration and confusion stay
+    refused."""
+    from .contract.locale import vocab
+    from .perceive.detectors import is_real_question
+
+    low = f" {(heard or '').lower()} "
+    return (
+        turn_type == "answer"
+        and is_real_question(heard)
+        # A HOW question only: „kiek galima klausinėti to paties?" asks too, and is frustration.
+        and any(m in low for m in vocab("how_question_words"))
+    )
+
+
 def from_caller(
     heard: str,
     *,
@@ -207,7 +224,7 @@ def from_caller(
     # `confusion` irgi NE: sumišusiam klientui reikia paaiškinti KITAIP (tam yra savas kelias), o ne
     # naujos žinios. Būtent taip ir buvo A1 — nusivylimas atpažintas kaip `confusion`.
     # Ėjimo tipą pasako supratimo sluoksnis, tad tai duomenys, ne spėjimas.
-    if turn_type and turn_type != "question":
+    if turn_type and turn_type != "question" and not _asked_in_words(heard, turn_type):
         return Refusal("not_a_question", heard)
     if out_of_purpose(heard):
         return Refusal("purpose", heard)

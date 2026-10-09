@@ -597,3 +597,23 @@ Taisyklės darbui:
   PR kuria Andrius.
 - Banga baigiama pilnai (kodas + testai + eval), tik tada testuojama gyvai.
 - Kiekvienos bangos pabaigoje — įrašas čia: kas padaryta, eval rezultatas, kas liko.
+
+---
+
+## 5. Struktūrinė peržiūra v3 (2026-10-08)
+
+Po gyvų skambučių 2026-10-07 (bangos 9–10) — antra struktūros peržiūra: LLM kvietimai ir promptų
+dydžiai, fazių savininkai, mazgų vidus, šių radinių būklė. Sutarta su Andriumi:
+
+- **Kryptis — fazės su vienu savininku** (P-6 įgyvendinimas): pasisveikinimas → kodėl skambina →
+  identifikacija → tyrimas ⟲ (analizė ir sprendimas — vienas ciklas) → baigtis → tiketas →
+  uždarymas; grįžimai aprašyti lentelėje.
+- **Pokalbio sluoksnis** (patvirtinti / persiklausti / paaiškinti / grąžinti) — variklio
+  sprendimas kiekviename ėjime, ne fazė.
+- **Pokalbio užbaigimas** (Andriaus principai U1–U7): agentas pats ragelio nepadeda vien dėl
+  išgirstų žodžių; „ar tikrai baigti?" — tik tyrimo metu; klientas visada gali padėti ragelį, o
+  pasekmes tvarko `finalizer`; uždarymas — atskira fazė.
+- **Agento planas:** hibridas C — variklis renkasi iš modulių katalogo, LLM tik siūlo spragoms,
+  pirma šešėlyje.
+- Etapas 0 (greiti taisymai) atliktas 10 bangoje; projektas ir etapai 2–7 —
+  [STRUKTURA_V3.md](STRUKTURA_V3.md) (laukia patvirtinimo).

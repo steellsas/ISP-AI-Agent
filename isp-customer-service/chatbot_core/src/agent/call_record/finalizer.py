@@ -52,11 +52,16 @@ def finalize(state: GraphState, rt: AgentRuntime, transport_end: str | None = No
         s.identity.customer_id
         and not s.ticket.ticket_id
         and not s.closing.case_closed
-        and role_of(
-            (s.resolution.procedure or {}).get("verdict"),
-            (s.resolution.procedure or {}).get("step"),
+        and (
+            role_of(
+                (s.resolution.procedure or {}).get("verdict"),
+                (s.resolution.procedure or {}).get("step"),
+            )
+            == "homework"
+            # v2: the Case's homework has been told and waits for „tinka?" (wave 10, S5) —
+            # without this a hang-up there registered a technician over the agreed callback.
+            or s.case.awaiting == "later_agreed"
         )
-        == "homework"
     ):
         close_call(state, rt, "callback")
         rt.tracer.emit("decision", intent="hangup_net", action="callback_close")
@@ -76,7 +81,13 @@ def finalize(state: GraphState, rt: AgentRuntime, transport_end: str | None = No
         # v2: there is no `resolution.procedure` — the Case holds the fix, so every read here
         # is None-safe and the v1 strategy simply has nothing to say.
         solved = bool((s.resolution.procedure or {}).get("telemetry_fixed"))
-        if not solved:
+        decided = _registration_decided(s)
+        if decided:
+            # The technician was already decided (summary said, contact dialogue running, a
+            # bridge bound to a dead router). A bridge makes the line LOOK healthy, so the recheck
+            # closed such calls as „resolved" with no ticket (eval S4/A1, 2026-10-09).
+            rt.tracer.emit("decision", intent="hangup_net", action="registration_decided")
+        if not solved and not decided:
             try:
                 from ..tooling import telemetry
 
@@ -91,6 +102,7 @@ def finalize(state: GraphState, rt: AgentRuntime, transport_end: str | None = No
         else:
             if s.resolution.procedure is not None:
                 s.resolution.procedure.setdefault("escalate_reason", "caller_hung_up")
+            _record_hang_up(state, rt)
             if not s.ticket.contact_phone:
                 s.ticket.contact_phone = s.identity.caller_phone
             if not s.ticket.contact_hours:
@@ -240,3 +252,36 @@ def build_call_summary(state: GraphState, rt: AgentRuntime) -> dict:
             else None
         ),
     }
+
+
+def _registration_decided(s) -> bool:
+    """A technician is already the call's outcome — the hang-up only cut the contact questions."""
+    from ..decide.rules.head import case_owes_ticket
+
+    return bool(
+        case_owes_ticket(s)
+        or (s.ticket.stage and not s.ticket.ticket_id)
+        or s.resolution.bridge_bound
+    )
+
+
+def _record_hang_up(state, rt) -> None:
+    """What the ticket must say about a call that ended with the receiver put down (Andrius,
+    2026-10-09): what had been done until then, and when and where the call broke off."""
+    import datetime
+
+    s = state
+    if s.case.fault and not s.case.summary:
+        # The summary is said before a registration; a hang-up before it leaves the ticket
+        # without „what was done" — build it from the same source the caller would have heard.
+        from ..contract import cards
+        from ..decide.rules.case_rule import _summary_words
+        from ..ledger import facts_of
+
+        told = _summary_words(state, cards.card(s.case.fault), facts_of(state))
+        if told:
+            s.case.summary = told
+    when = datetime.datetime.now().strftime("%H:%M")
+    where = phrase(f"phase.{s.dialog.phase}") if s.dialog.phase else phrase("phase.investigate")
+    s.case.facts["_hangup_note"] = phrase("ticket.details.hung_up", time=when, phase=where).strip()
+    trace_note(rt.tracer, state, "hangup_net", f"ticket: hung up {when} in {s.dialog.phase}")

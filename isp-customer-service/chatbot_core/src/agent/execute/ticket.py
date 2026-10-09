@@ -105,6 +105,35 @@ def _debt_news_told(state: Any) -> bool:
     return bool(state.diagnosis.news_delivered and verdict_flag(reason, "inform") == "debt")
 
 
+def unbacked_promise(state: Any, sentence: str) -> bool:
+    """A registration promise with nothing that could make it true (wave 10, A).
+
+    The claim guard below turns a promise INTO the contact dialogue when the call has a
+    reason to register — a Case fault for a technician, a question about the debt. Without
+    one (live eval K1: „kaip pakeisti wifi slaptažodį?" answered from the knowledge base and
+    then „užregistruosiu jūsų klausimą"), a ticket would be junk for the colleagues and a
+    false promise for the caller, so the sentence is not spoken at all.
+    """
+    low = (sentence or "").lower()
+    if not any(m in low for m in vocab("registration_claim")):
+        return False
+    if not any(m in low for m in vocab("registration_claim_subject")):
+        return False
+    s = state
+    if s.ticket.ticket_id or s.ticket.stage:
+        return False  # a registration exists or is being collected — the words are true
+    backed = (
+        bool(s.identity.customer_id)
+        and not s.closing.case_closed
+        and (
+            s.resolution.procedure is not None
+            or (s.case.fault and (s.case.in_progress or s.case.summarised))
+            or _debt_news_told(state)
+        )
+    )
+    return not backed
+
+
 def registration_claim_guard(state: Any, rt: Any, content: str) -> str | None:
     """The LLM narrator CLAIMED a registration that never happened (observed
     live 2026-08-05: "Užregistravau gedimą…" at dr_recheck, ticket_id None,

@@ -5,7 +5,7 @@ Structure (the speaker's prompt: the core plus ONE skill):
     speak/system.md      CORE, sent every turn (cached prefix)
     skills/*.md          one per SKILL a reply can need (wave 2b) - what to do NOW
     partials/*.md        reusable pieces (identity, facts integrity)
-    sensors/*.md         the reading prompts (perception, classifier, solver...)
+    sensors/*.md         the reading prompts (perception, classifier, analyst...)
 
 A prompt is assembled from partials with `<<include: partials/identity>>` markers, so a
 shared rule (e.g. "one question") lives in ONE place. Files are plain Markdown (raw text

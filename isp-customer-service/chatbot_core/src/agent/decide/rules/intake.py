@@ -40,8 +40,15 @@ def _apply_caller_relation(state: Any, rt: Any) -> None:
     # closed, so nothing was listening. A name given here wins over what was misheard.
     from ...perceive.caller import extract_caller_name
 
-    corrected = extract_caller_name(state.dialog.last_heard or "")
-    if corrected and corrected != s.identity.caller_name:
+    heard = state.dialog.last_heard or ""
+    corrected = extract_caller_name(heard)
+    # Only a name the caller gives as THEIR OWN corrects the record. Live 2026-10-07:
+    # „Taip, mano tėtis Gedrius yra vardu" renamed the caller Andrius to the HOLDER Gedrius,
+    # and „Aršku ačių lauksu" renamed Rasa to „Aršku" (wave 10, V5).
+    from ...contract.locale import vocab
+
+    own = any(m in heard.lower() for m in vocab("caller_own_name_markers"))
+    if corrected and own and corrected != s.identity.caller_name:
         rt.tracer.emit("caller_intro", name=corrected, was=s.identity.caller_name, corrected=True)
         s.identity.caller_name = corrected
     if relation != "unknown":
@@ -93,7 +100,10 @@ def _is_secondary(state: Any, problem: str, policy: str | None) -> bool:
     s = state
     return (
         policy == "solve"
-        and s.resolution.procedure is not None
+        # Being solved = identified and worked on. v1 marked it with `resolution.procedure`,
+        # which a v2 Case call never fills, so a TV problem mentioned mid-fix was dropped
+        # and never reached the ticket (wave 10, S6).
+        and (s.resolution.procedure is not None or bool(s.identity.customer_id))
         and not s.closing.case_closed
         and not s.ticket.stage
         and len((s.dialog.last_heard or "").split()) >= 3

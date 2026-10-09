@@ -1552,7 +1552,10 @@ def _resolved(state: Any, rt: Any) -> TurnPlan:
         rule="case.resolved",
         action=Action(type="close", name="resolved"),
         say=Say(
-            kind="directive", goal="say the service is back and close warmly", stage="diagnosis"
+            kind="directive",
+            goal="say briefly that the service is back, then ask whether you can help with "
+            "anything else — the goodbye comes when they decline",
+            stage="diagnosis",
         ),
     )
 

@@ -657,7 +657,9 @@ def _case_facts(state, rt) -> list[str]:
             )
         # Just resolved: confirm briefly, then OFFER one more thing and WAIT — the engine
         # ends the call once the caller declines.
-        if s.closing.closed_reason == "resolved" and s.resolution.procedure:
+        # v2: the Case resolves without `resolution.procedure`, so this never showed after
+        # `case.resolved` (wave 10, S7).
+        if s.closing.closed_reason == "resolved" and (s.resolution.procedure or s.case.fault):
             out.append(
                 "SOLVED: the caller confirmed the internet works. Be glad briefly and ask "
                 "„Ar dar kuo nors galiu padėti?“. Do NOT say goodbye yet, do NOT ask about "
@@ -1128,8 +1130,7 @@ def _goal_resync(state, rt) -> list[str]:
     return [
         "PLAN GOAL — BACK TO SOLVING (after the detour): in one sentence remind where we "
         + (f"are — established: {established} — " if established else "are ")
-        + "and continue from the CURRENT goal below (STILL TO FIND OUT / FINDINGS MOMENT / "
-        "ASK NOW). Ask NOTHING again that is already established; if the conclusion is clear "
+        + "and continue from the CURRENT goal below. Ask NOTHING again that is already established; if the conclusion is clear "
         "— say it and offer the solution."
     ]
 
@@ -1227,9 +1228,9 @@ def _goal_holder_clarify(state, rt) -> list[str]:
     _q_register(state, rt, "ident", "holder_clarify")
     rt.tracer.emit("decision", intent="holder_name", action="clarify_ask", soft=True)
     return [
-        "ALSO ADD ONE QUESTION AT THE END (the name does not match the contract): say it WORD "
-        f"FOR WORD — „{phrase('identification.holder_mismatch_clarify')}“ — after whatever this "
-        "reply is about. NEVER say the name that is in our system, and do not drop what this "
+        "END WITH THIS QUESTION (the name does not match the contract): say it WORD FOR WORD — "
+        f"„{phrase('identification.holder_mismatch_clarify')}“ — after whatever this reply is "
+        "about; it is the reply's ONE question, so ask nothing else. NEVER say the name that is in our system, and do not drop what this "
         "reply had to say."
     ]
 

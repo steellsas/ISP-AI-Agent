@@ -31,4 +31,7 @@ def narrate_node(state: GraphState, runtime: Runtime[AgentRuntime]) -> dict[str,
     rt = runtime.context
     state = state.model_copy(deep=True)
     reply = speak(state, rt, TurnPlan(**state.turn.plan), state.turn.action_text)
+    from ..phase import observe
+
+    observe(state, rt)  # shadow: which phase the turn ended in (decides nothing)
     return node_update(state, reply)

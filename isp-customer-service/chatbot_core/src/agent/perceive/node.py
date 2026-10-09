@@ -42,6 +42,10 @@ def read_turn_start(state: Any, rt: Any, user_input: str | None) -> None:
     # turn's "understood" directive leaks into their replies.
     if state.ticket.stage:
         state.turn.understanding = None
+    # The resume hold covers the ONE turn a caller declined to end the call on. Nothing reset
+    # it, so after a single „ne, tęskime" side questions were ignored for the rest of the call
+    # (wave 10, S2). A new caller turn is a new turn.
+    state.dialog.resume_hold_due = False
     previous = state.dialog.last_heard
     if previous:
         state.dialog.recent_heard = [previous, *state.dialog.recent_heard][:3]

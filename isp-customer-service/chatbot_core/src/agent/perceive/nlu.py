@@ -106,6 +106,12 @@ def _best_span(
     return (0.0, None, -1, -1)
 
 
+def _address_evidence(seq: list, norm: str) -> bool:
+    """A number or a street word in the utterance — what makes a fuzzy street a street."""
+    low = f" {norm.lower()} "
+    return any(k == "num" for k, _ in seq) or any(m in low for m in vocab("street_words"))
+
+
 def extract_address(
     text: str,
     streets: list[str],
@@ -127,6 +133,11 @@ def extract_address(
     sc, street, s_start, s_end = _best_span(
         seq, streets, street_match_score, limits.get("nlu_street_match_threshold")
     )
+    if street and sc < 1.0 and not _address_evidence(seq, norm):
+        # A NEAR match with nothing address-like around it is an ordinary word: „Vakar vakare,
+        # po audros" became Aušros street (eval I1, 2026-10-08). An exact name, a house number
+        # or a street word keeps the reading (wave 10).
+        street = None
     street_span = set(range(s_start, s_end + 1)) if street else set()
     _, city, _, _ = _best_span(
         seq,

@@ -161,6 +161,9 @@ def register_ticket_from_state(state: Any, rt: Any, step_id: str | None) -> None
     note = (s.case.facts or {}).get("_ticket_note")
     if note:
         details += f" {note[0].upper()}{note[1:]}."
+    hung_up = (s.case.facts or {}).get("_hangup_note")
+    if hung_up:
+        details += f" {hung_up}"
     from .ticket_types import fault_type
 
     actions = tools_called_this_session(rt.tracer)

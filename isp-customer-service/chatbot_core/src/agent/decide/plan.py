@@ -50,7 +50,7 @@ class Say(BaseModel):
 
 
 class Action(BaseModel):
-    type: Literal["tool", "procedure_step", "register_ticket", "append_ticket", "close", "none"]
+    type: Literal["tool", "register_ticket", "append_ticket", "close", "none"]
     name: str | None = None  # tool name / step role / close reason
     args: dict[str, Any] = Field(default_factory=dict)
 

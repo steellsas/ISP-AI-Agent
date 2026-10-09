@@ -23,13 +23,11 @@ def _call(make_state, make_runtime, verdict="router_hung"):
     return state, make_runtime(tracer=tracer), tracer
 
 
-def test_known_tool_and_procedure_role_pass(make_state, make_runtime):
+def test_known_tool_and_ticket_pass(make_state, make_runtime):
     state, rt, _ = _call(make_state, make_runtime)
     for action in (
         Action(type="tool", name="update_mac"),
         Action(type="tool", name="preflight_phone"),
-        Action(type="procedure_step", name="reboot"),
-        Action(type="procedure_step", name="run_due_action"),
         Action(type="register_ticket"),
     ):
         assert check_plan(state, rt, _plan(action)).action == action
@@ -43,10 +41,17 @@ def test_unknown_tool_is_dropped_and_traced(make_state, make_runtime):
     assert tracer.events[-1]["type"] == "gate"
 
 
-def test_role_outside_the_active_procedure_is_dropped(make_state, make_runtime):
-    state, rt, _ = _call(make_state, make_runtime)
-    plan = check_plan(state, rt, _plan(Action(type="procedure_step", name="bind_device")))
-    assert plan.action.type == "none"
+def test_every_action_type_has_an_executor():
+    """Wave 10, S4: `procedure_step` passed the gate but nothing executed it (execute raised
+    „no executor"). Every action type a plan may carry must have its branch in execute."""
+    import inspect
+    import typing
+
+    from agent.execute import actions
+
+    source = inspect.getsource(actions.run_action)
+    for kind in typing.get_args(Action.model_fields["type"].annotation):
+        assert f'"{kind}"' in source, kind
 
 
 def test_forbidden_action_is_dropped(make_state, make_runtime, monkeypatch):
@@ -58,15 +63,3 @@ def test_forbidden_action_is_dropped(make_state, make_runtime, monkeypatch):
     assert (
         check_plan(state, rt, _plan(Action(type="tool", name="update_mac"))).action.type == "none"
     )
-
-
-def test_propose_fix_is_accepted_for_every_pack_verdict():
-    from agent.decide.solver import SolverDecision
-    from agent.decide.solver_guard import gate
-    from agent.faults import pack_verdicts
-
-    for verdict in pack_verdicts():
-        decision = SolverDecision(
-            current_hypothesis=verdict, next_action="propose_fix", narrator_instruction="x"
-        )
-        assert gate(decision, known_hypotheses=pack_verdicts()).accepted, verdict

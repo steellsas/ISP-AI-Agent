@@ -58,7 +58,14 @@ def mark_step_presented(state, rt) -> None:
             # result (outage ETA, debt) still goes out next, through its template.
             return
         state.identity.result_pending = False
-        if s.resolution.procedure is None:
+        from ..inform import is_news
+
+        # Only NEWS (a debt, an outage, an open ticket) is told by this reply. A fault is not
+        # news: on a v2 Case call `resolution.procedure` is always empty, so this used to mark
+        # every fault call "told" once the caller gave a name — and a goodbye mid-analysis
+        # then closed as „informed" without a technician (wave 10, S1).
+        reason = (s.diagnosis.verdicts.get("network") or {}).get("reason")
+        if s.resolution.procedure is None and is_news(reason):
             state.diagnosis.news_delivered = True
     r = state.resolution.procedure
     if not r:

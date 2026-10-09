@@ -155,7 +155,10 @@ class PiperTTSProvider:
             if key not in self._ENGINES:
                 t0 = time.perf_counter()
                 stem = VOICES[self._voice]
-                self._ENGINES[key] = PiperVoice.load(str(self._root / self._voice / f"{stem}.onnx"))
+                model_path = str(self._root / self._voice / f"{stem}.onnx")
+                voice = PiperVoice.load(model_path)
+                voice.session = _cpu_session(model_path)
+                self._ENGINES[key] = voice
                 logger.info(
                     "piper: voice %s loaded in %d ms",
                     self._voice,
@@ -228,6 +231,31 @@ class PiperTTSProvider:
     def synthesize(self, text: str, *, language: str | None = None) -> bytes:
         """Full reply as one MP3 (concatenated per-sentence frames)."""
         return b"".join(self.stream(text, language=language))
+
+
+def _cpu_session(model_path: str):
+    """An ONNX session with a bounded thread pool and no spin-waiting.
+
+    The default uses every core and spins between runs. On the 20-thread dev PC under load a
+    sentence took 0.3–2.4 s in the server against ~0.15 s idle; 8 threads without spinning
+    held ~30 % better under load and the same idle (measured 2026-10-07). TTS_PIPER_THREADS
+    overrides the count.
+    """
+    import onnxruntime
+
+    try:
+        threads = int(os.getenv("TTS_PIPER_THREADS", "0"))
+    except ValueError:
+        threads = 0
+    if threads <= 0:
+        threads = min(8, os.cpu_count() or 4)
+    options = onnxruntime.SessionOptions()
+    options.intra_op_num_threads = threads
+    options.inter_op_num_threads = 1
+    options.add_session_config_entry("session.intra_op.allow_spinning", "0")
+    return onnxruntime.InferenceSession(
+        model_path, sess_options=options, providers=["CPUExecutionProvider"]
+    )
 
 
 def _to_mp3(pcm16: bytes, sample_rate: int) -> bytes:

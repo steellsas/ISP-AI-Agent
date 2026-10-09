@@ -417,8 +417,10 @@ def reply_plan(state: Any, rt: Any, user_input: str | None) -> TurnPlan | None:
         and not state.identity.result_pending
     ):
         low = (user_input or "").lower()
-        wants_more = is_real_question(user_input) or any(
-            m in low for m in vocab("inform_wants_more")
+        wants_more = (
+            is_real_question(user_input)
+            or any(m in low for m in vocab("inform_wants_more"))
+            or _yes_to_more(state, user_input)
         )
         if wants_more:
             return _plan(
@@ -623,3 +625,21 @@ def _backstop_plan(state: Any, rt: Any, backstop: tuple[str, bool]) -> TurnPlan:
         state.dialog.stuck_count += 1  # advance the ladder for the next turn
     rt.tracer.emit("stuck", count=state.dialog.stuck_count, repeated=False)
     return _plan("dialog.stuck_backstop", text, action=action)
+
+
+def _yes_to_more(state: Any, user_input: str | None) -> bool:
+    """„Taip." answering OUR „Ar dar turite klausimų?" means they have one.
+
+    Live 2026-10-07 a bare yes is a backchannel to the wrap-up, so it closed the call on a
+    caller who had just said they wanted to ask something (wave 10, V1).
+    """
+    from ...contract.locale import vocab
+    from ...perceive.detectors import detect_farewell, detect_yes_no
+    from ...resolution import Outcome
+
+    asked = (state.dialog.last_question or "").lower()
+    return (
+        detect_yes_no(user_input) is Outcome.YES
+        and not detect_farewell(user_input)  # „Taip, viso gero" is the goodbye
+        and any(m in asked for m in vocab("offer_more_markers"))
+    )

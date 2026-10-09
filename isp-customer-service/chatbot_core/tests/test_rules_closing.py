@@ -28,17 +28,31 @@ def _state(make_state, text, **groups):
             "closing.ticket_phone_amend",
         ),
         ("Gerai, ačiū", {"ticket": TicketState(ticket_id="TCK-1")}, "closing.goodbye_after_ticket"),
+        # Wave 10, S3: a v2 Case call (no `resolution.procedure`) reopens the same way.
+        ("Užregistruokit gedimą", {"case": True}, "closing.ticket_demand_reopen"),
+        (
+            "Internetas vis tiek neveikia",
+            {"case": True, "closing": ClosingState(case_closed=True, closed_reason="resolved")},
+            "closing.still_down_reopen",
+        ),
         ("Gerai", {}, "closing.goodbye"),
         ("O kiek tai kainuos?", {}, "closing.free_reply"),
     ],
 )
 def test_closing_rule(make_state, make_runtime, text, groups, rule):
     procedure = groups.pop("procedure", False)
+    case = groups.pop("case", False)
     state = _state(make_state, text, **groups)
     if procedure:
         state.resolution.procedure = {"verdict": "router_hung", "step": "rh_check"}
+    if case:
+        state.identity.customer_id = "CUST112"
+        state.case.fault, state.case.solution = "router_hung", 0
     plan = closing.plan(state, make_runtime())
     assert plan is not None and plan.rule == rule and plan.owner == "closing"
+    if rule.endswith("_reopen"):
+        assert state.ticket.stage == "phone"  # the contact dialogue starts — no dead action
+        assert plan.action.type == "none"
 
 
 def test_open_case_is_not_the_closing_rules(make_state, make_runtime):

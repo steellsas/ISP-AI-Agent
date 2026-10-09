@@ -4,7 +4,30 @@
     {
       "name": "isp-demo",
       "runtimeExecutable": "uv",
-      "runtimeArgs": ["run", "uvicorn", "--app-dir", "chatbot_core", "src.app.main:app", "--port", "8080"],
+      "runtimeArgs": [
+        "run",
+        "uvicorn",
+        "--app-dir",
+        "chatbot_core",
+        "src.app.main:app",
+        "--port",
+        "8080"
+      ],
+      "port": 8080,
+      "cwd": "isp-customer-service"
+    },
+    {
+      "name": "isp-demo-venv",
+      "runtimeExecutable": "isp-customer-service/.venv/Scripts/python.exe",
+      "runtimeArgs": [
+        "-m",
+        "uvicorn",
+        "--app-dir",
+        "chatbot_core",
+        "src.app.main:app",
+        "--port",
+        "8080"
+      ],
       "port": 8080,
       "cwd": "isp-customer-service"
     }

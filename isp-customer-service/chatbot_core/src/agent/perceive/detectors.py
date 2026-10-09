@@ -170,6 +170,10 @@ def detect_lights(text: str | None) -> str | None:
     low = text.lower()
     if any(m in low for m in vocab("lights_no")) or vocab_re("bare_no").search(low):
         return "no"
+    # „Jokios … dega" is not Lithuanian: a negative pronoun takes a negated verb, so the
+    # „ne" was lost by ASR („Jokios net dega", live 2026-10-07 → read as lit; wave 10, V4).
+    if any(m in low for m in vocab("lights_none_pronoun")):
+        return "no"
     if any(m in low for m in vocab("lights_yes")):
         return "yes"
     return None
