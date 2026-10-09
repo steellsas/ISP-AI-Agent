@@ -17,6 +17,7 @@ actions:
   reboot.power.no_flap: equipment.router.reboot.power.no_flap
   cable.reseat: equipment.router.cable.reseat
   reach: equipment.router.reach
+  power.plug: equipment.router.power.plug
 
 # Lemputė → faktas. Kortelės nežino modelių: „INTERNET raudona" (TP-Link) ir „LOS mirksi"
 # (ONT) abi virsta wan_link=down, ir kortelė kalba tik apie wan_link.

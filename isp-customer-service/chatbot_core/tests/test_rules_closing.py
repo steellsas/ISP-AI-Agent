@@ -13,22 +13,13 @@ def _state(make_state, text, **groups):
 @pytest.mark.parametrize(
     ("text", "groups", "rule"),
     [
-        ("Užregistruokit gedimą", {"procedure": True}, "closing.ticket_demand_reopen"),
-        (
-            "Internetas neveikia",
-            {
-                "procedure": True,
-                "closing": ClosingState(case_closed=True, closed_reason="resolved"),
-            },
-            "closing.still_down_reopen",
-        ),
         (
             "Skambinkite kitu numeriu 868321007",
             {"ticket": TicketState(ticket_id="TCK-1")},
             "closing.ticket_phone_amend",
         ),
         ("Gerai, ačiū", {"ticket": TicketState(ticket_id="TCK-1")}, "closing.goodbye_after_ticket"),
-        # Wave 10, S3: a v2 Case call (no `resolution.procedure`) reopens the same way.
+        # Wave 10, S3: a v2 Case call reopens into the contact dialogue.
         ("Užregistruokit gedimą", {"case": True}, "closing.ticket_demand_reopen"),
         (
             "Internetas vis tiek neveikia",
@@ -40,11 +31,8 @@ def _state(make_state, text, **groups):
     ],
 )
 def test_closing_rule(make_state, make_runtime, text, groups, rule):
-    procedure = groups.pop("procedure", False)
     case = groups.pop("case", False)
     state = _state(make_state, text, **groups)
-    if procedure:
-        state.resolution.procedure = {"verdict": "router_hung", "step": "rh_check"}
     if case:
         state.identity.customer_id = "CUST112"
         state.case.fault, state.case.solution = "router_hung", 0

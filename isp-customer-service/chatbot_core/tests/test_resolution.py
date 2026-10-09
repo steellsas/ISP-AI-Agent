@@ -1,11 +1,11 @@
-"""Unit tests for the resolution strategy sequencer (agent/resolution.py).
+"""Unit tests for the answer detectors and the routing `Outcome` they produce.
 
-Pure logic — no LLM, no DB. Proves the engine walks a strategy deterministically:
-the model cannot skip, and each outcome routes to the right next step / terminal.
+Pure logic — no LLM, no DB. (The v1 strategy sequencer these tests used to share the
+file with went with the fault packs.)
 """
 
 from agent.perceive.detectors import detect_conn, detect_scope, detect_yes_no
-from agent.resolution import TERMINALS, Outcome, StepKind, get_strategy, next_step_id
+from agent.resolution import Outcome
 
 
 class TestDetectYesNo:
@@ -101,76 +101,7 @@ class TestClientSideDetectors:
         assert detect_conn("planšetėje") == "wifi"  # a phone/tablet can only be wireless
 
 
-class TestClientSideStrategy:
-    def setup_method(self):
-        self.s = get_strategy("healthy_to_router")
-
-    def test_scope_routes_four_ways(self):
-        # Phase 3.11 universality: every answer order has its own route — all,
-        # one-unnamed (-> ask which), or a named device (-> cross-check the others).
-        assert next_step_id(self.s, "cs_scope", "all") == "cs_ability"
-        assert next_step_id(self.s, "cs_scope", "one") == "cs_which"
-        assert next_step_id(self.s, "cs_scope", "phone") == "cs_cross_phone"
-        assert next_step_id(self.s, "cs_scope", "computer") == "cs_cross_computer"
-
-    def test_which_and_cross_check_routes(self):
-        # cs_which: scope already known (one) — a named device goes straight to its branch.
-        assert next_step_id(self.s, "cs_which", "phone") == "cs_wifi"
-        assert next_step_id(self.s, "cs_which", "computer") == "cs_conn"
-        # cross-check: others work -> device branch; others down too -> whole-home path.
-        assert next_step_id(self.s, "cs_cross_phone", "yes") == "cs_wifi"
-        assert next_step_id(self.s, "cs_cross_phone", "no") == "cs_ability"
-        assert next_step_id(self.s, "cs_cross_computer", "yes") == "cs_conn"
-        assert next_step_id(self.s, "cs_cross_computer", "no") == "cs_ability"
-
-    def test_reboot_verify_resolves_or_escalates(self):
-        assert next_step_id(self.s, "cs_reboot", None) == "cs_verify_all"  # fall through
-        assert next_step_id(self.s, "cs_verify_all", "yes") == "resolve"
-        assert next_step_id(self.s, "cs_verify_all", "no") == "escalate"
-
-    def test_conn_routes_wired_wifi(self):
-        assert next_step_id(self.s, "cs_conn", "wired") == "cs_cable"
-        assert next_step_id(self.s, "cs_conn", "wifi") == "cs_wifi"
-
-    def test_goto_converges_both_chains_on_verify_dev(self):
-        # cable and the wifi chain both reach the same device verify via `goto`.
-        assert self.s.step("cs_cable").goto == "cs_verify_dev"
-        assert self.s.step("cs_wifi2").goto == "cs_verify_dev"
-
-    def test_phone_branch_never_reaches_cable(self):
-        # A phone can only reach Wi-Fi or the whole-home path — the cable step stays
-        # unreachable from every phone route (scope -> cross-check -> wifi/reboot).
-        assert next_step_id(self.s, "cs_scope", "phone") == "cs_cross_phone"
-        assert next_step_id(self.s, "cs_cross_phone", "yes") == "cs_wifi"
-        assert next_step_id(self.s, "cs_cross_phone", "no") == "cs_ability"
-        assert next_step_id(self.s, "cs_which", "phone") == "cs_wifi"
-        assert self.s.step("cs_wifi").goto == "cs_wifi2"
-
-
-class TestRegistry:
-    def test_known_verdict_returns_strategy(self):
-        s = get_strategy("foreign_mac")
-        assert s is not None and s.verdict == "foreign_mac"
-        assert s.rag_doc  # every strategy points at a playbook
-
-    def test_unknown_verdict_is_none(self):
-        assert get_strategy("billing_suspended") is None  # inform verdict, no strategy
-        assert get_strategy(None) is None
-
-    def test_dead_router_strategy_registered(self):
-        s = get_strategy("no_mac_observed")
-        assert s is not None and s.verdict == "no_mac_observed"
-        # bridge only reachable via "yes, I have a computer"; a phone user escalates.
-        # It starts by making sure they take the RIGHT cable, then plug it in.
-        assert next_step_id(s, "dr_offer_bridge", "yes") == "dr_pick_cable"
-        assert next_step_id(s, "dr_offer_bridge", "no") == "escalate"
-        assert s.step("dr_pick_cable").goto == "dr_plug_pc"
-        # …and the line must SEE the device before we bind it.
-        assert s.step("dr_plug_pc").goto == "dr_see_device"
-        # power fix that works resolves; that fails moves to the bridge offer.
-        assert next_step_id(s, "dr_recheck", "yes") == "resolve"
-        assert next_step_id(s, "dr_recheck", "no") == "dr_offer_bridge"
-
+class TestDetectors:
     def test_lights_detector(self):
         from agent.perceive.detectors import detect_lights
 
@@ -237,106 +168,3 @@ class TestRegistry:
         assert detect_confusion("nesuprantu kas tas WAN") is True
         assert detect_confusion("neišmanau apie tai") is True
         assert detect_confusion("taip, mėlyname") is False
-
-    def test_client_side_strategy_registered(self):
-        s = get_strategy("healthy_to_router")
-        assert s is not None and s.verdict == "healthy_to_router"
-        # telemetry-blind: verify steps use the "restored" (veikia/neveikia) detector
-        assert s.step("cs_verify_all").detector == "restored"
-        assert s.step("cs_scope").detector == "scope"
-
-    def test_steps_are_ordered_and_unique(self):
-        s = get_strategy("foreign_mac")
-        ids = [st.id for st in s.steps]
-        assert ids == [
-            "confirm_change",
-            "cable_check",
-            "cable_reconnect",
-            "bind_mac",
-            "confirm_restored",
-            "client_side",
-            "escalate",
-        ]
-        assert len(ids) == len(set(ids))
-
-    def test_action_tools_are_step_scoped(self):
-        s = get_strategy("foreign_mac")
-        # binding is only exposed on bind_mac; registering only on escalate.
-        assert s.step("confirm_change").tools == frozenset()  # no action during confirm
-        assert s.step("cable_check").tools == frozenset()  # instruct, no action
-        assert s.step("cable_reconnect").tools == frozenset()  # instruct, no action
-        assert s.step("confirm_restored").tools == frozenset()  # asks the caller only
-        assert s.step("client_side").tools == frozenset()  # asks the caller only
-        assert "update_mac" in s.step("bind_mac").tools
-        # Phase 3.11 B: the ENGINE registers the ticket deterministically from state —
-        # create_ticket is no longer exposed to the model on the escalate step.
-        assert s.step("escalate").tools == frozenset()
-
-
-class TestForeignMacSequence:
-    def setup_method(self):
-        self.s = get_strategy("foreign_mac")
-
-    def test_confirm_yes_binds_directly(self):
-        # Caller changed a device -> bind (skips the cable check).
-        assert next_step_id(self.s, "confirm_change", Outcome.YES) == "bind_mac"
-
-    def test_confirm_no_checks_cable(self):
-        # Changed nothing -> walk the cable steps, NOT escalate (device is theirs).
-        assert next_step_id(self.s, "confirm_change", Outcome.NO) == "cable_check"
-
-    def test_cable_check_routes_by_port(self):
-        # WAN (blue) -> bind straight away; LAN (yellow) -> move it first.
-        assert next_step_id(self.s, "cable_check", "wan") == "bind_mac"
-        assert next_step_id(self.s, "cable_check", "lan") == "cable_reconnect"
-        # cable_reconnect (INSTRUCT) falls through to the bind.
-        assert next_step_id(self.s, "cable_reconnect", None) == "bind_mac"
-
-    def test_action_falls_through_to_confirm_restored(self):
-        # After binding we ASK the caller (confirm_restored), not auto-close.
-        assert next_step_id(self.s, "bind_mac", None) == "confirm_restored"
-
-    def test_client_side_yes_resolves_no_escalates(self):
-        assert next_step_id(self.s, "client_side", Outcome.YES) == "resolve"
-        assert next_step_id(self.s, "client_side", Outcome.NO) == "escalate"
-
-    def test_happy_path_changed_device_reaches_confirm_restored(self):
-        # confirm_restored is engine-routed (telemetry + caller word), so the static
-        # walk stops there — the resolve/pivot/escalate decision lives in the engine.
-        path, cur = [], "confirm_change"
-        outcomes = {"confirm_change": Outcome.YES, "bind_mac": None}
-        for _ in range(10):
-            path.append(cur)
-            if cur == "confirm_restored" or cur in TERMINALS:
-                break
-            cur = next_step_id(self.s, cur, outcomes.get(cur))
-        assert path == ["confirm_change", "bind_mac", "confirm_restored"]
-
-    def test_nothing_changed_walks_confirm_cable_bind(self):
-        path, cur = [], "confirm_change"
-        outcomes = {"confirm_change": Outcome.NO}  # cable steps fall through (None)
-        for _ in range(10):
-            path.append(cur)
-            if cur == "confirm_restored" or cur in TERMINALS:
-                break
-            cur = next_step_id(self.s, cur, outcomes.get(cur))
-        assert path == [
-            "confirm_change",
-            "cable_check",
-            "cable_reconnect",
-            "bind_mac",
-            "confirm_restored",
-        ]
-
-    def test_step_kinds_are_typed(self):
-        kinds = {st.id: st.kind for st in self.s.steps}
-        assert kinds["confirm_change"] == StepKind.CONFIRM
-        assert kinds["cable_check"] == StepKind.CONFIRM  # waits for a clear port answer
-        assert kinds["cable_reconnect"] == StepKind.INSTRUCT
-        assert kinds["bind_mac"] == StepKind.ACTION
-        assert kinds["confirm_restored"] == StepKind.CONFIRM
-        assert kinds["client_side"] == StepKind.CONFIRM
-
-    def test_action_step_declares_backend_tool(self):
-        bind = self.s.step("bind_mac")
-        assert "update_mac" in bind.tool_actions

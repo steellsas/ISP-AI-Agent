@@ -222,7 +222,7 @@ def _pending_fact(state: Any, text: str) -> tuple[str, str] | None:
         return None
     from ..evidence import read_pending_answer, spec_for
 
-    spec = spec_for((state.resolution.procedure or {}).get("verdict")) or {}
+    spec = spec_for(None) or {}
     item = (spec.get("client") or {}).get(key)
     value = read_pending_answer(str(key), text, item)
     return (str(key), value) if value is not None else None

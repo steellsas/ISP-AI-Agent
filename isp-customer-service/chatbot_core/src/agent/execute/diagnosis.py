@@ -1,5 +1,5 @@
-"""Diagnosis execution — the telemetry reads (the first diagnosis, fresh rechecks) and the
-procedure's due step action (bind, reset, verify), run by the engine, never the model."""
+"""Diagnosis execution — the telemetry reads (the first diagnosis, fresh rechecks), run by
+the engine, never the model."""
 
 from __future__ import annotations
 
@@ -38,8 +38,6 @@ def ensure_diagnosed(state, rt) -> bool:
     Returns True if it ran diagnose on THIS call (first entry), so the caller
     skips a step advance that turn — the strategy's first question is only being
     asked now, not yet answered."""
-    from .ticket import begin_ticket_dialogue
-
     s = state
     if not s.identity.customer_id or s.closing.case_closed:
         return False
@@ -62,38 +60,24 @@ def ensure_diagnosed(state, rt) -> bool:
         # Live 2026-09-17: a second pass took the billing question for an unclear fault
         # and the cancel-confirm spoke of a technician.
         return True
-    if s.resolution.procedure is None and not state.ticket.stage and policy == "register":
+    if not state.ticket.stage and policy == "register":
         requests.start_request(state, rt)
         return True
-    if s.resolution.procedure is None and policy == "answer":
+    if policy == "answer":
         requests.answer_ticket_status(state, rt)
         return True
     # A repeat call about a problem that already has an open ticket: a note on it and its
     # status — no re-diagnosis, no duplicate ticket (D-12).
-    if s.resolution.procedure is None and open_ticket.same_problem_ticket(state):
+    if open_ticket.same_problem_ticket(state):
         open_ticket.repeat_call(state, rt)
         return True
-    service_route = services.route(state) if s.resolution.procedure is None else None
+    service_route = services.route(state)
     if service_route == "not_subscribed":
         services.not_subscribed(state, rt)
         return True
-    if s.intake.problem_type and s.resolution.procedure is None and service_route != "depends":
-        from ..faults import problem_has_path, step_by_role
-
-        if not problem_has_path(s.intake.problem_type):
-            escalate = step_by_role("unclear_fault", "escalate")
-            s.resolution.procedure = {"verdict": "unclear_fault", "step": escalate.id}
-            s.diagnosis.verdicts["network"] = {"reason": "unclear_fault", "skipped": True}
-            rt.tracer.emit(
-                "decision",
-                intent="no_path",
-                action="unclear_fault_ticket",
-                value=s.intake.problem_type,
-            )
-            from ..decide.rules import case_rule
-
-            case_rule.announce(state, rt, "unclear_fault")
-            begin_ticket_dialogue(state, rt, escalate)
+    if s.intake.problem_type and service_route != "depends":
+        if not _has_cards(s.intake.problem_type):
+            _no_path_ticket(state, rt)
             return True
     try:
         from ..tooling import telemetry
@@ -107,25 +91,38 @@ def ensure_diagnosed(state, rt) -> bool:
         if services.depends_on_broken(state):
             services.recheck_after_fix(state, rt)
         else:
-            from ..faults import problem_has_path, step_by_role
-
-            if not problem_has_path(s.intake.problem_type):
-                escalate = step_by_role("unclear_fault", "escalate")
-                s.resolution.procedure = {"verdict": "unclear_fault", "step": escalate.id}
-                s.diagnosis.verdicts["network"] = {"reason": "unclear_fault", "skipped": True}
-                rt.tracer.emit(
-                    "decision",
-                    intent="no_path",
-                    action="unclear_fault_ticket",
-                    value=s.intake.problem_type,
-                )
-                from ..decide.rules import case_rule
-
-                case_rule.announce(state, rt, "unclear_fault")
-                begin_ticket_dialogue(state, rt, escalate)
+            if not _has_cards(s.intake.problem_type):
+                _no_path_ticket(state, rt)
                 return True
     _seed_evidence_from_call(state, rt)
     return True
+
+
+def _has_cards(problem: str | None) -> bool:
+    """Does a v2 card work on this reported problem (its `symptom`)? A solve-policy problem
+    without one — TV today — is an unclear fault (Andrius 2026-09-03)."""
+    from ..contract import cards
+
+    return bool(problem) and any(
+        card.symptom == problem and not card.fallback for card in cards.cards().values()
+    )
+
+
+def _no_path_ticket(state, rt) -> None:
+    """In scope, identified, but no card can work on it (e.g. TV today): an honest „unclear
+    fault" ticket through the Case's unclear_fault card — never a wrong-domain walk (Andrius
+    2026-09-03)."""
+    s = state
+    s.case.fault = "unclear_fault"
+    s.diagnosis.verdicts["network"] = {"reason": "unclear_fault", "skipped": True}
+    rt.tracer.emit(
+        "decision", intent="no_path", action="unclear_fault_ticket", value=s.intake.problem_type
+    )
+    from ..decide.rules import case_rule
+    from .ticket import request_ticket
+
+    case_rule.announce(state, rt, "unclear_fault")
+    request_ticket(state, rt, "no_path")
 
 
 def _seed_evidence_from_call(state, rt) -> None:
@@ -164,75 +161,3 @@ def _seed_evidence_from_call(state, rt) -> None:
                 s.diagnosis.evidence[key]["seeded"] = True
                 rt.tracer.emit("evidence", action="call_seed", key=key, value=str(value))
                 break
-
-
-def ensure_action_done(state, rt) -> bool:
-    """Run the current strategy's ACTION step deterministically (engine-driven,
-    not model-invoked), the same way ensure_diagnosed runs the first diagnose.
-
-    Model-invoked update_mac caused two bugs: a single-tool loop (the bind step
-    exposes only update_mac, so the model re-called it to the limit) and a
-    contradictory narration (the model ignored the verified result and re-told
-    the problem — "nepririštas, dabar pririšiu" — right after binding). Binding
-    is a pure engine action: the engine runs it + reset_port + re-diagnose (via
-    chain_after_bind, which also sets case_closed on success or advances to
-    escalate on failure), so by the time the LLM narrates it only PHRASES the
-    verified outcome. Returns True if it ran an action this call."""
-    from .observe import chain_after_bind
-    from .ticket import begin_ticket_dialogue
-
-    s = state
-    if not s.identity.customer_id or s.closing.case_closed:
-        return False
-    r = s.resolution.procedure
-    if not r:
-        return False
-    from ..resolution import StepKind, get_strategy
-
-    strat = get_strategy(r.get("verdict"))
-    step = strat.step(r.get("step", "")) if strat else None
-    if step is None:
-        return False
-    # Auto-register ESCALATE (consent=False, e.g. register_after_bridge after a working
-    # bridge): the registration is a NECESSITY, not an offer — the engine registers
-    # ON ARRIVAL and closes; the narrator only ANNOUNCES it ("užregistravau...,
-    # kolegos susisieks ir detaliau paaiškins"). Asking permission here misread a
-    # non-consent reply as a decline and the caller left WITHOUT the ticket they
-    # were promised (observed live).
-    # ESCALATE arrival (consented or not) begins the ticket dialogue THE SAME
-    # TURN — deterministically. Leaving the arrival to the LLM narrator had it
-    # claim "užregistravau…" before anything was registered and before the
-    # contact questions (observed live 2026-08-04). The dialogue's intro
-    # announces the registration; an explicit refusal during it still declines.
-    if step.kind is StepKind.ESCALATE:
-        begin_ticket_dialogue(state, rt, step)  # contacts first, then register+close
-        return True
-    if step.kind != StepKind.ACTION:
-        return False
-    if r.get("action_done"):
-        return False  # already ran this action; the walker advances it next turn
-    ran = False
-    for action in step.tool_actions:
-        try:
-            result = rt.tools.run(
-                state,
-                rt,
-                action,
-                {"customer_id": s.identity.customer_id},
-                reason=f"step_action:{step.id}",
-                apply=False,
-            )
-        except Exception:  # pragma: no cover - best-effort
-            continue
-        chain_after_bind(state, rt, action, result.observation)  # reset_port + re-diagnose
-        ran = True
-    if ran:
-        r["action_done"] = True  # the announce is narrated this turn; advance next
-        if "update_mac" in step.tool_actions:
-            # Only a TEMPORARY bridge marks resolution.bridge_bound (ticket-first close,
-            # bridged intro) — foreign_mac's bind IS the fix, not a bridge.
-            from ..evidence import solution_for
-
-            if solution_for(s.diagnosis.evidence, r.get("verdict")) == "bridge":
-                state.resolution.bridge_bound = True
-    return ran

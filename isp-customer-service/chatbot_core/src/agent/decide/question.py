@@ -49,21 +49,6 @@ def clear(state: Any, rt: Any, key: str | None = None) -> None:
     rt.tracer.emit("question", owner=q.owner, key=q.key, asks=q.asks, action="closed")
 
 
-def pack_owns_cannot_now(state: Any, rt: Any) -> bool:
-    """P-C (2026-09-08): a step with an ability_check / locate_device / homework
-    role IS the pack's own cannot-now handling ("can you get to the router
-    now?"). While such a step's question is active, the generic cannot-now
-    ladder and its head shield stand down — the walker routes the answer per
-    the pack file."""
-    from ..faults import CANNOT_NOW_ROLES, role_of
-
-    q = state.dialog.active_question
-    if q is None or not q.key.startswith("step:"):
-        return False
-    verdict = (state.resolution.procedure or {}).get("verdict")
-    return role_of(verdict, q.key.removeprefix("step:")) in CANNOT_NOW_ROLES
-
-
 def clear_owner(state: Any, rt: Any, owner: str) -> None:
     """A whole owner's stage got answered (e.g. identification committed) —
     close its active question, leaving other owners' questions alone."""

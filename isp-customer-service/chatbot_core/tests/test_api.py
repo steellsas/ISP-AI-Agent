@@ -731,6 +731,38 @@ class TestSimulatePlug:
         assert client.post("/sessions/nope/simulate-plug").status_code == 404
 
 
+class TestSimulatePower:
+    """DEMO power button (v3 stage 4): the caller plugs the dead router's power lead back
+    in — the registered device shows on the line again, and the dead-router card falls."""
+
+    def test_power_before_identification_is_409(self, client):
+        sid = _create(client)["session_id"]
+        assert client.post(f"/sessions/{sid}/simulate-power").status_code == 409
+        client.delete(f"/sessions/{sid}")
+
+    def test_power_brings_the_router_back(self, client):
+        sid = _create(client)["session_id"]
+        from agent.tools import get_db
+        from app.main import manager
+
+        manager.get(sid).session.state.identity.customer_id = "CUST009"
+        try:
+            assert _card_from_reading("CUST009") == {"no_mac_observed"}
+            resp = client.post(f"/sessions/{sid}/simulate-power")
+            assert resp.status_code == 200 and resp.json()["ok"] is True
+            assert "no_mac_observed" not in _card_from_reading("CUST009")
+        finally:
+            with get_db().transaction() as cur:
+                cur.execute(
+                    "UPDATE ports SET observed_mac=NULL, dhcp_status=NULL "
+                    "WHERE customer_id='CUST009'"
+                )
+            client.delete(f"/sessions/{sid}")
+
+    def test_unknown_session_is_404(self, client):
+        assert client.post("/sessions/nope/simulate-power").status_code == 404
+
+
 class TestSimulateReboot:
     """DEMO reboot button (S6, 2026-08-31): the tester plays the caller's
     hands — POST is the moment the router's power lead is pulled: the port

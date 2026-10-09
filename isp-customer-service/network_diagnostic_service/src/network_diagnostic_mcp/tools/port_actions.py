@@ -243,6 +243,55 @@ def reset_customer_port(db: DatabaseConnection, customer_id: str) -> dict[str, A
         return {"success": False, "error": "database_error", "message": f"Klaida: {str(e)}"}
 
 
+def power_on_router_device(db: DatabaseConnection, customer_id: str) -> dict[str, Any]:
+    """
+    SIMULATED (demo button / eval): the caller plugs the router's power lead back in.
+
+    A router without power is invisible on the line (observed_mac NULL — the dead-router
+    picture). Once it gets power it boots and the switch sees the REGISTERED device again
+    with traffic. In the mock DB that is one atomic effect: observed_mac = equipment_mac,
+    link up, traffic normal, DHCP ok. Never called in production (SIMULATE_REBOOT guard).
+    """
+    logger.info(f"[SIM] Router power back on for customer: {customer_id}")
+    try:
+        with db.cursor() as cursor:
+            cursor.execute(
+                "SELECT port_id, equipment_mac FROM ports WHERE customer_id = ?",
+                (customer_id,),
+            )
+            port = cursor.fetchone()
+        if not port:
+            return {
+                "success": False,
+                "error": "no_port_found",
+                "message": "Klientui nerastas tinklo portas.",
+            }
+        port = dict(port)
+        with db.transaction() as cursor:
+            cursor.execute(
+                """
+                UPDATE ports
+                SET observed_mac = equipment_mac,
+                    status = 'up',
+                    traffic_status = 'normal',
+                    dhcp_status = 'ok',
+                    last_status_change = datetime('now'),
+                    last_checked = datetime('now')
+                WHERE port_id = ?
+                """,
+                (port["port_id"],),
+            )
+        return {
+            "success": True,
+            "customer_id": customer_id,
+            "port_id": port["port_id"],
+            "message": "Routeris vėl gavo maitinimą (simuliuota): matomas linijoje, srautas eina.",
+        }
+    except Exception as e:
+        logger.error(f"Error in power_on_router_device: {e}", exc_info=True)
+        return {"success": False, "error": "action_error", "message": f"{e}"}
+
+
 def reboot_router_device(db: DatabaseConnection, customer_id: str) -> dict[str, Any]:
     """
     SIMULATED (demo button): the CALLER power-cycles their router.

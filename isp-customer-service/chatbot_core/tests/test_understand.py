@@ -23,11 +23,6 @@ def _diagnosing_agent(monkeypatch, understand_on=True):
     agent = make_agent("+37060012353")
     agent.state.identity.customer_id = "CUST009"
     agent.state.intake.problem_type = "internet_down"
-    agent.state.resolution.procedure = {
-        "verdict": "no_mac_observed",
-        "step": "dr_lights",
-        "asked": True,
-    }
     agent.state.dialog.last_question = "Susiraskite routerį — dėžutę. Radote?"
     return agent
 
@@ -360,10 +355,10 @@ class TestTicketUnderstanding:
     def _ticket_agent(self, monkeypatch, stage="hours"):
         from agent.decide.rules.head import turn_head
         from agent.decide.rules.reply import scripted_words
-        from agent.execute.ticket import begin_ticket_dialogue
+        from agent.execute.ticket import request_ticket
 
         agent = _diagnosing_agent(monkeypatch)
-        begin_ticket_dialogue(agent.state, agent.runtime, None)
+        request_ticket(agent.state, agent.runtime, "test")
         scripted_words(agent.state, agent.runtime, None)  # asks phone
         if stage == "hours":
             turn_head(

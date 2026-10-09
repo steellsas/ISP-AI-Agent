@@ -262,6 +262,30 @@ async def simulate_plug(session_id: str, unplug: bool = False):
     return {"ok": True, "customer_id": cid, "unplug": unplug}
 
 
+@app.post("/sessions/{session_id}/simulate-power")
+async def simulate_power(session_id: str):
+    """DEMO (v3 stage 4): the tester presses the button the moment the CALLER plugs the
+    router's power lead back in — the router shows on the line again with traffic. Manual by
+    design, like the other demo buttons: the human plays the physical world."""
+    try:
+        ms = manager.get(session_id)
+    except SessionNotFound:
+        raise HTTPException(status_code=404, detail="unknown session") from None
+    cid = ms.session.state.identity.customer_id
+    if not cid:
+        raise HTTPException(status_code=409, detail="caller not identified yet")
+    from agent.tools import simulate_router_power_on
+
+    res = await asyncio.to_thread(simulate_router_power_on, cid)
+    hub.publish(
+        session_id,
+        {"type": "sim_power", "ok": bool(res.get("success")), "message": res.get("message", "")},
+    )
+    if not res.get("success"):
+        raise HTTPException(status_code=502, detail=res.get("message") or "simulation failed")
+    return {"ok": True, "customer_id": cid}
+
+
 @app.post("/sessions/{session_id}/simulate-reboot")
 async def simulate_reboot(session_id: str):
     """DEMO (S6 frozen router): the tester presses the button the moment the
@@ -379,14 +403,14 @@ async def knowledge_reload():
     edit it claimed to check (wave 5). A refusal means the edit is broken and still on disk:
     fix the file and reload again.
     """
-    from agent.contract import loader
+    from agent.contract import cards, loader
     from agent.contract.schema import KnowledgeError
 
     try:
-        knowledge = await asyncio.to_thread(loader.revalidate)
+        await asyncio.to_thread(loader.revalidate)
     except KnowledgeError as e:
         raise HTTPException(status_code=422, detail=e.errors) from None
-    return {"status": "reloaded", "packs": len(knowledge.packs), "modules": len(knowledge.modules)}
+    return {"status": "reloaded", "cards": len(cards.cards()), "modules": len(cards.modules())}
 
 
 @app.put("/admin/config")

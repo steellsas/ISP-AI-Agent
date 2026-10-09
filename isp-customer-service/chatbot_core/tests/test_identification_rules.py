@@ -82,7 +82,10 @@ class TestAccountCodeRung:
         assert r2 and "negalėsiu" in r2  # PERSPĖJIMAS (su kodo užuomina)
         scripted_words(agent.state, agent.runtime, "Na nežinau")
         r4 = scripted_words(agent.state, agent.runtime, "Nieko nesakysiu")
-        assert agent.state.closing.case_closed and r4 and "nenustačius" in r4
+        assert (
+            agent.state.closing.case_closed and r4 and "turiu baigti pokalbį" in r4
+        )  # U8: the reason
+        assert agent.state.closing.is_complete  # the goodbye IS the end
         assert agent.state.ticket.ticket_id is None
 
     def test_unrecognized_address_offers_code(self, db_connection):
@@ -481,59 +484,9 @@ class TestHolderNameCheck:
         assert agent.state.identity.caller_relation != "holder"
 
 
-class TestCannotNowLadder:
-    """A-banga P1 (gyva #6 2026-09-04: „Ne patogu" ignoruotas): STOP →
-    „kas nepatogu?" → registracija / perskambinimas / tęsiam."""
-
-    def _solving(self):
-        agent = _agent()
-        agent.state.identity.customer_id = "CUST009"
-        agent.state.intake.problem_type = "internet_down"
-        agent.state.resolution.procedure = {"verdict": "no_mac_observed", "step": "dr_lights"}
-        return agent
-
-    def test_cannot_now_asks_what_is_wrong(self, db_connection):
-        from agent.decide.rules.reply import scripted_words
-
-        agent = self._solving()
-        r = scripted_words(agent.state, agent.runtime, "Ne patogu")
-        assert r and "kas nepatogu" in r
-        assert agent.state.dialog.cannot_now_state == "asked"
-
-    def test_confirmed_cannot_offers_paths(self, db_connection):
-        from agent.decide.rules.reply import scripted_words
-
-        agent = self._solving()
-        agent.state.dialog.cannot_now_state = "asked"
-        r = scripted_words(agent.state, agent.runtime, "Na, aš ne namie dabar")
-        assert r and "užregistruoti" in r and "paskambinkite" in r
-
-    def test_callback_choice_closes_politely(self, db_connection):
-        from agent.decide.rules.reply import scripted_words
-
-        agent = self._solving()
-        agent.state.dialog.cannot_now_state = "offered"
-        r = scripted_words(agent.state, agent.runtime, "Geriau pats perskambinsiu vėliau")
-        assert agent.state.closing.case_closed and agent.state.closing.closed_reason == "callback"
-        assert r and "paskambinkite" in r
-        assert agent.state.ticket.ticket_id is None
-
-    def test_ticket_choice_starts_dialogue(self, db_connection):
-        from agent.decide.rules.reply import scripted_words
-
-        agent = self._solving()
-        agent.state.dialog.cannot_now_state = "offered"
-        scripted_words(agent.state, agent.runtime, "Registruokite meistrą")
-        assert agent.state.ticket.stage == "phone"
-
-    def test_explained_otherwise_resumes(self, db_connection):
-        from agent.decide.rules.reply import scripted_words
-
-        agent = self._solving()
-        agent.state.dialog.cannot_now_state = "asked"
-        r = scripted_words(agent.state, agent.runtime, "Ne ne, viskas gerai, jau radau routerį")
-        assert r is None  # kelias tęsiasi
-        assert agent.state.dialog.cannot_now_state is None
+class TestCannotNowDetector:
+    """A-banga P1 (gyva #6 2026-09-04: „Ne patogu" ignoruotas): the cannot-now signal.
+    (The v1 ladder that acted on it was gated on `resolution.procedure` and is gone.)"""
 
     def test_in_flow_negaliu_is_not_a_signal(self, db_connection):
         from agent.perceive.detectors import detect_cannot_now

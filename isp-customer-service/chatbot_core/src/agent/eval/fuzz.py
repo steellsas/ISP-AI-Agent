@@ -101,8 +101,8 @@ def _run(persona: dict) -> dict:
         st = session.state
         if st.diagnosis.hypothesis and st.diagnosis.hypothesis.get("cause"):
             verdicts.add(st.diagnosis.hypothesis["cause"])
-        if st.resolution.procedure and st.resolution.procedure.get("verdict"):
-            verdicts.add(st.resolution.procedure["verdict"])
+        if st.case.fault:
+            verdicts.add(st.case.fault)
 
     greeting = session.greeting()
     transcript.append(("a", greeting))

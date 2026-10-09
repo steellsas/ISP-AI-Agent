@@ -48,7 +48,7 @@ def _load(which: str) -> list[dict]:
 def _state_for(case: dict):
     """A call in the position the case describes: a verdict (so the fault's evidence
     spec is live) and an identified caller."""
-    from agent.resolution import get_strategy
+    from agent.contract import cards
     from agent.runtime import new_call
 
     state, rt = new_call(case.get("phone", "+37060012353"), "lt")
@@ -56,9 +56,8 @@ def _state_for(case: dict):
     state.intake.problem_type = (case.get("context") or {}).get("problem") or "internet_down"
     verdict = (case.get("context") or {}).get("verdict")
     if verdict:
-        strategy = get_strategy(verdict)
-        if strategy is not None:
-            state.resolution.procedure = {"verdict": verdict, "step": strategy.steps[0].id}
+        if cards.card(verdict) is not None:
+            state.case.fault, state.case.solution = verdict, 0
         state.diagnosis.verdicts["network"] = {"reason": verdict}
     pending = (case.get("context") or {}).get("pending")
     if pending:

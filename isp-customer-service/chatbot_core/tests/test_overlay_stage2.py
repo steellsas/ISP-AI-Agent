@@ -16,7 +16,6 @@ def _agent():
     agent = make_agent("+37060012353")
     agent.state.identity.customer_id = "CUST009"
     agent.state.intake.problem_type = "internet_down"
-    agent.state.resolution.procedure = {"verdict": "no_mac_observed", "step": "dr_lights"}
     return agent
 
 

@@ -20,6 +20,10 @@ identification:
   # from state. Scope: IDENTIFICATION ONLY — troubleshooting and free dialogue stay
   # with the LLM, and an off-script caller turn (a question) falls back to the LLM.
   ask_problem: "Klausau! Kuo galiu padėti — kokia problema?"
+  # U8 (Andrius, 2026-10-09): kiekvienas paraginimas paaiškina, KODĖL reikia atsakymo, o
+  # paskutinis pasako, kas bus, jei jo nebus.
+  ask_problem_why: "Kad galėčiau padėti, turiu žinoti, kas neveikia — internetas ar televizija? Papasakokite trumpai."
+  ask_problem_last: "Padedu dėl interneto ir televizijos gedimų. Jei nepasakysite, kas neveikia, negalėsiu padėti ir turėsiu baigti pokalbį. Tai kas neveikia?"
   anamnesis_question: "Supratau. O kada dingo — gal po ko nors, tarkim audros ar remonto?"
   address_offer: "Gerai — patikrinsiu ryšį. Ar skambinate dėl {address}?"
   address_ask: "Gerai — patikrinsiu ryšį iki jūsų buto. Koks adresas?"
@@ -33,6 +37,14 @@ identification:
   anything_else: "Ar dar kuo galiu padėti?"
   thanks: "Ačiū!"
   confirm_end: "Ar tikrai norite baigti pokalbį?"
+  # U3 (Andrius, 2026-10-09): prieš baigiant pasakoma, kas liks nepadaryta.
+  confirm_end_unidentified: "Dar neradau jūsų sutarties, todėl linijos patikrinti negalėjau. Ar tikrai norite baigti pokalbį?"
+  confirm_end_fault: "Gedimo dar neišsprendėme ir jis neužregistruotas. Ar tikrai norite baigti pokalbį?"
+  confirm_end_news: "Dar nespėjau pasakyti, ką radau patikrinęs jūsų liniją. Ar tikrai norite baigti pokalbį?"
+  # Pabaiga patvirtinus (U10): kas liko ir kaip grįžti.
+  declined_goodbye_unidentified: "Gerai. Kadangi jūsų sutarties neradau, linijos patikrinti nepavyko. Jei reikės pagalbos — paskambinkite, padėsiu. Geros dienos!"
+  declined_goodbye_fault: "Gerai — gedimas lieka neišspręstas ir neužregistruotas. Jei apsigalvosite, paskambinkite — patikrinsime kartu arba užregistruosiu meistrą. Geros dienos!"
+  declined_goodbye: "Gerai, baigiame. Jei reikės pagalbos — paskambinkite. Geros dienos!"
   # F-27: asked only after the end is confirmed — one question per reply.
   end_offer_ticket: "Gerai. Ar užregistruoti gedimą, kad kolegos su jumis susisiektų?"
   goodbye: "Ačiū, kad paskambinote. Geros dienos!"
@@ -82,7 +94,7 @@ identification:
   # G3 (2026-08-20): aktyvus pasiteiravimas po tylos, kai klientas kažką daro.
   checkin: "Kaip sekasi — ar pavyksta?"
   # Problemos vartai (2026-08-21): po kelių bandymų be aiškios mūsų srities problemos.
-  no_problem_goodbye: "Supratau. Čia interneto ir televizijos gedimų pagalba — jei kils ryšio ar TV bėda, drąsiai skambinkite. Geros dienos!"
+  no_problem_goodbye: "Supratau. Kadangi nepasakėte, kas neveikia, padėti negaliu, todėl baigiu pokalbį. Čia interneto ir televizijos gedimų pagalba — jei kils ryšio ar TV bėda, skambinkite. Geros dienos!"
   # Identifikacijos etalonas (Andrius 2026-09-03): adresui nepavykus ~4
   # bandymus — KITAS METODAS: abonento kodas; jo nesant — pagalba tik
   # abonentams ir mandagus uždarymas.
@@ -96,14 +108,17 @@ identification:
   # galiausiai esamas mandagus uždarymas („paskambinkite, kai galėsite
   # pasakyti adresą ar kodą").
   street_not_exists: "Girdžiu aiškiai, bet tokios gatvės aptarnaujamose vietovėse nerandu. Paslaugas teikiame Šiaulių mieste ir rajone — gal jūsų adresas kitame mieste?"
-  account_code_ask: "Pabandykime kitaip — ar galite pasakyti abonento kodą? Jį rasite sąskaitoje, prasideda raidėmis A B ir skaičiais."
+  account_code_ask: "Pabandykime kitaip — be adreso ar abonento kodo negalėsiu rasti jūsų linijos. Ar galite pasakyti abonento kodą? Jį rasite sąskaitoje, prasideda raidėmis A B ir skaičiais."
   account_code_retry: "Kodas atrodo taip: A B brūkšnys ir penki skaitmenys, pavyzdžiui sąskaitos viršuje. Ar pavyksta jį rasti?"
   not_client_goodbye: "Deja, jūsų duomenų mūsų sistemoje rasti nepavyko — pagalba teikiama tik mūsų abonentams. Jei esate abonentas, paskambinkite turėdami sutarties adresą ar abonento kodą. Geros dienos!"
   # 2026-09-04 (Andrius): miestas ne aptarnavimo zonoje — pasakoma IŠ KARTO,
   # tai ne bandymas; perspėjimas prieš uždarymą; uždarymas be vietos.
   city_not_served: "Šiame mieste mūsų abonentų nėra — paslaugas teikiame Šiaulių mieste ir rajone. Gal adresas, dėl kurio skambinate, yra Šiauliuose ar Šiaulių rajone?"
   address_need_warning: "Norėčiau padėti, bet nežinodamas adreso negalėsiu nei patikrinti gedimo, nei jo užregistruoti. Gal galite pasakyti adresą — arba abonento kodą iš sąskaitos?"
-  no_location_goodbye: "Suprantu. Deja, nenustačius gedimo vietos negaliu nei patikrinti, nei užregistruoti. Kai galėsite pasakyti adresą ar abonento kodą — paskambinkite, mielai padėsiu. Geros dienos!"
+  # U8 trečias paraginimas: kas bus, jei adreso nebus (Andrius, 2026-10-09).
+  address_last_warning: "Be adreso ar abonento kodo negalėsiu jums padėti — pagalbą teikiu tik abonentams pagal sutarties adresą. Jei jo nepasakysite, turėsiu baigti pokalbį. Koks jūsų adresas?"
+  # Pabaiga su priežastimi (U8/U10): kodėl baigiam ir kaip grįžti.
+  no_location_goodbye: "Suprantu. Kadangi nežinau jūsų paslaugos adreso, o pagalbą teikiu tik abonentams, negaliu nei patikrinti gedimo, nei jo užregistruoti — todėl turiu baigti pokalbį. Kai galėsite pasakyti adresą ar abonento kodą — paskambinkite, mielai padėsiu. Geros dienos!"
   # Adreso keitimas po identifikacijos — TIK su patvirtinimu (taisyklė №3).
   reopen_confirm: "Norėčiau patikslinti — ar tikrai skambinate dėl KITO adreso, ne dėl {address}?"
   # A-2b (2026-09-07): patvirtintas adresas nėra paslaptis — paklaustas agentas
@@ -278,6 +293,9 @@ pack:
           "yes": "interneto lemputė užsidegė / internetas atsirado"
           "no": "lemputė toliau nedega / internetas neatsirado"
   no_mac_observed:
+    # v3 4 etapas: kodėl įvyko, kai įkišus maitinimą linija atsigavo (išvada klientui ir įrašui).
+    cause:
+      power: "routeris buvo be maitinimo — maitinimo laidas buvo ištrauktas; jį įkišus, routeris vėl prisijungė prie linijos"
     confirm: "Ar routerio lemputės dabar visai nedega?"
     recent_events:
       label: "įvykiai prieš dingstant"
@@ -509,7 +527,7 @@ system:
   timeout: "Atsiprašau, negaliu apdoroti užklausos. Ar galite pakartoti?"
   max_turns: "Atsiprašau, pokalbis užtruko per ilgai. Registruoju jūsų problemą."
   stuck_offer_code: "Atsiprašau, vis nepavyksta išgirsti. Gal turite abonento kodą nuo sąskaitos?"
-  stuck_register: "Užregistruosiu jūsų problemą ir mūsų specialistas su jumis susisieks. Geros dienos!"
+  stuck_register: "Atsiprašau, telefonu susikalbėti nepavyksta — todėl užregistruosiu jūsų problemą, ir mūsų specialistas su jumis susisieks. Geros dienos!"
   stuck_unidentified_close: "Atsiprašau, nepavyksta jūsų išgirsti ir rasti jūsų sutarties. Paskambinkite dar kartą, kai bus patogu — mielai padėsime. Geros dienos!"
   default_anchor: "Ar tęsiame gedimo sprendimą?"
   filler: "Sekundėlę, tikrinu."
@@ -585,12 +603,17 @@ modules:
   reach:
     can_now: "Ar galite dabar prieiti prie įrenginio?"
   homework:
-    later: "Kai būsite namuose, pabandykite tai padaryti. Jei internetas neatsistatys per porą minučių — paskambinkite, padėsime arba užregistruosime meistrą. Gerai?"
+    # Andrius (2026-10-09): niekas dar nepadaryta — tad ne „jei vis tiek neveiks", o KĄ patikrinti
+    # ir kad paskambinus patikrinsime kartu.
+    later: "Tai patikrinkite, kai būsite namuose, ir paskambinkite — patikrinsime kartu ir, jei reikės, užregistruosime meistrą. Gerai?"
+    # N1 (Andrius, 2026-10-09): kai klientas negali prieiti — pirma sužinoti, KADA galės.
+    when_ask: "Supratau. Kada galėsite prieiti prie routerio — šiandien ar vėliau?"
   bind:
     # Gyvai 2026-09-30: pririšamas buvo KOMPIUTERIS, o frazė sakė „tai jūsų routeris" — klientas
     # taisė agentą („ne, čia kompiuteris mano"). Frazė nebevardija įrenginio: pririšamas tas,
     # kurį klientas ką tik prijungė.
     announce: "Matau linijoje naują įrenginį — pririšiu jį prie jūsų linijos, sekundėlę."
+    not_seen: "Linijoje kompiuterio dar nematau. Ar jau įkišote laidą iš sienos tiesiai į kompiuterio tinklo lizdą?"
   check_power:
     question: "Patikrinkime maitinimą: ar routerio laidas tvirtai įkištas į patį routerį ir į rozetę? Jei taip — pabandykite kitą rozetę."
   offer_guide:
@@ -624,6 +647,8 @@ equipment:
     cable:
       reseat: "Ištraukite iš sienos ateinantį laidą iš routerio ir tvirtai įkiškite atgal."
     reach: "Ar galite dabar prieiti prie routerio?"
+    power:
+      plug: "Įkiškite maitinimo laidą tvirtai į routerį ir į veikiančią rozetę. Routeris įsijungs per minutę ar dvi — pasakykite, kai užsidegs lemputės."
     lights:
       power: "Ar dega maitinimo lemputė?"
       internet: "Ar interneto lemputė dega?"
@@ -707,7 +732,26 @@ problem_label:
   tv: "bėda su televizija"
 
 evidence:
-  # Built-in evidence facts: label per key and wording per value (packs add their own).
+  # How a card fact reads to a human (recap, ticket): its name and a value wording that only
+  # makes sense for THAT fact („rebooted: yes" → „jau perkrautas"). Moved here from the v1 fault
+  # packs (v3 3c), word for word; these win over the generic `label` / `value` below.
+  fact_label:
+    fail_scope: "kur neveikia"
+    fail_device: "įrenginys"
+    connection_type: "jungimosi būdas"
+    rebooted: "routerio perkrovimas"
+    recent_events: "įvykiai prieš dingstant"
+    changed_device: "routerio keitimas"
+    cable_port: "kabelio lizdas"
+  fact_value:
+    fail_scope: {all: "visuose įrenginiuose", one: "tik viename įrenginyje"}
+    fail_device: {phone: "telefone", computer: "kompiuteryje"}
+    connection_type: {wired: "laidu", wifi: "per WiFi"}
+    rebooted: {"yes": "jau perkrautas", "no": "dar neperkrautas"}
+    recent_events: {"yes": "buvo įvykis (elektra/laidai/audra)", "no": "nieko neįvyko"}
+    changed_device: {"yes": "keitė arba prijungė naują įrenginį", "no": "nieko nekeitė"}
+    cable_port: {wan: "interneto (WAN) lizde", lan: "kitame (LAN) lizde"}
+  # Built-in evidence facts: label per key and wording per value.
   label:
     has_computer: "ar turite kompiuterį"
     lights: "routerio lemputės"
@@ -801,6 +845,7 @@ ticket:
     # Padėtas ragelis (Andrius, 2026-10-09: *„parašyta, kas buvo atlikta ir kada klientas padėjo
     # ragelį"*): kada ir kurioje pokalbio dalyje ryšys nutrūko.
     hung_up: " Klientas padėjo ragelį {time} ({phase}) — pokalbis nutrūko nebaigtas."
+    available_when: " Klientas prie įrangos galės: {when}."
     assumed_item: "{fact} (dirbome su prielaida: {value})"
     tried: " Bandyta/atmesta: {causes}."
     extra: " Papildomai patikrinti: {items}."

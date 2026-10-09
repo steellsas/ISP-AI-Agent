@@ -202,15 +202,12 @@ class TestTicketCallback:
         from agent.decide.rules.head import turn_head
         from agent.decide.rules.reply import scripted_words
         from agent.decide.rules.ticket import ticket_stage_reply
-        from agent.execute.ticket import begin_ticket_dialogue
-        from agent.resolution import get_strategy
+        from agent.execute.ticket import request_ticket
 
         agent = _agent()
         agent.state.identity.caller_name = "Tomas"
-        agent.state.resolution.procedure = {"verdict": "unclear_fault", "step": "escalate"}
-        begin_ticket_dialogue(
-            agent.state, agent.runtime, get_strategy("unclear_fault").by_role("escalate")
-        )
+        agent.state.case.fault = "unclear_fault"
+        request_ticket(agent.state, agent.runtime, "test")
         ticket_stage_reply(agent.state, agent.runtime)  # numerio klausimas išėjo
         turn_head(agent.state, agent.runtime, "Gerai, aš paskambinsiu vėliau pats")
         assert agent.state.closing.case_closed and agent.state.closing.closed_reason == "callback"
@@ -222,14 +219,11 @@ class TestTicketCallback:
     def test_normal_hours_answer_still_captured(self, db_connection):
         from agent.decide.rules.head import turn_head
         from agent.decide.rules.ticket import ticket_stage_reply
-        from agent.execute.ticket import begin_ticket_dialogue
-        from agent.resolution import get_strategy
+        from agent.execute.ticket import request_ticket
 
         agent = _agent()
-        agent.state.resolution.procedure = {"verdict": "unclear_fault", "step": "escalate"}
-        begin_ticket_dialogue(
-            agent.state, agent.runtime, get_strategy("unclear_fault").by_role("escalate")
-        )
+        agent.state.case.fault = "unclear_fault"
+        request_ticket(agent.state, agent.runtime, "test")
         ticket_stage_reply(agent.state, agent.runtime)
         turn_head(agent.state, agent.runtime, "Taip, tiks")
         ticket_stage_reply(agent.state, agent.runtime)
@@ -301,59 +295,12 @@ class TestCannotNowHearing:
     atsakymas dabar girdimas, safety klausimo registro niekas neperrašo,
     „kai grįšiu" = cannot_now."""
 
-    def _solving(self):
-        agent = _agent()
-        agent.state.identity.customer_id = "CUST112"
-        agent.state.identity.caller_name = "Paulius"
-        agent.state.resolution.procedure = {"verdict": "unclear_fault", "step": "escalate"}
-        return agent
-
-    def test_rambling_cannot_answer_offers_not_resumes(self, db_connection):
-        """N2: neaiškus atsakymas į „ar negalite dabar?" = patvirtinimas."""
-        from agent.decide.rules.reply import scripted_words
-
-        agent = self._solving()
-        agent.state.dialog.cannot_now_state = "asked"
-        r = scripted_words(agent.state, agent.runtime, "Negaliu, nes esu nenuose")
-        assert r and "užregistruoti" in r  # pasiūlymas, ne resume
-
-    def test_callback_in_clarify_answer_closes_warm(self, db_connection):
-        """N2b: „Aš Jums perskambinsiu" clarify atsakyme — iškart callback."""
-        from agent.decide.rules.reply import scripted_words
-
-        agent = self._solving()
-        agent.state.dialog.cannot_now_state = "asked"
-        r = scripted_words(agent.state, agent.runtime, "Negaliu, aš Jums perskambinsiu")
-        assert agent.state.closing.case_closed and agent.state.closing.closed_reason == "callback"
-        assert r and "paskambinkite" in r
-
-    def test_clear_resume_still_resumes(self, db_connection):
-        from agent.decide.rules.reply import scripted_words
-
-        agent = self._solving()
-        agent.state.dialog.cannot_now_state = "asked"
-        r = scripted_words(agent.state, agent.runtime, "Ne ne, galiu, jau radau routerį")
-        assert r is None and agent.state.dialog.cannot_now_state is None
-        assert not agent.state.closing.case_closed
-
     def test_kai_grisiu_is_cannot_now(self, db_connection):
         """N3: „Kai grįšiu, namo padarysiu" — ne laukimas, o cannot_now."""
         from agent.perceive.detectors import detect_cannot_now
 
         assert detect_cannot_now("Kai grįšiu, namo padarysiu") is True
         assert detect_cannot_now("Negaliu, nes esu ne mieste") is True
-
-    def test_safety_question_survives_step_presentation(self, db_connection):
-        """N1: clarify klausimo registro įrašo mark_step_presented neperrašo."""
-        from agent.decide.question import active, register
-        from agent.execute.step import mark_step_presented
-
-        agent = self._solving()
-        register(agent.state, agent.runtime, "safety", "cannot_now_clarify")
-        agent.state.resolution.procedure["asked"] = False
-        mark_step_presented(agent.state, agent.runtime)
-        q = active(agent.state, agent.runtime)
-        assert q and q.owner == "safety" and q.key == "cannot_now_clarify"
 
     def test_double_dot_collapsed(self, db_connection):
         """N4: „birželio 5 d.." → vienas taškas."""

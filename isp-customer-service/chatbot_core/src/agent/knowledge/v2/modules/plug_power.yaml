@@ -1,0 +1,16 @@
+# ĮKIŠTI MAITINIMĄ — kai klientas pasakė, kad routerio maitinimo laidas buvo ištrauktas.
+#
+# Andrius (2026-10-08): *„gedimo supratimas kartais gali būti ir išsisprendimas — kai tikrina
+# elektrą, klientas įjungia maitinimą ir gedimas išsisprendžia."* Šis žingsnis yra DARYTI, o
+# po jo kortelės `fixes` patikra perskaito liniją (STRUKTURA_V3 §3).
+module: plug_power
+kind: instruct
+params:
+  device: {required: true}
+goal: "the {device}'s power lead back in, the device booting"
+text: "equipment:{device}.power.plug"
+produces: [device_seen, traffic]
+reported: reported_plug_power
+# Demo: routeris vėl matomas linijoje (eval/demo; produkcijoje išjungta).
+simulate: simulate_router_power_on
+simulate_env: SIMULATE_REBOOT

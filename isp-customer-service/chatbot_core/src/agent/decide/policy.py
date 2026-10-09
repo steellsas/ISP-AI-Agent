@@ -29,7 +29,6 @@ RULES: list[tuple[float, str, Rule]] = [
     (3, "ticket", ticket.plan),
     (4, "dialog.end_confirm_answer", head.head_rule(head.end_confirm_answer)),
     (5, "identification.reopen_confirm_answer", head.head_rule(head.reopen_confirm_answer)),
-    (6, "dialog.cannot_now", head.head_rule(head.cannot_now_shield)),
     (7, "dialog.farewell_mid_process", head.head_rule(head.farewell_mid_process)),
     (8, "identification.caller_intro", head.head_rule(head.caller_intro)),
     (9, "identification", head.head_rule(head.unidentified_address)),

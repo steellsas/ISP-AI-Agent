@@ -1,0 +1,8 @@
+# Demo only: reflects the caller plugging the router's power lead back in (plug_power).
+tool: simulate_router_power_on
+capability: simulate
+adapter: demo_db
+args: { customer_id: str }
+timeout_s: 2
+on_failure:
+  fallback: skip

@@ -146,7 +146,7 @@ class TestRouting:
         assert self._run_turn_capture_tools(session, "taip") == set()
 
     def test_ticket_dialogue_routes_to_ticket_node_with_no_tools(self, db_connection, tmp_path):
-        from agent.execute.ticket import begin_ticket_dialogue
+        from agent.execute.ticket import request_ticket
 
         # Mid-dialogue turns run in the dedicated ticket_registration node: the
         # walker/solver stay frozen and the LLM (off-script question only) has NO
@@ -161,12 +161,7 @@ class TestRouting:
             "status": "testing",
             "because": ["linijoje nematomas įrenginys"],
         }
-        engine.state.resolution.procedure = {
-            "verdict": "no_mac_observed",
-            "step": "escalate",
-            "asked": True,
-        }
-        begin_ticket_dialogue(engine.state, engine.runtime, None)
+        request_ticket(engine.state, engine.runtime, "test")
 
         names = self._run_turn_capture_tools(session, "O kokiu numeriu jūs skambinsite?")
 

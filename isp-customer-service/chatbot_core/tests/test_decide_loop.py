@@ -231,7 +231,6 @@ def test_what_a_problem_reading_becomes(reading, known, becomes, make_state, mak
     state.intake.problem_type = known.get("problem_type")
     if known.get("solving"):
         state.identity.customer_id = "CUST009"
-        state.resolution.procedure = {"verdict": "router_hung", "step": "rh_check"}
     state.turn.problem_reading = reading
 
     apply_readings(state, rt)

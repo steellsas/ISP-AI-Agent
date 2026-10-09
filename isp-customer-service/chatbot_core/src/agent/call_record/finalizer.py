@@ -14,7 +14,7 @@ import contextlib
 import logging
 
 from ..contract.locale import phrase
-from ..faults import role_of, verdict_flag
+from ..faults import verdict_flag
 from ..graph_v2.state import GraphState
 from ..runtime import AgentRuntime
 from ..trace import tools_called_this_session, trace_note
@@ -52,16 +52,9 @@ def finalize(state: GraphState, rt: AgentRuntime, transport_end: str | None = No
         s.identity.customer_id
         and not s.ticket.ticket_id
         and not s.closing.case_closed
-        and (
-            role_of(
-                (s.resolution.procedure or {}).get("verdict"),
-                (s.resolution.procedure or {}).get("step"),
-            )
-            == "homework"
-            # v2: the Case's homework has been told and waits for „tinka?" (wave 10, S5) —
-            # without this a hang-up there registered a technician over the agreed callback.
-            or s.case.awaiting == "later_agreed"
-        )
+        # v2: the Case's homework has been told and waits for „tinka?" (wave 10, S5) —
+        # without this a hang-up there registered a technician over the agreed callback.
+        and s.case.awaiting == "later_agreed"
     ):
         close_call(state, rt, "callback")
         rt.tracer.emit("decision", intent="hangup_net", action="callback_close")
@@ -69,18 +62,17 @@ def finalize(state: GraphState, rt: AgentRuntime, transport_end: str | None = No
         s.identity.customer_id
         and not s.ticket.ticket_id
         and not s.closing.case_closed
-        and (s.resolution.procedure is not None or s.case.in_progress)
+        # A registration already decided counts too: the unclear-fault ticket (TV) has a Case
+        # fault but no solution, so `in_progress` alone missed a hang-up in its contact
+        # questions — v1's procedure had covered it (v3 3c).
+        and (s.case.in_progress or _registration_decided(s))
     ):
-        from ..resolution import get_strategy
-
         # The line's CURRENT truth decides (2026-08-06): a caller who hung up
         # right after "veikia!" must NOT get a technician ticket (observed
         # live: TKT00D19E54 for a healthy line). A recorded fix or one fresh
         # diagnose read showing healthy skips the net; telemetry unreachable
         # -> register anyway (a spare ticket beats an abandoned caller).
-        # v2: there is no `resolution.procedure` — the Case holds the fix, so every read here
-        # is None-safe and the v1 strategy simply has nothing to say.
-        solved = bool((s.resolution.procedure or {}).get("telemetry_fixed"))
+        solved = False
         decided = _registration_decided(s)
         if decided:
             # The technician was already decided (summary said, contact dialogue running, a
@@ -100,16 +92,12 @@ def finalize(state: GraphState, rt: AgentRuntime, transport_end: str | None = No
             close_call(state, rt, "resolved")
             rt.tracer.emit("decision", intent="hangup_net", action="skip_solved")
         else:
-            if s.resolution.procedure is not None:
-                s.resolution.procedure.setdefault("escalate_reason", "caller_hung_up")
             _record_hang_up(state, rt)
             if not s.ticket.contact_phone:
                 s.ticket.contact_phone = s.identity.caller_phone
             if not s.ticket.contact_hours:
                 s.ticket.contact_hours = phrase("ticket.default_hours")
-            strat = get_strategy((s.resolution.procedure or {}).get("verdict"))
-            esc = strat.by_role("escalate") if strat else None
-            register_ticket_from_state(state, rt, esc.id if esc is not None else None)
+            register_ticket_from_state(state, rt)
             if s.ticket.ticket_id:
                 close_call(state, rt, "registered")
                 rt.tracer.emit("decision", intent="hangup_net", action="register")
@@ -215,7 +203,7 @@ def build_call_summary(state: GraphState, rt: AgentRuntime) -> dict:
     s = state
     net = s.diagnosis.verdicts.get("network") or {}
     h = s.diagnosis.hypothesis or {}
-    cause = h.get("cause") or (s.resolution.procedure or {}).get("verdict") or net.get("reason")
+    cause = h.get("cause") or net.get("reason")
     return {
         "purpose": s.intake.problem_type,
         "customer_id": s.identity.customer_id,

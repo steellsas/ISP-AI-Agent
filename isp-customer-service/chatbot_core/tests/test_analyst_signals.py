@@ -223,9 +223,6 @@ DUE = [
     ({"turn": 4, "repeated": True}, True),
     ({"turn": 4, "ticket": "phone"}, True),  # before the call ends
     ({"turn": 4, "debt_offer": "asked"}, True),
-    # a chosen solution is not a trigger by itself: it stays true for the rest of the
-    # call, which would mean a read every turn again.
-    ({"turn": 4, "solution": True}, False),
 ]
 
 
@@ -241,8 +238,6 @@ def test_the_analyst_reads_when_its_view_matters(call, reads, make_state):
     state.dialog.last_reply_repeated = call.get("repeated", False)
     state.ticket.stage = call.get("ticket")
     state.closing.debt_offer = call.get("debt_offer")
-    if call.get("solution"):
-        state.resolution.procedure = {"verdict": "router_hung", "solution_synced": "rh_reboot"}
 
     assert due(state) is reads
 

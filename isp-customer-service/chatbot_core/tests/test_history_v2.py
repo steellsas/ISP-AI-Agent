@@ -13,7 +13,6 @@ def _agent(db_connection=None):
     agent.state.intake.anamnesis_when = "yesterday"
     agent.state.identity.customer_id = "CUST009"
     agent.state.identity.customer_address = "Šiauliai, Vilniaus g. 29"
-    agent.state.resolution.procedure = {"verdict": "no_mac_observed", "step": "dr_power"}
     return agent
 
 

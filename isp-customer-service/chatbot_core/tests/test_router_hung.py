@@ -5,9 +5,7 @@ AGENT_ONBOARDING.md D klausimyną (Andrius = užsakovo technikas).
 Layers:
 - verdict: device visible + DHCP ok + traffic 'none' -> router_hung (after the
   dhcp/crc checks, before healthy_to_router); _flap_recent = the reboot witness.
-- pack: knowledge/faults/internet_pakibes_routeris.yaml builds a strategy.
-- walker: advance_reboot_check blends the caller's word with telemetry —
-  resolved / device path / wrong-device retry / rebooted-but-dead escalate.
+- card: knowledge/v2/cards/router_hung.yaml (the v1 pack and its walker are gone).
 - sim: simulate_router_reboot on the seeded CUST112 (traffic returns + the
   port flap the witness reads).
 """
@@ -36,50 +34,6 @@ def _signals(**overrides) -> dict:
     }
     base.update(overrides)
     return base
-
-
-class TestRouterHungPack:
-    """The YAML pack builds the strategy the walker consumes."""
-
-    def test_strategy_builds_with_expected_steps(self):
-        from agent.resolution import StepKind, get_strategy
-
-        st = get_strategy("router_hung")
-        assert st is not None
-        ids = [s.id for s in st.steps]
-        # P-C (2026-09-08): gebėjimo klausimas + pagalba surasti + namų darbas
-        # su callback uždarymu — prieš instrukciją klausiama, ar klientas GALI.
-        assert ids == [
-            "rh_scope",
-            "rh_ability",
-            "rh_locate",
-            "rh_homework",
-            "rh_reboot",
-            "rh_check",
-            "rh_reboot_retry",
-            "rh_device",
-            "rh_verify_dev",
-            "escalate",
-        ]
-        assert st.step("rh_ability").on == {
-            "yes": "rh_reboot",
-            "no": "rh_homework",
-            "lost": "rh_locate",
-        }
-        assert st.step("rh_homework").on == {"yes": "callback", "no": "escalate"}
-        # 2026-08-31 live lesson: the INITIAL step's hint must match the
-        # solver's first evidence question (scope), never the instruction.
-        assert st.steps[0].detector == "scope"
-        assert st.step("rh_reboot").goto == "rh_check"
-        assert st.step("rh_reboot_retry").goto == "rh_check"
-        assert st.step("escalate").kind is StepKind.ESCALATE
-        assert st.step("rh_verify_dev").on == {"yes": "resolve", "no": "escalate"}
-
-    def test_glossary_entries(self):
-        from agent.contract.locale import phrase
-
-        assert "pakib" in phrase("verdict.router_hung.gloss")
-        assert "neatsistat" in phrase("verdict.router_hung.ticket_need")
 
 
 def _hung_payload(reason="router_hung", flap=False):
@@ -124,26 +78,25 @@ class TestConflictScope:
         agent = make_agent("+37060020112")
         agent.state.identity.customer_id = "CUST112"
         agent.state.intake.problem_type = "internet_down"
-        agent.state.resolution.procedure = {"verdict": "router_hung", "step": "rh_check"}
         return agent
 
     def test_undeclared_key_conflict_settles_silently(self, db_connection):
-        """`outlet_works` belongs to the dead-router card, not to this one: chatter about it
-        must not hijack the flow with a clarify loop. (Until wave 4a this test used the
-        lights — they are declared on the hung-router card now, so a lights contradiction is
-        worth a question.)"""
+        """`device_present` is declared by no card: chatter about it must not hijack the
+        flow with a clarify loop. (The conflict scope is every card's needs since v1's
+        `resolution.procedure` went — it used to narrow to the walker's one pack, and this
+        test used `outlet_works`, which the dead-router card declares.)"""
         from agent.evidence import CLIENT, set_fact
         from agent.perceive.evidence import _conflict_to_clarify
 
         agent = self._agent()
-        set_fact(agent.state.diagnosis.evidence, "outlet_works", "tried", CLIENT, 1)
-        entry = set_fact(agent.state.diagnosis.evidence, "outlet_works", "not_working", CLIENT, 2)
+        set_fact(agent.state.diagnosis.evidence, "device_present", "found", CLIENT, 1)
+        entry = set_fact(agent.state.diagnosis.evidence, "device_present", "missing", CLIENT, 2)
         assert entry["conflict"]
         assert (
-            _conflict_to_clarify(agent.state, agent.runtime, "outlet_works", entry) is True
+            _conflict_to_clarify(agent.state, agent.runtime, "device_present", entry) is True
         )  # consumed silently
         assert agent.state.diagnosis.contradiction is None  # no clarify loop
-        assert entry["value"] == "not_working" and not entry["conflict"]  # newest stands
+        assert entry["value"] == "missing" and not entry["conflict"]  # newest stands
 
     def test_declared_key_conflict_still_clarifies(self, db_connection):
         from agent.evidence import CLIENT, set_fact

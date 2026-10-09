@@ -69,6 +69,8 @@ class IdentityState(BaseModel):
     # Account-code rung: the caller is asked for the abonento kodas; grace turns
     # let a partly dictated code finish before the ladder moves on.
     account_code_mode: bool = False
+    # Heard account codes that are not in the database (U8: a cap, then the not-a-client close).
+    account_code_misses: int = 0
     account_code_grace_turns: int = 0
     # Address rung counters / one-shot warnings.
     address_empty_turns: int = 0
@@ -193,11 +195,7 @@ class DiagnosisState(BaseModel):
 
 
 class ResolutionState(BaseModel):
-    """The active strategy/procedure position."""
-
-    # {"verdict", "step", "asked", …} once a verdict maps to a strategy; the
-    # engine walks its steps deterministically. None = generic inform/instruct.
-    procedure: dict[str, Any] | None = None
+    """The solver and dead-router bridge bookkeeping (the fix itself is the Case's)."""
 
     # --- solver ---------------------------------------------------------------
     # Consecutive low-confidence solver decisions.
@@ -222,8 +220,6 @@ class ResolutionState(BaseModel):
 class TicketContext(BaseModel):
     """The running contact dialogue before a registration."""
 
-    # The escalate step that started the dialogue (only its id is ever read).
-    step_id: str | None = None
     # Appended to the final announce (e.g. the working-bridge note).
     note: str | None = None
     # Which scripted question went out last ("phone_intro", "retry_hours", …).
@@ -296,9 +292,6 @@ class DialogState(BaseModel):
     # Hold the process one turn after a detour / re-anchor from the ledger next reply.
     resume_hold_due: bool = False
     resync_note: bool = False
-    # "Cannot do it now" ladder: None | "asked" | "offered"; done once per call.
-    cannot_now_state: str | None = None
-    cannot_now_done: bool = False
     # The last reply re-asked the previous question verbatim.
     last_reply_repeated: bool = False
     # Praeito ėjimo atsakymas — visas, ne tik klausimas. Gyvai 2026-10-01 tas pats tilto
@@ -320,6 +313,8 @@ class ClosingState(BaseModel):
 
     case_closed: bool = False
     closed_reason: str | None = None  # "resolved" | "outage" | "declined" | …
+    # The confirmed end of an unfinished call: the scripted goodbye that says what is left (U10).
+    declined_goodbye_due: str | None = None
     is_complete: bool = False  # the transport hangs up once True
     closing_turns: int = 0
     # Wrap-up: real content said after "Ar dar kuo padėti?" (capped) + its one-shot note.
@@ -381,6 +376,10 @@ class TurnScratch(BaseModel):
     # The caller answered AND asked in one breath while the Case planned its step: the step
     # stays, and the question gets one short answer first (wave 9, T2).
     also_asked: bool = False
+    # This utterance answered an IDENTIFICATION question (the holder clarification): it is not
+    # an answer to whatever the Case was waiting for (live 2026-10-09: „Taip, kitas šeimos nario
+    # vardu" was taken as „yes, I can reach the router").
+    ident_answer: bool = False
     active_node: str | None = None  # which graph node is running (trace/debug)
     # A background telemetry read that finished between turns (folded in at turn start).
     bg_diagnosis: str | None = None
@@ -573,6 +572,8 @@ class CaseState(BaseModel):
     # *„klientas atsimins galutinį pokalbį — svarbi informacija, ką agentas padėjo ir ko
     # nepadarė."* Ji sakoma VIENĄ kartą, savo ėjimu, prieš registraciją.
     summarised: bool = False
+    # Why the fault happened, when a fix check found it (a phrase key; v3 stage 4).
+    cause: str | None = None
     # Pati išvada. Ji NEIŠTRINAMA ją pasakius, nes turi antrą adresatą: tą patį sąrašą gauna ir
     # tiketas — meistras turi matyti, kas buvo ir kas padaryta (Andrius, 2026-10-02: *„tuomet
     # tiketai bus informatyvūs ir meistrams bus aiškiau, kas ten įvyko"*).

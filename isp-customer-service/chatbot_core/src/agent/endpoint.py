@@ -7,14 +7,11 @@ partial transcript (E1) and hints how much trailing silence to require:
 
   - "slow":  the utterance-so-far ends mid-thought (trailing conjunction /
              comma) — wait longer, do not cut the caller off ("nedega, bet…").
-  - "fast":  the utterance already IS the complete expected answer (the
-             pending evidence question's deterministic reader maps it) or a
-             farewell — cut sooner, answer sooner.
+  - "fast":  the utterance is a farewell — cut sooner, answer sooner.
   - "normal": anything else — the client's default silence window stands.
 
 Deterministic by design: partials are jittery, so the reading relies only on
-the same word-level readers the engine already trusts (read_pending_answer,
-detect_farewell) plus the locale's trailing-word list
+the same word-level readers the engine already trusts (detect_farewell) plus the locale's trailing-word list
 (vocabulary `continuation_words`). This module is the mechanics. Fail-soft: any
 hiccup means "normal".
 """
@@ -22,13 +19,10 @@ hiccup means "normal".
 from __future__ import annotations
 
 import functools
-import logging
 from typing import Any
 
 from .contract import limits
 from .contract.locale import active_language
-
-logger = logging.getLogger(__name__)
 
 
 @functools.lru_cache(maxsize=4)
@@ -67,21 +61,6 @@ def classify_endpoint(state: Any, rt: Any, text: str | None) -> tuple[str, int |
     last = _fold(bare).split()[-1] if _fold(bare).split() else ""
     if last in _trailing_words(active_language()):
         return ("slow", slow_ms())
-
-    # Complete expected answer: the pending evidence question's deterministic
-    # reader maps the whole utterance to a canonical value.
-    try:
-        pending = state.diagnosis.pending_evidence_key
-        r = getattr(state.resolution, "procedure", None) or {}
-        if pending and r.get("verdict"):
-            from .evidence import read_pending_answer, spec_for
-
-            spec = spec_for(r.get("verdict")) or {}
-            item = (spec.get("client") or {}).get(pending)
-            if read_pending_answer(str(pending), stripped, item) is not None:
-                return ("fast", fast_ms())
-    except Exception:  # pragma: no cover - a hint must never break a partial
-        logger.debug("endpoint fast-check failed", exc_info=True)
 
     # A farewell is complete by definition — close the turn promptly.
     try:

@@ -34,8 +34,10 @@ def call(make_state, make_runtime):
 
 
 def _step_of(fault: str, module: str) -> int:
+    """The step of the card's own path — not a `run_when` branch (v3 stage 4: the power
+    fix check is a `verify` too, ahead of the bridge's)."""
     steps = catalog.card(fault).solution[0].steps
-    return next(i for i, call in enumerate(steps) if call.module == module)
+    return next(i for i, call in enumerate(steps) if call.module == module and not call.run_when)
 
 
 def _dead_router_at(call, module: str, **facts):

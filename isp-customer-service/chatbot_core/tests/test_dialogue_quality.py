@@ -27,11 +27,6 @@ class TestUnheardQuestion:
 
         agent = make_agent("+37060012353")
         agent.state.identity.customer_id = "CUST009"
-        agent.state.resolution.procedure = {
-            "verdict": "no_mac_observed",
-            "step": "dr_lights",
-            "presented": {"dr_lights": 1},
-        }
         agent.state.messages.append({"role": "assistant", "content": "irrelevant"})
         return agent
 
@@ -51,7 +46,6 @@ class TestUnheardQuestion:
         # steps back.
         assert agent.state.diagnosis.pending_evidence_key == "lights"
         assert agent.state.diagnosis.evidence_ask_counts["lights"] == 0
-        assert agent.state.resolution.procedure["presented"]["dr_lights"] == 0
         assert agent.state.voice.unheard_question == "Ar dega bent viena lemputė?"
         assert agent.state.voice.undelivered_tail is None  # superseded by the strong note
         block = context_card(agent.state, agent.runtime) or ""

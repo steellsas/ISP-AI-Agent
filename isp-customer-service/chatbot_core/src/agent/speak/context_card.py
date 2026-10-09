@@ -657,9 +657,9 @@ def _case_facts(state, rt) -> list[str]:
             )
         # Just resolved: confirm briefly, then OFFER one more thing and WAIT — the engine
         # ends the call once the caller declines.
-        # v2: the Case resolves without `resolution.procedure`, so this never showed after
-        # `case.resolved` (wave 10, S7).
-        if s.closing.closed_reason == "resolved" and (s.resolution.procedure or s.case.fault):
+        # v1 gated this on `resolution.procedure`, so it never showed after `case.resolved`
+        # (wave 10, S7).
+        if s.closing.closed_reason == "resolved" and s.case.fault:
             out.append(
                 "SOLVED: the caller confirmed the internet works. Be glad briefly and ask "
                 "„Ar dar kuo nors galiu padėti?“. Do NOT say goodbye yet, do NOT ask about "

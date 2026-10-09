@@ -38,6 +38,16 @@ def close_call(state: Any, rt: Any, reason: str, complete: bool = False) -> None
     )
 
 
+def reopen_call(state: Any, rt: Any, why: str) -> None:
+    """Take a closed case back (a ticket demand or „vis tiek neveikia" at the goodbye): the
+    call goes on, and the reason it had closed for no longer stands (v3 3b — the closing
+    rules used to flip these flags themselves)."""
+    s = state
+    s.closing.case_closed = False
+    s.closing.is_complete = False
+    rt.tracer.emit("decision", intent=why, action="reopen_at_closing")
+
+
 def hang_up(state: Any, rt: Any) -> None:
     """End the CALL on an already closed case (the transport hangs up)."""
     close_call(state, rt, "keep", complete=True)
@@ -54,7 +64,5 @@ def _close_stuck(state: Any, rt: Any) -> None:
         s.closing.closed_reason = "declined"
         s.closing.unidentified_reason = "stuck"
         return
-    if s.resolution.procedure is not None:
-        s.resolution.procedure["escalate_reason"] = "stuck"
-    register_ticket_from_state(s, rt, None)
+    register_ticket_from_state(s, rt)
     s.closing.closed_reason = "registered" if s.ticket.ticket_id else "declined"

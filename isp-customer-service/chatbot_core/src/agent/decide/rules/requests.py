@@ -14,13 +14,12 @@ from typing import Any
 
 def start_request(state: Any, rt: Any, ticket_type: str | None = None) -> None:
     """Register the caller's question for the responsible person (contacts first)."""
-    from ...execute.ticket import begin_ticket_dialogue
+    from ...execute.ticket import request_ticket
     from ...intents import problem_entry
 
     ticket_type = ticket_type or problem_entry(state.intake.problem_type).get("ticket_type")
-    state.ticket.request_type = ticket_type
     rt.tracer.emit("decision", intent="request", action="register", value=ticket_type)
-    begin_ticket_dialogue(state, rt, None)
+    request_ticket(state, rt, "request", request_type=ticket_type)
 
 
 def answer_ticket_status(state: Any, rt: Any) -> None:

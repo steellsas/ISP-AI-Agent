@@ -65,9 +65,7 @@ def skill_for(state: Any, owner: str) -> str:
     family = rule.split(".", 1)[0] if rule else owner
     if family in _BY_FAMILY:
         return _BY_FAMILY[family]
-    # The fault path: a step to carry out, else the next fact to learn.
-    if (state.resolution.procedure or {}).get("step") and _step_instructs(state):
-        return "instruct_step"
+    # The fault path: the next fact to learn.
     return "ask_fact"
 
 
@@ -100,13 +98,3 @@ def _case_skill(state: Any, rule: str) -> str | None:
 
     spec = catalog.module(module)
     return _BY_KIND.get(spec.kind) if spec else None
-
-
-def _step_instructs(state: Any) -> bool:
-    """Does the active step ask the caller to DO something (vs. to tell something)?"""
-    from ..resolution import StepKind, get_strategy
-
-    procedure = state.resolution.procedure or {}
-    strategy = get_strategy(procedure.get("verdict"))
-    step = strategy.step(procedure.get("step", "")) if strategy else None
-    return step is not None and step.kind in (StepKind.INSTRUCT, StepKind.ACTION)

@@ -901,6 +901,32 @@ def simulate_router_reboot(customer_id: str) -> dict:
         return {"success": False, "error": "action_error", "message": f"{e}"}
 
 
+def simulate_router_power_on(customer_id: str) -> dict:
+    """SIMULATED (demo/test): the CALLER plugs the router's power lead back in.
+
+    Not a registered agent Tool. The engine calls it behind SIMULATE_REBOOT when the caller
+    says they plugged it in (the plug_power step), and the demo button plays it live — so the
+    fix check after it reads a line that shows the router again (v3 stage 4).
+    """
+    if not customer_id:
+        return {
+            "success": False,
+            "error": "missing_customer_id",
+            "message": "Customer ID required.",
+        }
+    try:
+        db = get_db()
+        from network_diagnostic_mcp.tools.port_actions import power_on_router_device
+
+        return power_on_router_device(db, customer_id)
+    except ImportError as e:
+        logger.error(f"Router power-on sim unavailable: {e}")
+        return {"success": False, "error": "service_unavailable", "message": "unavailable"}
+    except Exception as e:
+        logger.error(f"Error in simulate_router_power_on: {e}", exc_info=True)
+        return {"success": False, "error": "action_error", "message": f"{e}"}
+
+
 def simulate_bridge_disconnect(customer_id: str) -> dict:
     """SIMULATED (demo/test): clear the bridge device from the line (undo a plug-in).
     Not a registered Tool — used by the manual test command / re-test setup."""

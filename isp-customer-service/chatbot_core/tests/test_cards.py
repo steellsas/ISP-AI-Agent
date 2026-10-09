@@ -210,21 +210,9 @@ def test_every_module_a_card_can_call_declares_what_it_does():
             assert spec.probe, name
 
 
-class TestEveryV1PackHasACard:
-    """Nothing may be lost in the conversion: the v1 packs and the v2 cards are the same
-    set of faults, by id (the locale keys and the ticket reasons hang off those ids)."""
-
-    def test_no_v1_fault_was_lost(self):
-        import yaml
-        from agent.contract.schema import KNOWLEDGE_DIR
-
-        v1 = {
-            yaml.safe_load(p.read_text(encoding="utf-8"))["verdict"]
-            for p in (KNOWLEDGE_DIR / "faults").glob("*.yaml")
-        }
-        # The reverse is no longer true: wave 4 added the NEWS cards, which the packs never
-        # had (they were branches in the tree).
-        assert v1 <= set(catalog.cards())
+class TestCardKinds:
+    """A news card tells; a fault card fixes. (The v1-pack parity check went with the
+    packs: every v1 verdict had a card when `knowledge/faults/` was deleted.)"""
 
     def test_a_news_card_tells_and_a_fault_card_fixes(self):
         for name, card in catalog.cards().items():

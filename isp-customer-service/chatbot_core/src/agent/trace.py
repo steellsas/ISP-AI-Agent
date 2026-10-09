@@ -12,18 +12,16 @@ from typing import Any
 
 def trace_note(tracer: Any, state: Any, where: str, detail: str, level: str = "warn") -> None:
     """Record a behaviour-affecting failure/fallback INTO the trace (not only the
-    console log), stamped with the current state (node/step/awaiting), so a call
+    console log), stamped with the current state (node/awaiting), so a call
     review shows WHY the agent behaved as it did — a swallowed classifier/solver/tool
     error no longer disappears from the JSONL. Best-effort; never raises."""
     try:
-        r = state.resolution.procedure or {}
         tracer.emit(
             "error",
             level=level,
             where=where,
             detail=(detail or "")[:300],
             node=state.turn.active_node,
-            step=r.get("step"),
             awaiting=state.dialog.awaiting,
         )
     except Exception:  # pragma: no cover - tracing must never break the turn
@@ -69,34 +67,6 @@ def trace_tool_result(tracer: Any, name: str, observation: str, ms: int | None =
         )
 
 
-def emit_decision(tracer: Any, state: Any, before: str | None) -> None:
-    """One line per strategy turn: what the caller's turn was read as, where the
-    walker went (or that it HELD), and the live hypothesis. This is the 'why' the
-    raw reply never showed — e.g. step=None means no strategy is active at all."""
-    s = state
-    r = s.resolution.procedure
-    after = r.get("step") if r else None
-    if before is None and after is None:
-        return  # no strategy in play — nothing to explain
-    if s.closing.case_closed:
-        action, dest = "close", s.closing.closed_reason
-    elif after == before:
-        action, dest = "hold", after
-    else:
-        action, dest = "advance", after
-    h = s.diagnosis.hypothesis or {}
-    tracer.emit(
-        "decision",
-        intent=s.dialog.last_intent or None,
-        awaiting=s.dialog.awaiting,
-        action=action,
-        from_step=before,
-        to=dest,
-        hypothesis=h.get("cause"),
-        hyp_status=h.get("status"),
-    )
-
-
 def emit_case(tracer: Any, state: Any) -> None:
     """Emit a compact case-state snapshot to the TRACE (for review) — NOT into
     the LLM context. The lean current-truth the model reads is the facts block;
@@ -110,7 +80,6 @@ def emit_case(tracer: Any, state: Any) -> None:
     )
     if not (s.intake.problem_type or s.identity.customer_id or diag or s.intake.symptoms):
         return
-    r = s.resolution.procedure or {}
     h = s.diagnosis.hypothesis or {}
     tracer.emit(
         "case",
@@ -120,7 +89,6 @@ def emit_case(tracer: Any, state: Any) -> None:
         symptoms=(", ".join(f"{k}={v}" for k, v in s.intake.symptoms.items()) or None),
         diagnosis=diag,
         # Decision state — the "where are we / why" that a raw reply hides.
-        step=r.get("step"),
         awaiting=s.dialog.awaiting,
         clarity=s.dialog.clarity_level if s.dialog.clarity_level != "standard" else None,
         hypothesis=(f"{h.get('cause')}:{h.get('status')}" if h else None),

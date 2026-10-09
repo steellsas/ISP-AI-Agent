@@ -373,8 +373,10 @@ def _module_catalogue():
 def startup() -> Knowledge:
     """Validate everything once at startup; raise KnowledgeError when anything is broken."""
     knowledge = validate()
+    from . import cards
+
     logger.info(
-        f"knowledge loaded: {len(knowledge.packs)} fault packs, {len(knowledge.modules)} modules"
+        f"knowledge loaded: {len(cards.cards())} fault cards, {len(cards.modules())} modules"
     )
     # Kuri saugykla atsakys į žinių paiešką (RAG planas, E2): failai arba Qdrant indeksas. Čia, nes
     # tai ta pati vieta, kur žinios patikrinamos — ir todėl bloga konfigūracija pasimato starte.
