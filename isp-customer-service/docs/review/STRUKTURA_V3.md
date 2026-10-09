@@ -287,8 +287,8 @@ struktūra (sąrašas su vienu nariu), elgsena — vėliau.
 |---|---|---|
 | **0** ✅ | Greiti taisymai: S1–S7, V1, V4, V5, V7, solver kodas ištrintas, 6 prompto prieštaravimai, TTS gijos (10 banga) | testai + eval |
 | **1** | Šis dokumentas → Andriaus patvirtinimas | — |
-| **2** | `state.phase` šešėlyje: skaičiuojama iš esamų žymių, trace + dashboard (fazių juosta, dabartinė užsidega spalva, neleistinas perėjimas — raudonai), nieko nevaldo | eval: fazių seka kiekvienam scenarijui atitinka lūkestį |
-| **3** | Savininkai: `close` (U1–U7) ir `ticket`; v1 `unclear_fault` → Case kortelė; `resolution.procedure` ištrintas | testai + eval + gyvas testas |
+| **2** ✅ | `state.phase` šešėlyje: skaičiuojama iš esamų žymių, trace + dashboard (fazių juosta, dabartinė užsidega spalva, neleistinas perėjimas — raudonai), nieko nevaldo | eval: fazių seka kiekvienam scenarijui atitinka lūkestį |
+| **3** ✅ | 3a: pabaigos taisyklės U3/U6/U8/U10; 3c: v1 vedlys ištrintas (`resolution.procedure`, strategijos, 7 v1 paketai; `unclear_fault` → Case kortelė); 3b: vienas tiketo įėjimas `request_ticket(why)`, pabaigos būsena tik `agent/closing.py` (sargas-testas) | testai + eval 207–208/208; laukia Andriaus gyvo testo |
 | **4** | Tyrimo ciklas: DARYTI → patikra bet kur, `fixes:`, priežasties santrauka | naujas eval „įkišo laidą — veikia" |
 | **5** | Pokalbio sluoksnis (§4) | eval + gyvas testas |
 | **6** | Promptai pagal fazę (§7) | A/B + vėlavimas |

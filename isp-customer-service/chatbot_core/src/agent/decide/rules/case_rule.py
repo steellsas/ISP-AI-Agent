@@ -1749,7 +1749,7 @@ def _escalate(state: Any, rt: Any, fault: str | None, note: str | None = None) -
     must have been done, because a technician arriving to power-cycle a router is a visit we
     wasted (Andrius, 2026-09-23). When that work is still possible, it happens instead.
     """
-    from ...execute.ticket import begin_ticket_dialogue
+    from ...execute.ticket import request_ticket
 
     pending = _phone_work_left(state, fault)
     if pending is not None:
@@ -1785,9 +1785,9 @@ def _escalate(state: Any, rt: Any, fault: str | None, note: str | None = None) -
                 rule="case.summary",
                 say=Say(kind="directive", goal="sum up what was done and why", stage="diagnosis"),
             )
-    begin_ticket_dialogue(state, rt)
     if note:
         state.case.facts.setdefault("_ticket_note", note)
+    request_ticket(state, rt, "case_escalate")
     rt.tracer.emit("case", move="escalate", fault=fault, note=note)
     goal = "say WHY the phone cannot fix this and that a technician will be registered"
     unchecked = _unchecked_words(state)

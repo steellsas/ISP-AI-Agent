@@ -13,7 +13,7 @@ _FLOW_OF = {
     "_advance_restored": "agent.decide.procedure.advance_restored",
     "_advance_see_device": "agent.decide.procedure.advance_see_device",
     "_chain_after_bind": "agent.execute.observe.chain_after_bind",
-    "_begin_ticket_dialogue": "agent.execute.ticket.begin_ticket_dialogue",
+    "_begin_ticket_dialogue": "agent.execute.ticket._begin_ticket_dialogue",
     "_block_uncorroborated_escalate": "agent.decide.procedure.block_uncorroborated_escalate",
     "_bridge_fail_step": "agent.decide.rules.diagnosis.bridge_fail_step",
     "_build_solver_context": "agent.decide.rules.diagnosis.build_solver_context",

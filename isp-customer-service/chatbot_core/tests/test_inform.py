@@ -202,12 +202,12 @@ class TestTicketCallback:
         from agent.decide.rules.head import turn_head
         from agent.decide.rules.reply import scripted_words
         from agent.decide.rules.ticket import ticket_stage_reply
-        from agent.execute.ticket import begin_ticket_dialogue
+        from agent.execute.ticket import request_ticket
 
         agent = _agent()
         agent.state.identity.caller_name = "Tomas"
         agent.state.case.fault = "unclear_fault"
-        begin_ticket_dialogue(agent.state, agent.runtime)
+        request_ticket(agent.state, agent.runtime, "test")
         ticket_stage_reply(agent.state, agent.runtime)  # numerio klausimas išėjo
         turn_head(agent.state, agent.runtime, "Gerai, aš paskambinsiu vėliau pats")
         assert agent.state.closing.case_closed and agent.state.closing.closed_reason == "callback"
@@ -219,11 +219,11 @@ class TestTicketCallback:
     def test_normal_hours_answer_still_captured(self, db_connection):
         from agent.decide.rules.head import turn_head
         from agent.decide.rules.ticket import ticket_stage_reply
-        from agent.execute.ticket import begin_ticket_dialogue
+        from agent.execute.ticket import request_ticket
 
         agent = _agent()
         agent.state.case.fault = "unclear_fault"
-        begin_ticket_dialogue(agent.state, agent.runtime)
+        request_ticket(agent.state, agent.runtime, "test")
         ticket_stage_reply(agent.state, agent.runtime)
         turn_head(agent.state, agent.runtime, "Taip, tiks")
         ticket_stage_reply(agent.state, agent.runtime)

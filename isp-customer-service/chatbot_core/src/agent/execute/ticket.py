@@ -11,7 +11,7 @@ from typing import Any
 from ..contract.locale import vocab
 
 
-def begin_ticket_dialogue(state: Any, rt: Any) -> None:
+def _begin_ticket_dialogue(state: Any, rt: Any) -> None:
     """Start the ticket-confirmation dialogue: before ANY registration the agent
     collects the contact number (ALWAYS asked — the caller may be on a
     company/other phone, or the DB number stale) and when it is convenient to
@@ -24,6 +24,34 @@ def begin_ticket_dialogue(state: Any, rt: Any) -> None:
     state.ticket.context = TicketContext()
     state.ticket.stage = "phone"
     rt.tracer.emit("decision", intent="ticket_dialogue", action="start")
+
+
+def request_ticket(state: Any, rt: Any, why: str, *, request_type: str | None = None) -> None:
+    """THE one way a registration starts (STRUKTURA_V3 stage 3b — eleven places used to start
+    the contact dialogue each in its own way).
+
+    `why` names the moment that asked for it (case_escalate, caller_ended_call, promise,
+    no_path, reopened_at_closing, systems_down, request…) and goes to the trace. A request for
+    the responsible person carries its `request_type`; a fault gets its card's note for the
+    technician. Nothing happens when a registration is already running or done.
+    """
+    if state.ticket.ticket_id or state.ticket.stage:
+        return
+    if request_type:
+        state.ticket.request_type = request_type
+    elif state.case.fault:
+        from ..contract import cards
+
+        card = cards.card(state.case.fault)
+        if card is not None and card.escalate and card.escalate.note:
+            state.case.facts.setdefault("_ticket_note", card.escalate.note)
+    rt.tracer.emit(
+        "decision",
+        intent="ticket_requested",
+        action=why,
+        value=request_type or state.case.fault,
+    )
+    _begin_ticket_dialogue(state, rt)
 
 
 def fmt_phone(nr: str | None) -> str:
@@ -161,9 +189,7 @@ def registration_claim_guard(state: Any, rt: Any, content: str) -> str | None:
         # v1's `resolution.procedure` was empty on a Case call, so this guard was blind to every
         # Case call: live 2026-10-07 the agent said „užregistruosiu" about the router and the
         # caller left with no ticket (wave 9, T3).
-        from ..decide.rules.head import _begin_case_ticket
-
-        _begin_case_ticket(state, rt)
+        request_ticket(state, rt, "promise")
     elif _debt_news_told(state):
         # The same promise after the debt news is a question for the responsible person.
         from ..decide.rules.requests import start_request

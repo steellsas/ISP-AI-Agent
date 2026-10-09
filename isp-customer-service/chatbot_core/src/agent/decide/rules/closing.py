@@ -11,6 +11,7 @@ from __future__ import annotations
 import re
 from typing import Any
 
+from ...closing import close_call, hang_up, reopen_call
 from ...contract import limits
 from ...faults import verdict_flag
 from ..plan import Action, Say, TurnPlan
@@ -34,8 +35,7 @@ def plan(state: Any, rt: Any) -> TurnPlan | None:
         and not s.ticket.ticket_id
         and _was_a_fault(s)
     ):
-        s.closing.case_closed = False
-        rt.tracer.emit("decision", intent="ticket_demand", action="reopen_at_closing")
+        reopen_call(state, rt, "ticket_demand")
         return _escalate(state, rt, "closing.ticket_demand_reopen")
     # A "still not working" at the goodbye contradicts a resolved close — never wave
     # it off (live 2026-09-11: "Internetas neveikia." got "Geros dienos!").
@@ -46,9 +46,7 @@ def plan(state: Any, rt: Any) -> TurnPlan | None:
         and _was_a_fault(s)
         and _still_down(user_input)
     ):
-        s.closing.case_closed = False
-        s.closing.is_complete = False
-        rt.tracer.emit("decision", intent="still_down", action="reopen_at_closing")
+        reopen_call(state, rt, "still_down")
         return _escalate(state, rt, "closing.still_down_reopen")
     maybe_finish(state, rt, user_input)
     from ...perceive.detectors import is_real_question
@@ -103,10 +101,10 @@ def _escalate(state: Any, rt: Any, rule: str) -> TurnPlan:
     raised „no executor"), and both reopen rules were gated on v1's `resolution.procedure`,
     so on a Case call „vis tiek neveikia" at the goodbye got „Geros dienos!" (wave 10, S3/S4).
     """
-    from .head import _begin_case_ticket
+    from ...execute.ticket import request_ticket
     from .ticket import ticket_question_turn
 
-    _begin_case_ticket(state, rt)
+    request_ticket(state, rt, "reopened_at_closing")
     _rule, words = ticket_question_turn(state, rt)
     say = (
         Say(kind="phrase", text=words, stage="ticket")
@@ -139,7 +137,7 @@ def maybe_finish(state: Any, rt: Any, user_input: str | None) -> None:
     from ...perceive.detectors import detect_farewell
 
     if detect_farewell(user_input) or s.closing.closing_turns >= limits.get("closing_max_turns"):
-        s.closing.is_complete = True
+        hang_up(state, rt)
 
 
 def maybe_close_inform(state: Any, rt: Any, user_input: str | None) -> None:
@@ -183,13 +181,12 @@ def maybe_close_inform(state: Any, rt: Any, user_input: str | None) -> None:
     from ...perceive.detectors import detect_farewell
 
     if detect_farewell(user_input):
-        s.closing.case_closed = True
-        s.closing.closed_reason = (
+        why = (
             "outage"
             if (s.diagnosis.outage_reported or verdict_flag(reason, "inform") == "outage")
             else "inform"
         )
-        s.closing.is_complete = True  # caller already said goodbye — end on ONE farewell
+        close_call(state, rt, why, complete=True)  # they said goodbye — end on ONE farewell
         # Observability: the close moment was invisible in the trace (this made a
         # stuck-close analysis needlessly hard) — record it.
         rt.tracer.emit(

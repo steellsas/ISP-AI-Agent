@@ -279,7 +279,7 @@ class TestReviewGaps:
 
         from agent.decide.rules.identification import reopen_identification
         from agent.execute.observe import update_state_from_observation
-        from agent.execute.ticket import begin_ticket_dialogue
+        from agent.execute.ticket import request_ticket
         from agent.perceive.evidence import ingest_client_evidence
 
         monkeypatch.setitem(os.environ, "CLASSIFIER", "off")
@@ -295,7 +295,7 @@ class TestReviewGaps:
             "diagnose_connection",
             json.dumps({"verdict": {"reason": "no_mac_observed", "side": "unclear"}}),
         )
-        begin_ticket_dialogue(agent.state, agent.runtime)
+        request_ticket(agent.state, agent.runtime, "test")
         agent.state.dialog.side_topic_streak = 2
         assert agent.state.diagnosis.evidence and agent.state.ticket.stage == "phone"
 

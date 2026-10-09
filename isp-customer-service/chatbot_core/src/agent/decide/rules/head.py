@@ -15,7 +15,7 @@ from ...closing import close_call
 from ...contract import limits
 from ...contract.locale import vocab, vocab_set
 from ...dialog_utils import last_agent_question
-from ...execute.ticket import begin_ticket_dialogue
+from ...execute.ticket import request_ticket
 from ...perceive.caller import holder_name_matches
 from ...perceive.detectors import detect_farewell, detect_ticket_consent
 from ...perceive.slots import mentions_other_street, prefill_slots_from_text
@@ -38,16 +38,6 @@ def _case_can_escalate(s: Any) -> bool:
     Without this the confirmed goodbye closed a Case call as „declined" and never offered
     the technician."""
     return s.case.in_progress and not s.ticket.ticket_id
-
-
-def _begin_case_ticket(state: Any, rt: Any) -> None:
-    """The contact dialogue for the Case's fault, with the card's note for the technician."""
-    from ...contract import cards
-
-    card = cards.card(state.case.fault) if state.case.fault else None
-    if card is not None and card.escalate and card.escalate.note:
-        state.case.facts.setdefault("_ticket_note", card.escalate.note)
-    begin_ticket_dialogue(state, rt)
 
 
 def _end_declined(state: Any, rt: Any) -> None:
@@ -99,7 +89,7 @@ def end_confirm_answer(state: Any, rt: Any, user_input: str) -> bool:
             state.dialog.end_ticket_offer = False
             consent = detect_ticket_consent(user_input) == "yes"
             if consent and _case_can_escalate(s):
-                _begin_case_ticket(state, rt)
+                request_ticket(state, rt, "caller_ended_call")
                 rt.tracer.emit("decision", intent="end_ticket_offer", action="register")
             else:
                 _end_declined(state, rt)

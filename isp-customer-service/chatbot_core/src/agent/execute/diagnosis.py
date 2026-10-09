@@ -119,10 +119,10 @@ def _no_path_ticket(state, rt) -> None:
         "decision", intent="no_path", action="unclear_fault_ticket", value=s.intake.problem_type
     )
     from ..decide.rules import case_rule
-    from ..decide.rules.head import _begin_case_ticket
+    from .ticket import request_ticket
 
     case_rule.announce(state, rt, "unclear_fault")
-    _begin_case_ticket(state, rt)
+    request_ticket(state, rt, "no_path")
 
 
 def _seed_evidence_from_call(state, rt) -> None:
