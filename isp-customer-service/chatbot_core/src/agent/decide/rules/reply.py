@@ -41,6 +41,12 @@ def reply_plan(state: Any, rt: Any, user_input: str | None) -> TurnPlan | None:
         from ...contract.locale import phrase as _cb_phrase
 
         return _words("dialog.callback_goodbye", _cb_phrase("identification.callback_goodbye"))
+    if state.closing.declined_goodbye_due:
+        # The confirmed end of an unfinished call is scripted: what is left, how to come back.
+        from ...contract.locale import phrase as _end_phrase
+
+        key, state.closing.declined_goodbye_due = state.closing.declined_goodbye_due, None
+        return _words("dialog.declined_goodbye", _end_phrase(key))
     if s.closing.case_closed:
         return _plan("closing.closed_this_turn", None, directive=True)
     from ...contract.locale import phrase
@@ -293,7 +299,9 @@ def reply_plan(state: Any, rt: Any, user_input: str | None) -> TurnPlan | None:
     if state.dialog.end_confirm_pending:
         if state.dialog.end_ticket_offer:
             return _words("dialog.end_offer_ticket", phrase("identification.end_offer_ticket"))
-        return _words("dialog.confirm_end", phrase("identification.confirm_end"))
+        from .head import confirm_end_key
+
+        return _words("dialog.confirm_end", phrase(confirm_end_key(state)))
     # Uncorroborated bare "ne" tried to route the walker into ESCALATE — ask
     # the solve-or-register choice instead of crossing the one-way door
     # (2026-08-11). The next turn routes normally: a repeated no escalates.

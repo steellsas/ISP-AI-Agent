@@ -82,7 +82,10 @@ class TestAccountCodeRung:
         assert r2 and "negalėsiu" in r2  # PERSPĖJIMAS (su kodo užuomina)
         scripted_words(agent.state, agent.runtime, "Na nežinau")
         r4 = scripted_words(agent.state, agent.runtime, "Nieko nesakysiu")
-        assert agent.state.closing.case_closed and r4 and "nenustačius" in r4
+        assert (
+            agent.state.closing.case_closed and r4 and "turiu baigti pokalbį" in r4
+        )  # U8: the reason
+        assert agent.state.closing.is_complete  # the goodbye IS the end
         assert agent.state.ticket.ticket_id is None
 
     def test_unrecognized_address_offers_code(self, db_connection):

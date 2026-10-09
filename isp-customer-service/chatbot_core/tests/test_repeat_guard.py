@@ -177,7 +177,7 @@ class TestStuckCounter:
         a.state.dialog.stuck_count = 4
 
         plan = _backstop_plan(a)
-        assert "Užregistruosiu" in plan.say.text
+        assert "užregistruosiu" in plan.say.text.lower()
         run_action(a.state, a.runtime, plan)
 
         assert a.state.ticket.ticket_id  # F-5: the promise is kept

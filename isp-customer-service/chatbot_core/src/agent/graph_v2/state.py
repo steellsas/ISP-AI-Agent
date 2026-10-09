@@ -69,6 +69,8 @@ class IdentityState(BaseModel):
     # Account-code rung: the caller is asked for the abonento kodas; grace turns
     # let a partly dictated code finish before the ladder moves on.
     account_code_mode: bool = False
+    # Heard account codes that are not in the database (U8: a cap, then the not-a-client close).
+    account_code_misses: int = 0
     account_code_grace_turns: int = 0
     # Address rung counters / one-shot warnings.
     address_empty_turns: int = 0
@@ -320,6 +322,8 @@ class ClosingState(BaseModel):
 
     case_closed: bool = False
     closed_reason: str | None = None  # "resolved" | "outage" | "declined" | …
+    # The confirmed end of an unfinished call: the scripted goodbye that says what is left (U10).
+    declined_goodbye_due: str | None = None
     is_complete: bool = False  # the transport hangs up once True
     closing_turns: int = 0
     # Wrap-up: real content said after "Ar dar kuo padėti?" (capped) + its one-shot note.

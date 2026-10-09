@@ -107,6 +107,14 @@ def reopen_identification(state: Any, rt: Any, user_input: str) -> None:
     state.turn.reopen_note = True
 
 
+# The problem gate's prompts in order: ask, say why, say what happens without an answer.
+_GATE_ASKS = (
+    "identification.ask_problem",
+    "identification.ask_problem_why",
+    "identification.ask_problem_last",
+)
+
+
 def _problem_gate_reply(state: Any, rt: Any, s: Any, user_input: str) -> str | None:
     """Problem GATE with the classification cascade (DIALOGO_ETALONAS,
     2026-09-02). No identification until an in-scope problem is reached:
@@ -155,7 +163,8 @@ def _problem_gate_reply(state: Any, rt: Any, s: Any, user_input: str) -> str | N
     # (a ticket without customer_id is mechanically impossible). Configurable knob.
     gate_max = limits.get("problem_gate_max_turns")
     if p_asks + 1 >= gate_max:
-        close_call(state, rt, "declined")
+        # The goodbye states the reason and IS the end (U1/U8): no further turn is waited for.
+        close_call(state, rt, "declined", complete=True)
         if not s.identity.customer_id:
             s.closing.unidentified_reason = "not_a_customer"  # no problem of ours was named
         rt.tracer.emit("decision", intent="problem_gate", action="close")
@@ -206,9 +215,9 @@ def _problem_gate_reply(state: Any, rt: Any, s: Any, user_input: str) -> str | N
                 "problem_llm_confirm_confidence"
             ):  # not_ours / chat from context
                 return problem_boundary_reply(label) or phrase("identification.ask_problem")
-    # 4) the pre-cascade ladder
+    # 4) the pre-cascade ladder — three prompts, each explaining more (U8, Andrius 2026-10-09)
     if p_asks < limits.get("problem_gate_scripted_asks") and not asking:
-        return phrase("identification.ask_problem")
+        return phrase(_GATE_ASKS[min(p_asks, len(_GATE_ASKS) - 1)])
     if _os.getenv("NARRATOR_QUESTIONS", "on").lower() == "on":
         state.turn.directives.ident = {
             "kind": "problem_gate",
@@ -483,12 +492,19 @@ def _account_code_rung(state: Any, rt: Any, s: Any, user_input: str | None):
             from ...decide.question import register as _q_register
 
             _q_register(state, rt, "ident", "account_code")
+            state.identity.account_code_misses += 1
+            if state.identity.account_code_misses > limits.get("account_code_miss_max"):
+                # The miss used to repeat without end (U8): after the cap the call ends with
+                # the reason, like any other caller we cannot find.
+                close_call(state, rt, "declined", complete=True)
+                rt.tracer.emit("decision", intent="account_code", action="miss_limit_close")
+                return True, phrase("identification.not_client_goodbye")
             return True, phrase("identification.account_code_miss", code=_speak_code(code))
     if state.identity.account_code_mode:
         low = user_input.lower()
         explicit_no = any(m in low for m in vocab("no_account_code"))
         if explicit_no:
-            close_call(state, rt, "declined")
+            close_call(state, rt, "declined", complete=True)
             rt.tracer.emit("decision", intent="account_code", action="not_client_close")
             return True, phrase("identification.not_client_goodbye")
         # A-wave P3c (live #3: „A. B." → the LLM hallucinated „nerastas"): the caller
@@ -646,8 +662,12 @@ def _account_code_rung(state: Any, rt: Any, s: Any, user_input: str | None):
         _q_register(state, rt, "ident", "address_need")
         rt.tracer.emit("decision", intent="account_code", action="warn")
         return True, phrase("identification.address_need_warning")
+    if n == limit - 1 and state.identity.address_warned:
+        # U8 (Andrius, 2026-10-09): the last prompt says what happens without an answer.
+        rt.tracer.emit("decision", intent="account_code", action="last_warning")
+        return True, phrase("identification.address_last_warning")
     if n >= limit:
-        close_call(state, rt, "declined")
+        close_call(state, rt, "declined", complete=True)
         rt.tracer.emit("decision", intent="account_code", action="no_location_close")
         return True, phrase("identification.no_location_goodbye")
     return False, None

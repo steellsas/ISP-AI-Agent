@@ -565,13 +565,14 @@ class TestOpenerAndClosingHygiene:
         r1 = scripted_words(agent.state, agent.runtime, "Atsikai, daro.")
         assert r1 and "problema" in r1
         r2 = scripted_words(agent.state, agent.runtime, "Mmm kažkas.")
-        assert r2 and "problema" in r2
-        # scripted mode (NARRATOR_QUESTIONS=off in tests): keeps asking, then
-        # the gate closes politely on the 5th attempt
-        assert "problema" in scripted_words(agent.state, agent.runtime, "Nu...")
-        assert "problema" in scripted_words(agent.state, agent.runtime, "Eee...")
-        bye = scripted_words(agent.state, agent.runtime, "Mmm.")
-        assert bye and "skambinkite" in bye
+        assert r2 and "neveikia" in r2  # U8: the second prompt says WHY
+        # U8 (Andrius 2026-10-09): the third prompt says what happens without an answer, the
+        # fourth fruitless turn ends the call with the reason — and hangs up.
+        r3 = scripted_words(agent.state, agent.runtime, "Nu...")
+        assert r3 and "turėsiu baigti pokalbį" in r3
+        bye = scripted_words(agent.state, agent.runtime, "Eee...")
+        assert bye and "nepasakėte, kas neveikia" in bye and "skambinkite" in bye
+        assert agent.state.closing.is_complete
 
     def test_phone_account_block_waits_for_the_problem(self, db_connection):
         from agent.speak.context_card import context_card

@@ -60,6 +60,40 @@ def _begin_case_ticket(state: Any, rt: Any) -> None:
     begin_ticket_dialogue(state, rt, None)
 
 
+def _end_declined(state: Any, rt: Any) -> None:
+    """The caller confirmed the end of an unfinished call: close, hang up after a goodbye that
+    says what is left undone and how to come back (U10, Andrius 2026-10-09). The model used to
+    word this turn from a bare „CASE CLOSED" line."""
+    s = state
+    if not s.identity.customer_id:
+        key = "identification.declined_goodbye_unidentified"
+    elif s.resolution.procedure is not None or s.case.fault:
+        key = "identification.declined_goodbye_fault"
+    else:
+        key = "identification.declined_goodbye"
+    s.closing.declined_goodbye_due = key
+    close_call(state, rt, "declined", complete=True)
+
+
+def confirm_end_key(state: Any) -> str:
+    """The end-confirm question that says what would be left undone (U3)."""
+    s = state
+    if not s.identity.customer_id:
+        return "identification.confirm_end_unidentified"
+    if s.resolution.procedure is not None or s.case.fault:
+        return "identification.confirm_end_fault"
+    if s.diagnosis.verdicts and not (s.diagnosis.news_delivered or s.diagnosis.outage_reported):
+        return "identification.confirm_end_news"
+    return "identification.confirm_end"
+
+
+def refuses_to_continue(text: str | None) -> bool:
+    """„Nebenoriu", „nutraukite" — the caller does not WANT to go on (U3/U6). Not being able to
+    right now („nesu namuose") is not refusing (U9)."""
+    low = (text or "").lower()
+    return any(m in low for m in vocab("refuse_to_continue"))
+
+
 def end_confirm_answer(state: Any, rt: Any, user_input: str) -> bool:
     """The answer to the end-confirm question (§5 row 4). True when it owns the rest of the turn head."""
     s = state
@@ -83,7 +117,7 @@ def end_confirm_answer(state: Any, rt: Any, user_input: str) -> bool:
                 _begin_case_ticket(state, rt)
                 rt.tracer.emit("decision", intent="end_ticket_offer", action="register")
             else:
-                close_call(state, rt, "declined")
+                _end_declined(state, rt)
                 rt.tracer.emit("decision", intent="end_ticket_offer", action="close")
             return True
         if detect_farewell(user_input) or detect_ticket_consent(user_input) == "yes":
@@ -94,14 +128,14 @@ def end_confirm_answer(state: Any, rt: Any, user_input: str) -> bool:
                     state.dialog.end_ticket_offer = True
                     rt.tracer.emit("decision", intent="end_confirmed", action="offer_ticket")
                     return True
-                close_call(state, rt, "declined")
+                _end_declined(state, rt)
             elif _case_can_escalate(s):
                 state.dialog.end_confirm_pending = True
                 state.dialog.end_ticket_offer = True
                 rt.tracer.emit("decision", intent="end_confirmed", action="offer_ticket")
                 return True
             else:
-                close_call(state, rt, "declined")
+                _end_declined(state, rt)
             rt.tracer.emit("decision", intent="end_confirmed", action="close")
         else:
             # Changed their mind — hold the walker THIS turn so a "ne, tęskime"
@@ -217,7 +251,7 @@ def farewell_mid_process(state: Any, rt: Any, user_input: str) -> bool:
             and not (state.diagnosis.news_delivered or s.diagnosis.outage_reported)
         )
     )
-    if mid_process and detect_farewell(user_input):
+    if mid_process and (detect_farewell(user_input) or refuses_to_continue(user_input)):
         # F1 (live 2026-09-09: "Gerai, sutariam, viso gero" answering the
         # HOMEWORK consent got "Ar tikrai norite baigti?" twice): on the
         # homework step a farewell IS the consent — the walker routes it

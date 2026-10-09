@@ -9,8 +9,9 @@
 step_repeat_max: 3                  # kiek kartų tas pats žingsnis gali nuskambėti; paskui — kortelės `on_fail` arba meistras
 
 # --- Problem gate and identification ----------------------------------------------
-problem_gate_max_turns: {value: 5, env: GATE_MAX_TURNS}  # fruitless exchanges before a polite close
-problem_gate_scripted_asks: 2       # scripted "what is the problem?" asks before the narrator takes over
+problem_gate_max_turns: {value: 4, env: GATE_MAX_TURNS}  # three prompts (U8), the fourth fruitless turn ends the call
+account_code_miss_max: 2            # a heard code not in the database this many times -> the not-a-client close (U8)
+problem_gate_scripted_asks: 3       # scripted asks, each explaining more (U8: ask, why, last chance)
 problem_classifier_heard_tail: 3    # recent utterances given to the LLM problem classifier
 problem_llm_commit_confidence: 0.8  # an LLM problem guess at or above this is taken without asking
 problem_llm_confirm_confidence: 0.5 # at or above this the guess gets a confirm question

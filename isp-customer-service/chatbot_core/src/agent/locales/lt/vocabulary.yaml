@@ -558,6 +558,9 @@ ticket_demand_intent:
   - "reikėt"
   - "reiket"
 
+# The caller does not WANT to go on (U3/U6) — not „cannot now" (not at home, no time: that is U9,
+# the Case's later/callback path). Asked once whether they really want to end, with what is left.
+refuse_to_continue: ["nebenoriu", "nebe noriu", "nutrauk", "nenoriu nieko", "nedarysiu", "nedarysim", "nebespren", "nebespręs", "nebespres", "nenoriu kalbėti", "nenoriu kalbeti", "nenoriu tęsti", "nenoriu testi", "baikim", "baikime"]
 ticket_refuse:
   - "nedarysiu"
   - "nedarysim"

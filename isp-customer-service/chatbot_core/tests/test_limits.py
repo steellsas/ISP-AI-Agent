@@ -30,7 +30,7 @@ def test_every_declared_limit_is_used():
 
 
 def test_env_override_wins(monkeypatch):
-    assert limits.get("problem_gate_max_turns") == 5
+    assert limits.get("problem_gate_max_turns") == 4
     monkeypatch.setenv("GATE_MAX_TURNS", "7")
     assert limits.get("problem_gate_max_turns") == 7
     monkeypatch.setenv("ASR_MIN_AUDIO_S", "0.5")
