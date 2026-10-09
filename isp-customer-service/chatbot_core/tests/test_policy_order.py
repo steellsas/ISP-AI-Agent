@@ -40,4 +40,5 @@ def test_rules_follow_section_5_order():
     rows = [row for row, _family in ported]
     assert rows == sorted(rows)
     # Every row of the head (1-10) is ported, in order, with 2c's family in its place.
-    assert [row for row, _f in ported if row <= 10] == [1, 2, 2.5, 3, 4, 5, 6, 7, 8, 9, 10]
+    # Row 6 (the cannot-now shield) went with v1's `resolution.procedure`, which gated it.
+    assert [row for row, _f in ported if row <= 10] == [1, 2, 2.5, 3, 4, 5, 7, 8, 9, 10]

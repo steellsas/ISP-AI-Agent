@@ -202,8 +202,7 @@ class AgentSession:
 
     def asr_context(self) -> str | None:
         """Per-turn STT biasing context (VOICE_PLAN V1): the agent's LAST
-        question + the expected answer vocabulary of the pending evidence fact.
-        Whisper biases decoding toward prompt vocabulary, so short/garbled
+        question. Whisper biases decoding toward prompt vocabulary, so short/garbled
         answers ("nedaga") decode toward what the conversation expects
         ("nedega"). Best-effort — None on any hiccup, the ASR then uses only
         its static domain prompt."""
@@ -213,24 +212,6 @@ class AgentSession:
             q = (a.state.dialog.last_question or "").strip()
             if q:
                 parts.append(f"Klausimas: {q}")
-            words: list[str] = []
-            pending = a.state.diagnosis.pending_evidence_key
-            r = a.state.resolution.procedure or {}
-            if pending and r.get("verdict"):
-                from .contract.locale import vocab_map
-                from .evidence import spec_for
-
-                spec = spec_for(r.get("verdict"))
-                item = (spec.get("client") or {}).get(pending) if spec else None
-                from .contract.locale import vocab
-
-                for name in ((item or {}).get("answers") or {}).values():
-                    words += [str(m) for m in vocab(name)]
-                if not words:  # built-in vocabulary for the piloted keys
-                    for _value, marks in vocab_map("pending_answers").get(pending, []):
-                        words += [str(m) for m in marks]
-            if words:
-                parts.append("Galimi atsakymai: " + ", ".join(dict.fromkeys(words)) + ".")
             return (" ".join(parts)[:400]) or None
         except Exception:  # pragma: no cover - biasing must never break a turn
             return None
@@ -304,7 +285,7 @@ class AgentSession:
             return False
         from .evidence import read_pending_answer, spec_for
 
-        spec = spec_for((s.resolution.procedure or {}).get("verdict")) or {}
+        spec = spec_for(None) or {}
         item = (spec.get("client") or {}).get(key)
         return read_pending_answer(str(key), text, item) is not None
 

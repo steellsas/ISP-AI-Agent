@@ -69,6 +69,5 @@ class TestRepeatCall:
             )
         ]
         assert state.closing.appended_ticket_id == "TKT1"
-        assert state.resolution.procedure is None  # nothing re-diagnosed, nothing registered
         text = inform_text(state, rt, "open_ticket_exists")
         assert "jau užregistruotas" in text and "laukia meistro" in text

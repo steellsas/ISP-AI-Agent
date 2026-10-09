@@ -1,17 +1,11 @@
 """
-Fault packs (R5) — one file per fault + reusable modules + meta/tags.
+Live-call fixes around the fault path (seeding, glosses, directives, closing hygiene).
 
-Packs build their procedure through module calls; the knowledge schema tests
-(test_knowledge_schema.py) guard the structure.
+The file is named after the v1 fault packs it first tested; the pack/module tests went
+with the packs, the v2 cards are tested in test_cards.py.
 """
 
 from agent.call_record.finalizer import build_call_summary, finalize
-from agent.faults import (
-    _modules,
-    build_strategy,
-    fault_meta,
-    step_options,
-)
 from agent.graph_v2.state import (
     ClosingState,
     DiagnosisState,
@@ -26,30 +20,6 @@ from agent.graph_v2.state import (
 )
 
 from tests.engine_fakes import as_call
-
-
-class TestModuleExpansion:
-    """Packs compose modules; answers resolve through the expanded steps."""
-
-    def test_step_options_resolve_through_modules(self):
-        # answers must be found for module-expanded ids too (instance override wins)
-        assert step_options("no_mac_observed", "dr_verify") == {
-            "yes": "prijungtame kompiuteryje internetas dabar veikia",
-            "no": "prijungtame kompiuteryje interneto vis tiek nėra",
-        }
-        assert step_options("foreign_mac", "confirm_change")
-
-
-class TestModulesAndMeta:
-    def test_modules_load(self):
-        mods = _modules()
-        assert "verify_restored" in mods
-        assert "bind_mac" in mods
-        assert mods["verify_restored"]["exits"] == ["success", "failure"]
-
-    def test_meta(self):
-        meta = fault_meta("no_mac_observed")
-        assert meta.get("domain") == "internet"
 
 
 class TestVoiceTestFixes:
@@ -94,9 +64,6 @@ class TestVoiceTestFixes:
             SimpleNamespace(
                 state=GraphState(
                     intake=IntakeState(anamnesis_raw="Ką kečiau, routere?"),
-                    resolution=ResolutionState(
-                        procedure={"verdict": "foreign_mac", "step": "confirm_change"}
-                    ),
                     diagnosis=DiagnosisState(evidence={}),
                     dialog=DialogState(turn_count=1),
                 ),
@@ -119,9 +86,6 @@ class TestVoiceTestFixes:
                 state=GraphState(
                     intake=IntakeState(
                         heard_utterances=["Neveikia internetas visuose įrenginiuose"]
-                    ),
-                    resolution=ResolutionState(
-                        procedure={"verdict": "router_hung", "step": "rh_ability"}
                     ),
                     diagnosis=DiagnosisState(evidence={}),
                     dialog=DialogState(turn_count=1),
@@ -292,9 +256,8 @@ class TestTicketDirectives:
 
         agent = make_agent("+37060012353")
         agent.state.identity.customer_id = "CUST009"
-        agent.state.resolution.procedure = {"verdict": "no_mac_observed", "step": "escalate"}
         agent.state.ticket.stage = "phone"
-        agent.state.ticket.context = TicketContext(step_id=None)
+        agent.state.ticket.context = TicketContext()
         return agent
 
     def test_phone_intro_goes_to_narrator(self, db_connection, monkeypatch):
@@ -336,7 +299,7 @@ class TestTicketDirectives:
         monkeypatch.setenv("NARRATOR_QUESTIONS", "on")
         agent = self._agent()
         agent.state.ticket.stage = "hours"
-        agent.state.ticket.context = TicketContext(step_id=None, intro_done=True)
+        agent.state.ticket.context = TicketContext(intro_done=True)
         assert scripted_words(agent.state, agent.runtime, "tiks tas") is None
         assert agent.state.turn.directives.ticket["kind"] == "hours"
         assert "patogiausia" in context_card(agent.state, agent.runtime)
@@ -496,7 +459,6 @@ class TestDetourResilience:
 
         agent = make_agent("unknown")
         agent.state.identity.customer_id = "CUST009"
-        agent.state.resolution.procedure = {"verdict": "no_mac_observed", "step": "dr_lights"}
         from agent.evidence import CLIENT, set_fact
 
         set_fact(agent.state.diagnosis.evidence, "lights", "off", CLIENT, 1)
@@ -518,7 +480,6 @@ class TestPrimaryGoalFrozen:
         hear(agent, "Neveikia internetas")
         assert s.intake.problem_type == "internet_down"
         s.identity.customer_id = "CUST009"
-        s.resolution.procedure = {"verdict": "no_mac_observed", "step": "dr_intro"}
         hear(agent, "O dar televizorius man blogai rodo")
         assert s.intake.problem_type == "internet_down"  # frozen
         assert s.intake.secondary_problems and s.intake.secondary_problems[0]["type"] == "tv"
@@ -600,7 +561,6 @@ class TestOpenerAndClosingHygiene:
         s = agent.state
         s.intake.problem_type = "internet_down"
         s.identity.customer_id = "CUST009"
-        s.resolution.procedure = {"verdict": "no_mac_observed", "step": "escalate"}
         agent.state.ticket.stage = "hours"
         hear(agent, "Sąskaitos žemės gatvės klausimas")
         assert s.intake.secondary_problems == []
@@ -622,36 +582,7 @@ class TestD5WaitAckAndClosing:
 
         agent = make_agent("+37060012353")
         agent.state.identity.customer_id = "CUST009"
-        agent.state.resolution.procedure = {"verdict": "no_mac_observed", "step": "dr_pick_cable"}
         return agent
-
-    def test_wait_signal_gets_scripted_ack(self, db_connection):
-        from agent.decide.rules.dialog import scripted_wait_ack
-        from agent.perceive.detectors import INTENT_IN_PROGRESS
-
-        agent = self._agent()
-        agent.state.dialog.last_intent = INTENT_IN_PROGRESS
-        agent.state.dialog.awaiting = "client_action"
-        agent.state.dialog.awaiting_turns = 1
-        assert (
-            scripted_wait_ack(agent.state, agent.runtime)
-            == "Gerai, lauksiu — pasakykite, kai būsite pasiruošę."
-        )
-        agent.state.dialog.awaiting_turns = 2
-        assert scripted_wait_ack(agent.state, agent.runtime) == "Gerai, neskubėkite."
-
-    def test_wait_ack_defers_to_directives_and_other_intents(self, db_connection):
-        from agent.decide.rules.dialog import scripted_wait_ack
-        from agent.perceive.detectors import INTENT_IN_PROGRESS
-
-        agent = self._agent()
-        agent.state.dialog.last_intent = INTENT_IN_PROGRESS
-        agent.state.dialog.awaiting = "client_action"
-        agent.state.turn.directives.evidence = {"reikia": "x"}
-        assert scripted_wait_ack(agent.state, agent.runtime) is None
-        agent.state.turn.directives.evidence = None
-        agent.state.dialog.last_intent = "answer"
-        assert scripted_wait_ack(agent.state, agent.runtime) is None
 
     def test_closing_goodbye_is_spoken_and_number_correction_lands(self, db_connection):
         from types import SimpleNamespace

@@ -1137,15 +1137,6 @@ street_asked_words: ["gatv", "adres", "pavadinim"]
 # "Koks mano adresas?" / "Dėl kokio adreso kalbam?"
 address_topic_words: ["adres"]
 which_words: ["kok", "kur"]
-# "Aš Jums perskambinsiu" — the caller will call back.
-will_call_back: ["perskambin", "paskambinsiu", "pats paskambin"]
-later_words: ["vėliau", "veliau"]
-# After "ar negalite dabar patikrinti?": a clear back-to-solving signal ...
-resume_solving: ["galiu", "radau", "viskas gerai", "veikia", "nereikia", "jau "]
-# ... unless negated.
-resume_solving_denied: ["negaliu", "nerandu"]
-# Asking for a technician / registration outright.
-ticket_words: ["registr", "meistr"]
 # After the news: a turn with these is CONTENT, not a goodbye (closing wave
 # block 2: payment claims and follow-up asks were swallowed by the goodbye).
 inform_wants_more: ["klausim", "palauk", "dar ", "noriu", "minut", "sekund", "skol", "sumokėj", "sumokej", "apmokėj", "apmokej", "kiek", "kada", "anks", "neveik", "kain"]
@@ -1328,9 +1319,10 @@ faq_keywords_duration: ["užtruks", "uztruks", "ilgai", "greitai sutvarky"]
 faq_keywords_technician: ["meistr", "technik", "atvažiuo", "atvaziuo", "vizit"]
 faq_keywords_working_hours: ["darbo laik", "kada dirbat", "iki keliu", "iki kelių"]
 
-# --- knowledge/faults/*.yaml: evidence answer markers ---------------------------
+# --- evidence answer markers (named by the v2 cards' `needs.*.answers`) --------
 
-# How a short reply to THIS evidence question reads (value -> markers), per pack.
+# How a short reply to THIS evidence question reads (value -> markers). The names
+# still carry the v1 pack verdicts they were first written for.
 answers_healthy_to_router_fail_scope_all: ["visuose", "visur", "nė viename", "ne viename neveikia", "abiejuose", "niekur"]
 answers_healthy_to_router_fail_scope_one: ["viename", "tik ", "telefone", "kompiuteryje", "planšetėje", "plansete"]
 answers_healthy_to_router_fail_device_phone: ["telefon", "planšet", "planset", "mobil"]
@@ -1341,16 +1333,12 @@ answers_healthy_to_router_rebooted_yes: ["perkroviau", "perkrovėm", "perkrovem"
 answers_healthy_to_router_rebooted_no: ["neperkroviau", "nebandžiau", "nebandziau", "dar ne"]
 answers_no_mac_observed_recent_events_yes: ["dingo elektra", "dingusi elektra", "buvo dingus", "tvarkė", "tvarke", "remont", "audra", "perkūn", "perkun", "keitėm", "keitem"]
 answers_no_mac_observed_recent_events_no: ["nebuvo", "nieko neįvyko", "nieko nevyko", "viskas kaip", "ne,", "ne "]
-answers_no_mac_observed_device_present_found: ["radau", "suradau", "taip", "matau", "stoviu prie", "prie jo", "esu prie", "priėjau", "priejau"]
-answers_no_mac_observed_device_present_not_found: ["nerandu", "neradau", "nėra tokios", "nematau", "nerasiu"]
 answers_no_mac_observed_lan_active_inactive: ["neaktyv", "nedega", "nerodo", "nėra", "nera", "ne,", "ne "]
 answers_no_mac_observed_lan_active_active: ["aktyv", "veikia", "dega", "rodo", "taip", "yra"]
 answers_foreign_mac_changed_device_yes: ["keičiau", "keiciau", "keciau", "pakeičiau", "pakeiciau", "naują routerį", "nusipirkau", "prijungiau", "pajungiau", "keitėm", "keitem"]
 answers_foreign_mac_changed_device_no: ["nekeičiau", "nekeiciau", "nieko nekeit", "nieko naujo", "neprijungiau", "nepajungiau", "nieko nedariau"]
 answers_foreign_mac_cable_port_wan: ["wan", "internet", "interneto", "mėlyn", "melyn", "atskir"]
 answers_foreign_mac_cable_port_lan: ["lan", "geltona", "geltoname", "kitas", "kitą", "prie kitų"]
-answers_router_hung_fail_scope_all: ["visuose", "visur", "nė viename", "ne viename neveikia", "abiejuose", "niekur"]
-answers_router_hung_fail_scope_one: ["viename", "tik ", "telefone", "kompiuteryje", "planšetėje", "plansete"]
 
 # --- agent/playbook.py ----------------------------------------------------------
 

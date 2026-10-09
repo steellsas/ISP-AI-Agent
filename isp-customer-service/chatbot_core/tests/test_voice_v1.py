@@ -11,7 +11,7 @@ from types import SimpleNamespace
 
 from agent.background import apply_bg_diagnosis
 from agent.delivery import apply_delivery
-from agent.graph_v2.state import DiagnosisState, GraphState, IntakeState, ResolutionState
+from agent.graph_v2.state import DiagnosisState, GraphState, IntakeState
 from agent.voice_pipeline import VoicePipeline, audio_duration_s
 
 from tests.engine_fakes import as_call
@@ -232,17 +232,15 @@ class TestCheckin:
 
 
 class TestSessionAsrContext:
-    def test_builds_from_question_and_pending_vocabulary(self, db_connection):
+    def test_builds_from_the_question(self, db_connection):
         from agent.session import AgentSession
 
         session = AgentSession(caller_phone="unknown")
         a = session
         a.state.dialog.last_question = "Ar dega bent viena lemputė?"
-        a.state.resolution.procedure = {"verdict": "no_mac_observed", "step": "dr_lights"}
         a.state.diagnosis.pending_evidence_key = "lights"
         ctx = session.asr_context()
         assert ctx and "lemputė" in ctx
-        assert "nedega" in ctx and "dega" in ctx  # the pack's atsakymai markers
 
     def test_no_question_no_context(self, db_connection):
         from agent.session import AgentSession
@@ -264,8 +262,8 @@ class TestTtsCache:
 
 
 class TestBgDiagnosisGate:
-    """S2 gate: the background read is a REFRESH, never a story flip — and
-    never applied in the solution/bridge phase."""
+    """S2 gate: the background read is a REFRESH — never applied in the
+    solution/bridge phase."""
 
     def _agent(self, events):
         from types import SimpleNamespace
@@ -276,20 +274,7 @@ class TestBgDiagnosisGate:
             "unknown", tracer=SimpleNamespace(emit=lambda k, **f: events.append((k, f)))
         )
         agent.state.identity.customer_id = "CUST009"
-        agent.state.resolution.procedure = {"verdict": "no_mac_observed", "step": "dr_lights"}
         return agent
-
-    def test_flip_is_discarded(self, db_connection):
-        import json as _json
-
-        events = []
-        agent = self._agent(events)
-        agent.state.turn.bg_diagnosis = _json.dumps(
-            {"success": True, "verdict": {"reason": "foreign_mac"}}
-        )
-        apply_bg_diagnosis(agent.state, agent.runtime)
-        assert any(f.get("action") == "discarded" for _k, f in events)
-        assert agent.state.resolution.procedure["verdict"] == "no_mac_observed"
 
     def test_same_verdict_applies(self, db_connection):
         import json as _json
@@ -389,20 +374,19 @@ class TestDuplexPartials:
 
 class TestSemanticEndpoint:
     """E2 duplex — the endpoint hint: slow on an unfinished thought, fast on a
-    complete expected answer / farewell, normal otherwise. Deterministic only."""
+    farewell, normal otherwise. Deterministic only."""
 
-    def _call(self, pending=None, verdict=None):
-        engine = self._engine(pending, verdict)
+    def _call(self, pending=None):
+        engine = self._engine(pending)
         return engine.state, engine.runtime
 
-    def _engine(self, pending=None, verdict=None):
+    def _engine(self, pending=None):
         # problem_type set: these tests probe the MID-CALL windows; the
         # pre-problem STORY window has its own tests (test_classification).
         return as_call(
             None,
             SimpleNamespace(
                 state=GraphState(
-                    resolution=ResolutionState(procedure={"verdict": verdict} if verdict else None),
                     intake=IntakeState(problem_type="internet_down"),
                     diagnosis=DiagnosisState(pending_evidence_key=pending),
                 )
@@ -424,16 +408,8 @@ class TestSemanticEndpoint:
     def test_unfinished_outranks_mapped_answer(self):
         from agent.endpoint import classify_endpoint
 
-        eng = self._engine(pending="lights", verdict="no_mac_observed")
+        eng = self._engine(pending="lights")
         assert classify_endpoint(eng.state, eng.runtime, "Nedega, bet")[0] == "slow"
-
-    def test_complete_pending_answer_cuts_fast(self, monkeypatch):
-        from agent.endpoint import classify_endpoint
-
-        monkeypatch.setenv("ENDPOINT_FAST_MS", "250")
-        eng = self._engine(pending="lights", verdict="no_mac_observed")
-        mode, ms = classify_endpoint(eng.state, eng.runtime, "Nedega nė viena.")
-        assert mode == "fast" and ms == 250
 
     def test_farewell_cuts_fast(self):
         from agent.endpoint import classify_endpoint, fast_ms

@@ -85,18 +85,8 @@ def record(state: Any, plan: TurnPlan) -> None:
 
 
 def record_stage_reply(state: Any, stage_rule: str) -> None:
-    """A stage node's LLM reply that no rule planned: the procedure step it words, or
-    the stage's free reply."""
+    """A stage node's LLM reply that no rule planned: the stage's free reply."""
     if state.turn.plan is not None:
-        return
-    proc = state.resolution.procedure or {}
-    if proc.get("step") and state.identity.customer_id and not state.closing.case_closed:
-        from ..faults import role_of
-
-        role = role_of(proc.get("verdict"), proc.get("step")) or proc.get("step")
-        record(
-            state, TurnPlan(owner="procedure", rule=f"procedure.{role}", say=Say(kind="directive"))
-        )
         return
     owner = stage_rule.split(".", 1)[0]
     record(state, TurnPlan(owner=owner, rule=stage_rule, say=Say(kind="directive")))

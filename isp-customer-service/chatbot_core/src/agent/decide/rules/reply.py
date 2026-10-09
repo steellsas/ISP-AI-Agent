@@ -1,6 +1,6 @@
 """The scripted reply layer — the engine-composed words of a turn, in their precedence
 order: the callback goodbye, the holder-name clarify, the address info, the
-address-change confirm, the cannot-now ladder, the contact dialogue, the side-topic
+address-change confirm, the contact dialogue, the side-topic
 frame, the evidence conflict clarify, the end-confirm, the escalate clarify, the bare
 "ne" clarify, the identification ladder, the inform wrap-up, the caller-name question
 and the inform news (§5 rows 5-15, the words of the families whose state the turn
@@ -29,7 +29,6 @@ def reply_plan(state: Any, rt: Any, user_input: str | None) -> TurnPlan | None:
     returns None so the LLM answers it; the ladder resumes next turn. Solving and
     free dialogue never come here."""
     from ...dialog_utils import anchor_text
-    from ...execute.ticket import begin_ticket_dialogue
     from .identification import _account_code_rung, _address_move, _problem_gate_reply
     from .ticket import ticket_question_turn
 
@@ -145,97 +144,6 @@ def reply_plan(state: Any, rt: Any, user_input: str | None) -> TurnPlan | None:
         return _plan(
             "identification.reopen_confirm_pending", None, directive=True
         )  # the guards already read the answer; the narrator continues
-
-    # A-wave P1 (Andrius 2026-09-04, live #6: „Ne patogu" ignored): the
-    # cannot-do-it-NOW mini-ladder in the solving phase — STOP, find out WHAT is
-    # inconvenient, then offer a way (registration / call back / continue).
-    cn_state = state.dialog.cannot_now_state
-    if cn_state == "asked" and user_input:
-        from ..question import clear as _q_clear
-        from ..question import register as _q_register
-
-        state.dialog.cannot_now_state = None
-        _q_clear(state, rt, "cannot_now_clarify")
-        low_cl = user_input.lower()
-        # N2b (live 2026-09-09): "Aš Jums perskambinsiu" IN the clarify answer
-        # is the whole decision — close warm right here, no offer round.
-        if any(m in low_cl for m in vocab("will_call_back")):
-            state.dialog.cannot_now_done = True
-            rt.tracer.emit("decision", intent="cannot_now", action="callback_close")
-            return _plan(
-                "dialog.cannot_now_callback",
-                phrase("identification.callback_goodbye"),
-                action=Action(type="close", name="callback"),
-            )
-        # N2 (live 2026-09-09: "Negaliu, nes esu nenuose" got RESUME and the
-        # walker pushed another check): the caller was just asked "ar negalite
-        # dabar patikrinti?" — a rambling answer about being away IS a yes.
-        # RESUME only on a clear back-to-solving signal; everything else
-        # offers the way out.
-        resumed = any(m in low_cl for m in vocab("resume_solving")) and not any(
-            m in low_cl for m in vocab("resume_solving_denied")
-        )
-        if not resumed:
-            state.dialog.cannot_now_state = "offered"
-            _q_register(state, rt, "safety", "cannot_now_offer")
-            rt.tracer.emit("decision", intent="cannot_now", action="offer")
-            return _words("dialog.cannot_now_offer", phrase("identification.cannot_now_offer"))
-        rt.tracer.emit("decision", intent="cannot_now", action="resume")
-        return _plan(
-            "dialog.cannot_now_resume", None, directive=True
-        )  # explained otherwise — continue the path (content already ingested)
-    if cn_state == "offered" and user_input:
-        from ..question import clear as _q_clear
-
-        state.dialog.cannot_now_state = None
-        state.dialog.cannot_now_done = True
-        _q_clear(state, rt, "cannot_now_offer")
-        low_cn = user_input.lower()
-        if any(m in low_cn for m in (*vocab("will_call_back"), *vocab("later_words"))):
-            rt.tracer.emit("decision", intent="cannot_now", action="callback_close")
-            return _plan(
-                "dialog.cannot_now_callback",
-                phrase("identification.callback_goodbye"),
-                action=Action(type="close", name="callback"),
-            )
-        from ...perceive.detectors import DETECTORS as _DET_CN2
-        from ...perceive.detectors import detect_refuse_or_ticket
-
-        if (
-            detect_refuse_or_ticket(user_input) == "demand"
-            or _DET_CN2["yes_no"](user_input) == "yes"
-            or any(m in low_cn for m in vocab("ticket_words"))
-        ):
-            from ...faults import step_by_role
-
-            # P-E: the ticket intro must speak the honest state — the caller
-            # could not act NOW; nothing was performed.
-            if s.resolution.procedure is not None:
-                s.resolution.procedure["escalate_reason"] = "cannot_now"
-            rt.tracer.emit("decision", intent="cannot_now", action="ticket")
-            begin_ticket_dialogue(state, rt, step_by_role("unclear_fault", "escalate"))
-            return _plan(
-                "dialog.cannot_now_ticket", None, directive=True
-            )  # ticket dialogue intro — the next step
-        return _plan("dialog.cannot_now_declined", None, directive=True)
-    if (
-        cn_state is None
-        and not state.dialog.cannot_now_done
-        and s.resolution.procedure
-        and s.identity.customer_id
-        and not state.ticket.stage
-        and user_input
-    ):
-        from ...perceive.detectors import detect_cannot_now as _dcn
-        from ..question import pack_owns_cannot_now as _pack_cn
-
-        if _dcn(user_input) and not _pack_cn(state, rt):
-            from ..question import register as _q_register
-
-            state.dialog.cannot_now_state = "asked"
-            _q_register(state, rt, "safety", "cannot_now_clarify")
-            rt.tracer.emit("decision", intent="cannot_now", action="clarify_ask")
-            return _words("dialog.cannot_now_clarify", phrase("identification.cannot_now_clarify"))
 
     # Ticket-confirmation dialogue: contacts before every registration. An
     # off-script question falls to the ticket node's LLM (facts carry the
@@ -601,13 +509,13 @@ def plan_reply(state: Any, rt: Any, user_input: str | None) -> TurnPlan | None:
 
 def scripted_layer(state: Any, rt: Any) -> TurnPlan | None:
     """The engine-composed words of a stage turn, in their precedence order (§5 rows
-    18, 5-15, 19): the stuck backstop, the scripted reply families, the wait
-    acknowledgement. None = the narrator words the stage.
+    18, 5-15): the stuck backstop, the scripted reply families. None = the narrator
+    words the stage.
 
     Wave 1: this ran inside the NARRATOR (execute/say.scripted_exit), which meant the
     narrator planned, closed calls and registered tickets. It is a decide step now —
     after the procedure moved, so the words match the new position."""
-    from .dialog import scripted_wait_ack, stuck_backstop
+    from .dialog import stuck_backstop
 
     _STATE["state"] = state
     backstop = stuck_backstop(state)
@@ -616,9 +524,6 @@ def scripted_layer(state: Any, rt: Any) -> TurnPlan | None:
     plan = plan_reply(state, rt, state.dialog.last_heard)
     if plan is not None:
         return plan
-    wait = scripted_wait_ack(state, rt)
-    if wait is not None:
-        return _plan("dialog.wait_ack", wait)
     return None
 
 

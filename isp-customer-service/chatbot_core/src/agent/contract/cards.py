@@ -4,8 +4,8 @@ A card declares when it is a CANDIDATE (`when` / `rules_out`), what would settle
 (`needs`) and how it is fixed (`solution` — modules with arguments). The engine reads
 these; nothing about a fault lives in code any more (review findings U, N, AG).
 
-During wave 3 the v2 files live under `knowledge/v2/` beside the v1 packs they replace;
-the cut-over commit moves them up and deletes `knowledge/faults/`.
+The files live under `knowledge/v2/`. The v1 fault packs they replaced
+(`knowledge/faults/`, `knowledge/modules/`) are deleted (v3 stage 3).
 """
 
 from __future__ import annotations

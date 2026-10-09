@@ -52,7 +52,6 @@ _FLOW_OF = {
     "_reopen_identification": "agent.decide.rules.identification.reopen_identification",
     "_result_narration_tail": "agent.speak.context_card.result_narration_tail",
     "_route_to": "agent.decide.procedure.route_to",
-    "_scripted_wait_ack": "agent.decide.rules.dialog.scripted_wait_ack",
     "_settle_hypothesis": "agent.decide.hypothesis.settle_hypothesis",
     "_simulate_bridge_connection": "agent.executor_flow.simulate_bridge_connection",
     "_simulate_router_reboot": "agent.executor_flow.simulate_router_reboot_action",
@@ -65,7 +64,6 @@ _FLOW_OF = {
     "_wants_to_keep_solving": "agent.decide.rules.ticket.wants_to_keep_solving",
     "anchor_text": "agent.dialog_utils.anchor_text",
     "classify_side_topic": "agent.perceive.side_topic.classify_side_topic",
-    "ensure_action_done": "agent.execute.diagnosis.ensure_action_done",
     "ensure_diagnosed": "agent.execute.diagnosis.ensure_diagnosed",
     "solver_drive_turn": "agent.decide.rules.diagnosis.solver_drive_turn",
 }

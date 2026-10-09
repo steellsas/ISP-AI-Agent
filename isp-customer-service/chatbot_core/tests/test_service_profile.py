@@ -74,7 +74,6 @@ class TestServiceRules:
         assert services.route(state) == "not_subscribed"
         services.not_subscribed(state, make_runtime())
         assert state.diagnosis.verdicts["network"]["reason"] == "service_not_subscribed"
-        assert state.resolution.procedure is None  # nothing to walk, no ticket
 
     def test_iptv_rides_on_the_internet(self, make_state):
         from agent.decide.rules import services

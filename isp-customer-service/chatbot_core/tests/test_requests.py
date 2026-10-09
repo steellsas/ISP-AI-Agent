@@ -21,7 +21,6 @@ class TestStartRequest:
 
         assert state.ticket.request_type == "billing_request"
         assert state.ticket.stage == "phone"
-        assert state.resolution.procedure is None  # nothing diagnosed
 
     def test_the_caller_name_comes_before_the_contacts(self, make_state, make_runtime):
         state = _caller(make_state, "billing", "kodėl tokia didelė sąskaita")

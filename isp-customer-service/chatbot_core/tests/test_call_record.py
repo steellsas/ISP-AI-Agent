@@ -101,7 +101,6 @@ class TestIdentified:
 
     def test_hang_up_before_close_needs_review(self, make_state):
         state = _identified(make_state)
-        state.resolution.procedure = {"verdict": "no_mac_observed", "step": "dr_lights"}
 
         record = derive(state)
         assert (record.outcome, record.needs_review) == ("abandoned", True)

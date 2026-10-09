@@ -24,16 +24,6 @@ from .identification import engine_resolve_from_slots, reopen_identification
 from .ticket import caller_owed, ticket_capture
 
 
-def _escalate_step(s: Any) -> Any:
-    """The active strategy's escalate step (the fault ticket), or None."""
-    if s.resolution.procedure is None:
-        return None
-    from ...resolution import get_strategy
-
-    strat = get_strategy(s.resolution.procedure.get("verdict"))
-    return strat.by_role("escalate") if strat else None
-
-
 def case_owes_ticket(s: Any) -> bool:
     """The v2 Case has summed the fix up for a technician and nothing is registered yet —
     the call may not end before the registration."""
@@ -45,9 +35,9 @@ def case_owes_ticket(s: Any) -> bool:
 def _case_can_escalate(s: Any) -> bool:
     """A goodbye in the middle of a v2 Case fix: registering a technician is still open.
 
-    `_escalate_step` only knows v1's strategies; without this the confirmed goodbye closed
-    a Case call as „declined" and never offered the technician."""
-    return s.resolution.procedure is None and s.case.in_progress and not s.ticket.ticket_id
+    Without this the confirmed goodbye closed a Case call as „declined" and never offered
+    the technician."""
+    return s.case.in_progress and not s.ticket.ticket_id
 
 
 def _begin_case_ticket(state: Any, rt: Any) -> None:
@@ -57,7 +47,7 @@ def _begin_case_ticket(state: Any, rt: Any) -> None:
     card = cards.card(state.case.fault) if state.case.fault else None
     if card is not None and card.escalate and card.escalate.note:
         state.case.facts.setdefault("_ticket_note", card.escalate.note)
-    begin_ticket_dialogue(state, rt, None)
+    begin_ticket_dialogue(state, rt)
 
 
 def _end_declined(state: Any, rt: Any) -> None:
@@ -67,7 +57,7 @@ def _end_declined(state: Any, rt: Any) -> None:
     s = state
     if not s.identity.customer_id:
         key = "identification.declined_goodbye_unidentified"
-    elif s.resolution.procedure is not None or s.case.fault:
+    elif s.case.fault:
         key = "identification.declined_goodbye_fault"
     else:
         key = "identification.declined_goodbye"
@@ -80,7 +70,7 @@ def confirm_end_key(state: Any) -> str:
     s = state
     if not s.identity.customer_id:
         return "identification.confirm_end_unidentified"
-    if s.resolution.procedure is not None or s.case.fault:
+    if s.case.fault:
         return "identification.confirm_end_fault"
     if s.diagnosis.verdicts and not (s.diagnosis.news_delivered or s.diagnosis.outage_reported):
         return "identification.confirm_end_news"
@@ -107,13 +97,8 @@ def end_confirm_answer(state: Any, rt: Any, user_input: str) -> bool:
         if state.dialog.end_ticket_offer:
             # F-27: the answer to "register the fault?" — only a yes registers.
             state.dialog.end_ticket_offer = False
-            esc = _escalate_step(s)
             consent = detect_ticket_consent(user_input) == "yes"
-            if consent and esc is not None:
-                s.resolution.procedure["escalate_reason"] = "caller_ended_call"
-                begin_ticket_dialogue(state, rt, esc)  # contacts, then register+close
-                rt.tracer.emit("decision", intent="end_ticket_offer", action="register")
-            elif consent and _case_can_escalate(s):
+            if consent and _case_can_escalate(s):
                 _begin_case_ticket(state, rt)
                 rt.tracer.emit("decision", intent="end_ticket_offer", action="register")
             else:
@@ -121,21 +106,13 @@ def end_confirm_answer(state: Any, rt: Any, user_input: str) -> bool:
                 rt.tracer.emit("decision", intent="end_ticket_offer", action="close")
             return True
         if detect_farewell(user_input) or detect_ticket_consent(user_input) == "yes":
-            if s.resolution.procedure is not None:
-                if _escalate_step(s) is not None:
-                    # The end is confirmed; registering is its own question (F-27).
-                    state.dialog.end_confirm_pending = True
-                    state.dialog.end_ticket_offer = True
-                    rt.tracer.emit("decision", intent="end_confirmed", action="offer_ticket")
-                    return True
-                _end_declined(state, rt)
-            elif _case_can_escalate(s):
+            if _case_can_escalate(s):
+                # The end is confirmed; registering is its own question (F-27).
                 state.dialog.end_confirm_pending = True
                 state.dialog.end_ticket_offer = True
                 rt.tracer.emit("decision", intent="end_confirmed", action="offer_ticket")
                 return True
-            else:
-                _end_declined(state, rt)
+            _end_declined(state, rt)
             rt.tracer.emit("decision", intent="end_confirmed", action="close")
         else:
             # Changed their mind — hold the walker THIS turn so a "ne, tęskime"
@@ -207,42 +184,11 @@ def reopen_confirm_answer(state: Any, rt: Any, user_input: str) -> bool:
     return False
 
 
-def cannot_now_shield(state: Any, rt: Any, user_input: str) -> bool:
-    """A cannot-do-it-now signal shields the turn for the ladder (§5 row 6). True when it owns the rest of the turn head."""
-    s = state
-    # P-D (live 2026-09-08: "nepatogu, nesu namuose" — the walker's refuse
-    # guard escalated into a TICKET in the same turn, and the cannot-now
-    # ladder never got its chance because ticket_stage was already set): a
-    # cannot-now signal registers a SAFETY question in the turn head, so the
-    # registry priority guard holds the walker/solver and the scripted ladder
-    # asks its clarify this very turn.
-    if (
-        s.identity.customer_id
-        and s.resolution.procedure
-        and not state.ticket.stage
-        and not s.closing.case_closed
-        and state.dialog.cannot_now_state is None
-        and not state.dialog.cannot_now_done
-    ):
-        from ...perceive.detectors import detect_cannot_now as _dcn_head
-        from ..question import pack_owns_cannot_now
-
-        # P-C: an ability_check/locate_device/homework step's question IS the pack's
-        # own cannot-now handling — the shield stands down, the walker routes.
-        if _dcn_head(user_input) and not pack_owns_cannot_now(state, rt):
-            from ..question import register as _q_register
-
-            _q_register(state, rt, "safety", "cannot_now")  # priority shield this turn
-            rt.tracer.emit("decision", intent="cannot_now", action="shield")
-    return False
-
-
 def farewell_mid_process(state: Any, rt: Any, user_input: str) -> bool:
     """A goodbye mid-process asks the end-confirm, never closes (§5 row 7). True when it owns the rest of the turn head."""
     s = state
     mid_process = not s.closing.case_closed and (
         not s.identity.customer_id
-        or s.resolution.procedure is not None
         or s.case.in_progress  # wave 6: the v2 Case is the one that is mid-fix now
         or bool(s.ticket.stage)  # a registration has been started and is not finished
         or state.identity.result_pending
@@ -253,22 +199,10 @@ def farewell_mid_process(state: Any, rt: Any, user_input: str) -> bool:
     )
     if mid_process and (detect_farewell(user_input) or refuses_to_continue(user_input)):
         # F1 (live 2026-09-09: "Gerai, sutariam, viso gero" answering the
-        # HOMEWORK consent got "Ar tikrai norite baigti?" twice): on the
-        # homework step a farewell IS the consent — the walker routes it
-        # to the callback terminal; the end-confirm must not intercept.
-        from ..question import active as _q_act
-
-        _qa = _q_act(state, rt)
-        from ...faults import role_of
-
-        _qa_role = (
-            role_of((s.resolution.procedure or {}).get("verdict"), _qa.key.removeprefix("step:"))
-            if _qa is not None and _qa.key.startswith("step:")
-            else None
-        )
-        # v2: the Case's homework question („ar tiks?") has no v1 role — the same rule holds
-        # there: a goodbye on it is the consent (wave 10).
-        if _qa_role != "homework" and s.case.awaiting != "later_agreed":
+        # HOMEWORK consent got "Ar tikrai norite baigti?" twice): on the Case's
+        # homework question („ar tiks?") a farewell IS the consent; the end-confirm
+        # must not intercept (wave 10).
+        if s.case.awaiting != "later_agreed":
             if case_owes_ticket(s):
                 # The Case has already said a technician is needed: a goodbye now does not
                 # need „Ar tikrai norite baigti?" — the registration is what is left, and it
@@ -541,7 +475,6 @@ def address_correction(state: Any, rt: Any, user_input: str) -> bool:
 GROUPS = (
     end_confirm_answer,
     reopen_confirm_answer,
-    cannot_now_shield,
     farewell_mid_process,
     caller_intro,
     unidentified_address,

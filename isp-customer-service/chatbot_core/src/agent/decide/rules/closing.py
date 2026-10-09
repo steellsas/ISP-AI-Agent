@@ -48,8 +48,6 @@ def plan(state: Any, rt: Any) -> TurnPlan | None:
     ):
         s.closing.case_closed = False
         s.closing.is_complete = False
-        if s.resolution.procedure is not None:
-            s.resolution.procedure["escalate_reason"] = "still_down_at_closing"
         rt.tracer.emit("decision", intent="still_down", action="reopen_at_closing")
         return _escalate(state, rt, "closing.still_down_reopen")
     maybe_finish(state, rt, user_input)
@@ -94,8 +92,8 @@ def plan(state: Any, rt: Any) -> TurnPlan | None:
 
 
 def _was_a_fault(s: Any) -> bool:
-    """The call worked on a fault (v1 strategy or v2 Case), not news — a technician fits."""
-    return s.resolution.procedure is not None or bool(s.case.fault)
+    """The call worked on a fault (the v2 Case), not news — a technician fits."""
+    return bool(s.case.fault)
 
 
 def _escalate(state: Any, rt: Any, rule: str) -> TurnPlan:
@@ -105,14 +103,10 @@ def _escalate(state: Any, rt: Any, rule: str) -> TurnPlan:
     raised „no executor"), and both reopen rules were gated on v1's `resolution.procedure`,
     so on a Case call „vis tiek neveikia" at the goodbye got „Geros dienos!" (wave 10, S3/S4).
     """
-    from ...execute.ticket import begin_ticket_dialogue
-    from .head import _begin_case_ticket, _escalate_step
+    from .head import _begin_case_ticket
     from .ticket import ticket_question_turn
 
-    if state.resolution.procedure is not None:
-        begin_ticket_dialogue(state, rt, _escalate_step(state))
-    else:
-        _begin_case_ticket(state, rt)
+    _begin_case_ticket(state, rt)
     _rule, words = ticket_question_turn(state, rt)
     say = (
         Say(kind="phrase", text=words, stage="ticket")
@@ -171,7 +165,7 @@ def maybe_close_inform(state: Any, rt: Any, user_input: str | None) -> None:
         or state.ticket.stage
         or not (state.diagnosis.news_delivered or s.diagnosis.outage_reported)
         # A fault the Case is still fixing — or has summed up for a technician — is not
-        # news. `resolution.procedure` below is v1's marker and the v2 Case leaves it empty:
+        # news. v1 marked it with `resolution.procedure`, which the v2 Case left empty:
         # live 2026-10-07 a dead router was summed up, the caller said „Sutariam, viskas
         # ačiū", and this close beat the registration the Case started in the same turn.
         or s.case.in_progress
@@ -183,9 +177,7 @@ def maybe_close_inform(state: Any, rt: Any, user_input: str | None) -> None:
     # resolution strategy to walk (active_outage, billing_suspended, generic inform).
     # A live strategy (foreign_mac, dead-router, client-side) keeps s.resolution set
     # and is handled by the walker instead — never closed here.
-    inform_mode = s.diagnosis.outage_reported or (
-        s.resolution.procedure is None and bool(s.diagnosis.verdicts)
-    )
+    inform_mode = s.diagnosis.outage_reported or bool(s.diagnosis.verdicts)
     if not inform_mode:
         return
     from ...perceive.detectors import detect_farewell

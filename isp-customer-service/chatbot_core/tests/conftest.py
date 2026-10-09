@@ -201,17 +201,6 @@ def sample_customer_id():
     return "CUST001"
 
 
-@pytest.fixture
-def walker_driven(monkeypatch):
-    """B2 (2026-08-21): walker MECHANICS tests run the pack as not evidence-led —
-    in evidence-led packs the walker reads no answers until the ledger hands
-    over, which these legacy step-walking tests predate."""
-    from agent import faults
-
-    monkeypatch.setattr(faults, "evidence_led", lambda verdict: False)
-    yield
-
-
 @pytest.fixture(name="make_state")
 def make_state_fixture():
     """Factory for a call's GraphState (tests.calls.make_state)."""

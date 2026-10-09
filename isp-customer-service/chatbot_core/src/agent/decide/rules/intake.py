@@ -87,7 +87,7 @@ def _apply_problem(state: Any, rt: Any) -> None:
         )
         rt.tracer.emit("decision", intent="problem", action="secondary", value=problem)
         return
-    if not s.identity.customer_id and s.resolution.procedure is None:
+    if not s.identity.customer_id:
         # Early self-correction, before anything was checked, is fine.
         s.intake.problem_type = problem
         rt.tracer.emit("decision", intent="problem", action="corrected", value=problem)
@@ -101,9 +101,9 @@ def _is_secondary(state: Any, problem: str, policy: str | None) -> bool:
     return (
         policy == "solve"
         # Being solved = identified and worked on. v1 marked it with `resolution.procedure`,
-        # which a v2 Case call never fills, so a TV problem mentioned mid-fix was dropped
+        # which a v2 Case call never filled, so a TV problem mentioned mid-fix was dropped
         # and never reached the ticket (wave 10, S6).
-        and (s.resolution.procedure is not None or bool(s.identity.customer_id))
+        and bool(s.identity.customer_id)
         and not s.closing.case_closed
         and not s.ticket.stage
         and len((s.dialog.last_heard or "").split()) >= 3

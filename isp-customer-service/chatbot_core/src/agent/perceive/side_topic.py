@@ -45,9 +45,7 @@ def classify_side_topic(state, rt, user_input: str | None) -> bool:
     # How-to / help requests while an instruction or question stands are ON
     # TASK by definition (live 2026-08-21: "O kaip tai padaryti?" at the
     # bridge instruction got the FAQ "ne mano sritis") — the step explains.
-    if is_howto(user_input) and (
-        state.diagnosis.pending_evidence_key or (s.resolution.procedure or {}).get("asked")
-    ):
+    if is_howto(user_input) and state.diagnosis.pending_evidence_key:
         state.dialog.side_topic_streak = 0
         rt.tracer.emit("decision", intent="side_topic", action="on_task_howto")
         return False

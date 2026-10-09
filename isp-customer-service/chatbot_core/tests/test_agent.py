@@ -117,7 +117,6 @@ class TestDeterministicInformClose:
         agent.state.identity.customer_id = "CUST102"
         agent.state.diagnosis.verdicts["network"] = {"group": "B2", "reason": "active_outage"}
         agent.state.diagnosis.outage_reported = True
-        agent.state.resolution.procedure = None  # inform mode: no strategy to walk
         return agent
 
     def test_farewell_closes_outage_call(self, db_connection):
@@ -137,60 +136,20 @@ class TestDeterministicInformClose:
         assert agent.state.closing.case_closed is False
 
     def test_active_strategy_never_closed_here(self, db_connection):
-        """A live troubleshooting strategy belongs to the walker — a mid-flow 'ne'
-        must not end the call."""
+        """A fault the Case is fixing is not news — even a goodbye must not end the call
+        here (the Case owns it)."""
         from agent.decide.rules.closing import maybe_close_inform
 
         agent = self._informed_agent()
         agent.state.diagnosis.outage_reported = False
         agent.state.diagnosis.verdicts["network"] = {"group": "B6", "reason": "foreign_mac"}
-        agent.state.resolution.procedure = {"verdict": "foreign_mac", "step": "confirm_change"}
-        maybe_close_inform(agent.state, agent.runtime, "ne")
+        agent.state.case.fault, agent.state.case.solution = "foreign_mac", 0
+        maybe_close_inform(agent.state, agent.runtime, "Ačiū, viso gero, sudie")
         assert agent.state.closing.case_closed is False
 
 
-def _complete_ticket_dialogue(agent):
-    """Walk the 2-question contact dialogue (2026-08-04) to the registration.
-    Each stage question must be ASKED before its answer counts (2026-08-05)."""
-    from agent.decide.rules.head import turn_head
-    from agent.decide.rules.reply import scripted_words
-
-    scripted_words(agent.state, agent.runtime, None)  # intro + phone question
-    turn_head(agent.state, agent.runtime, "taip, tiks šis")
-    scripted_words(agent.state, agent.runtime, "taip, tiks šis")  # hours question
-    turn_head(agent.state, agent.runtime, "bet kada")
-    return scripted_words(agent.state, agent.runtime, "bet kada")
-
-
-class TestAutoRegisterEscalate:
-    """consent=False ESCALATE (dr_register_router): the registration is a necessity —
-    the engine registers ON ARRIVAL and closes; no consent question, no misread."""
-
-    def test_arrival_registers_and_closes(self, db_connection, monkeypatch):
-        import os
-
-        from agent.execute.diagnosis import ensure_action_done
-
-        from tests.calls import make_agent
-
-        monkeypatch.setitem(os.environ, "CLASSIFIER", "off")
-        agent = make_agent("+37060012353")
-        agent.state.identity.customer_id = "CUST009"
-        agent.state.intake.problem_type = "internet_down"
-        agent.state.diagnosis.hypothesis = {"cause": "no_mac_observed", "status": "testing"}
-        agent.state.resolution.procedure = {
-            "verdict": "no_mac_observed",
-            "step": "dr_register_router",
-        }
-
-        ran = ensure_action_done(agent.state, agent.runtime)
-
-        assert ran is True
-        assert agent.state.ticket.stage == "phone"  # contacts dialogue first (2026-08-04)
-        _complete_ticket_dialogue(agent)
-        assert agent.state.ticket.ticket_id
-        assert agent.state.closing.case_closed is True
-        assert agent.state.closing.closed_reason == "registered"
+class TestConsentAndFarewellWords:
+    """The consent and farewell readers on garbled / indirect words."""
 
     def test_lauksiu_skambucio_is_consent_not_decline(self):
         from agent.perceive.detectors import detect_ticket_consent
@@ -204,7 +163,6 @@ class TestAutoRegisterEscalate:
         assert detect_farewell("visa gera, ačiū") is True
 
 
-@pytest.mark.usefixtures("walker_driven")
 class TestAddressGuards:
     """Round-3 live bugs: a garbled reply must not commit the offered address, and a
     post-identification correction must reopen identification."""
@@ -330,11 +288,6 @@ class TestReviewGaps:
         agent = make_agent("+37060012353")
         agent.state.identity.customer_id = "CUST009"
         agent.state.intake.problem_type = "internet_down"
-        agent.state.resolution.procedure = {
-            "verdict": "no_mac_observed",
-            "step": "dr_lights",
-            "asked": True,
-        }
         ingest_client_evidence(agent.state, agent.runtime, "Radau routerį, nedega nė viena lemputė")
         update_state_from_observation(
             agent.state,
@@ -342,7 +295,7 @@ class TestReviewGaps:
             "diagnose_connection",
             json.dumps({"verdict": {"reason": "no_mac_observed", "side": "unclear"}}),
         )
-        begin_ticket_dialogue(agent.state, agent.runtime, None)
+        begin_ticket_dialogue(agent.state, agent.runtime)
         agent.state.dialog.side_topic_streak = 2
         assert agent.state.diagnosis.evidence and agent.state.ticket.stage == "phone"
 
@@ -452,11 +405,6 @@ class TestBargeInCancel:
 
         agent = make_agent("+37060012353")
         agent.state.identity.customer_id = "CUST009"
-        agent.state.resolution.procedure = {
-            "verdict": "no_mac_observed",
-            "step": "dr_lights",
-            "asked": True,
-        }
         agent.state.diagnosis.evidence_ask_counts["lights"] = 1
         agent.state.diagnosis.pending_evidence_key = "lights"
 
@@ -464,7 +412,6 @@ class TestBargeInCancel:
 
         on_turn_cancelled(agent.state, agent.runtime, "Pažiūrėkite, ar dega bent")
 
-        assert agent.state.resolution.procedure["asked"] is True  # early answer will route
         assert (
             agent.state.diagnosis.evidence_ask_counts["lights"] == 0
         )  # wording level not escalated

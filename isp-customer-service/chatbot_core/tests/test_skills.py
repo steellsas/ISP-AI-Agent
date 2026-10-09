@@ -25,14 +25,13 @@ CASES = [
     ("ticket.offscript_question", {}, "ticket_offscript"),
     ("inform.template", {}, "inform_news"),
     ("closing.free_reply", {}, "goodbye"),
-    # the fault path: an instruction to carry out vs. a fact to learn
-    ("procedure.hold", {"step": "rh_reboot"}, "instruct_step"),
-    ("procedure.hold", {"step": "rh_scope"}, "ask_fact"),
+    # the fault path: a fact to learn
+    ("procedure.hold", {}, "ask_fact"),
     ("diagnosis.free_reply", {}, "ask_fact"),
     # the turn's own directives win over the stage
-    ("procedure.hold", {"step": "rh_reboot", "findings": True}, "explain_finding"),
-    ("procedure.hold", {"step": "rh_reboot", "evidence": True}, "ask_fact"),
-    ("procedure.hold", {"step": "rh_reboot", "confused": True}, "reexplain_confused"),
+    ("procedure.hold", {"findings": True}, "explain_finding"),
+    ("procedure.hold", {"evidence": True}, "ask_fact"),
+    ("procedure.hold", {"confused": True}, "reexplain_confused"),
 ]
 
 
@@ -40,8 +39,6 @@ CASES = [
 def test_the_skill_follows_the_plan(rule, turn, skill, make_state):
     state = make_state("+37060020112")
     state.turn.plan = _plan(rule)
-    if turn.get("step"):
-        state.resolution.procedure = {"verdict": "router_hung", "step": turn["step"]}
     if turn.get("findings"):
         state.turn.directives.findings = {"faktai": "x"}
     if turn.get("evidence"):

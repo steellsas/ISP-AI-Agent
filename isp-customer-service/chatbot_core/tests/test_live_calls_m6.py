@@ -59,7 +59,6 @@ class TestStartedRequestIsNotDiagnosed:
 
         ensure_diagnosed(state, rt)
 
-        assert state.resolution.procedure is None
         assert state.ticket.request_type == "billing_request"
 
     def test_the_cancel_confirm_speaks_of_the_request(self, make_state, make_runtime):

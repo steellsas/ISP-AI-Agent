@@ -195,11 +195,7 @@ class DiagnosisState(BaseModel):
 
 
 class ResolutionState(BaseModel):
-    """The active strategy/procedure position."""
-
-    # {"verdict", "step", "asked", …} once a verdict maps to a strategy; the
-    # engine walks its steps deterministically. None = generic inform/instruct.
-    procedure: dict[str, Any] | None = None
+    """The solver and dead-router bridge bookkeeping (the fix itself is the Case's)."""
 
     # --- solver ---------------------------------------------------------------
     # Consecutive low-confidence solver decisions.
@@ -224,8 +220,6 @@ class ResolutionState(BaseModel):
 class TicketContext(BaseModel):
     """The running contact dialogue before a registration."""
 
-    # The escalate step that started the dialogue (only its id is ever read).
-    step_id: str | None = None
     # Appended to the final announce (e.g. the working-bridge note).
     note: str | None = None
     # Which scripted question went out last ("phone_intro", "retry_hours", …).
@@ -298,9 +292,6 @@ class DialogState(BaseModel):
     # Hold the process one turn after a detour / re-anchor from the ledger next reply.
     resume_hold_due: bool = False
     resync_note: bool = False
-    # "Cannot do it now" ladder: None | "asked" | "offered"; done once per call.
-    cannot_now_state: str | None = None
-    cannot_now_done: bool = False
     # The last reply re-asked the previous question verbatim.
     last_reply_repeated: bool = False
     # Praeito ėjimo atsakymas — visas, ne tik klausimas. Gyvai 2026-10-01 tas pats tilto

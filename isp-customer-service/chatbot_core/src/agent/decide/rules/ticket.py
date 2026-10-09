@@ -331,11 +331,6 @@ _IKI_RE = re.compile(r"(iki)\s+(?:\w+\s+){0,2}?" + _HOUR)
 _APIE_RE = re.compile(r"(apie)\s+(?:\w+\s+){0,2}?" + _HOUR)
 
 
-# Escalate reasons after which nothing was done at the device: the ticket must
-# not claim the pack's post-action wording.
-NOTHING_DONE_REASONS = frozenset({"caller_refused", "cannot_now", "cannot_now_asks_ticket"})
-
-
 def hours_words(text: str) -> str:
     """Kada skambinti — perskaitoma eilutė, arba "" jei atsakyme laiko nėra.
 
@@ -425,19 +420,9 @@ def ticket_need(state: Any, rt: Any) -> str:
         gloss = phrase_or(f"verdict.{cause}.gloss", None)
         prefix = phrase("ticket.need_suspected", gloss=gloss) if gloss else ""
         return prefix + phrase("ticket.need_not_checked")
-    # P-E (live 2026-09-08): escalating WITHOUT the step's action done must
-    # not claim it happened — "routeris perkrautas, bet ryšys neatsistatė"
-    # went out when the caller never rebooted (not at home). A refusal /
-    # cannot-now escalation speaks the honest state instead of the fault
-    # file's post-action wording.
     # The unclear fault names no cause to the caller (no telemetry jargon).
     if cause == "unclear_fault":
         return phrase("ticket.need_unclear")
-    reason = (s.resolution.procedure or {}).get("escalate_reason")
-    if reason in NOTHING_DONE_REASONS:
-        gloss = phrase_or(f"verdict.{cause}.gloss", None)
-        prefix = phrase("ticket.need_suspected", gloss=gloss) if gloss else ""
-        return prefix + phrase("ticket.need_not_checked")
     need = fault_need(cause) or phrase_or(
         f"verdict.{cause}.ticket_need", None
     )  # file first, code fallback

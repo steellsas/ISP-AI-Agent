@@ -11,7 +11,7 @@ from typing import Any
 from ..contract.locale import vocab
 
 
-def begin_ticket_dialogue(state: Any, rt: Any, step) -> None:
+def begin_ticket_dialogue(state: Any, rt: Any) -> None:
     """Start the ticket-confirmation dialogue: before ANY registration the agent
     collects the contact number (ALWAYS asked — the caller may be on a
     company/other phone, or the DB number stale) and when it is convenient to
@@ -21,7 +21,7 @@ def begin_ticket_dialogue(state: Any, rt: Any, step) -> None:
         return  # already registered / already collecting
     from ..graph_v2.state import TicketContext
 
-    state.ticket.context = TicketContext(step_id=step.id if step is not None else None)
+    state.ticket.context = TicketContext()
     state.ticket.stage = "phone"
     rt.tracer.emit("decision", intent="ticket_dialogue", action="start")
 
@@ -76,14 +76,13 @@ def finish_ticket_dialogue(state: Any, rt: Any) -> str:
     if not s.ticket.contact_hours:
         s.ticket.contact_hours = phrase("ticket.default_hours")
     ctx = state.ticket.context
-    step_id = ctx.step_id if ctx else None
     note = (ctx.note if ctx else None) or ""
     state.ticket.stage = None
     state.ticket.context = None
     from ..decide.question import clear_owner as _q_clear_owner
 
     _q_clear_owner(state, rt, "ticket")  # contacts collected — the dialogue is over
-    register_ticket_from_state(state, rt, step_id)
+    register_ticket_from_state(state, rt)
     from ..closing import close_call
 
     close_call(state, rt, "registered" if s.ticket.ticket_id else "declined")
@@ -126,8 +125,7 @@ def unbacked_promise(state: Any, sentence: str) -> bool:
         bool(s.identity.customer_id)
         and not s.closing.case_closed
         and (
-            s.resolution.procedure is not None
-            or (s.case.fault and (s.case.in_progress or s.case.summarised))
+            bool(s.case.fault and (s.case.in_progress or s.case.summarised))
             or _debt_news_told(state)
         )
     )
@@ -159,15 +157,8 @@ def registration_claim_guard(state: Any, rt: Any, content: str) -> str | None:
         return None
     from ..contract.locale import phrase
 
-    if s.resolution.procedure is not None:
-        from ..resolution import get_strategy
-
-        strat = get_strategy(s.resolution.procedure.get("verdict"))
-        esc = strat.by_role("escalate") if strat else None
-        s.resolution.procedure.setdefault("escalate_reason", "phone_fix_failed")
-        begin_ticket_dialogue(state, rt, esc)
-    elif s.case.fault and (s.case.in_progress or s.case.summarised):
-        # The v2 Case leaves `resolution.procedure` empty, so this guard was blind to every
+    if s.case.fault and (s.case.in_progress or s.case.summarised):
+        # v1's `resolution.procedure` was empty on a Case call, so this guard was blind to every
         # Case call: live 2026-10-07 the agent said „užregistruosiu" about the router and the
         # caller left with no ticket (wave 9, T3).
         from ..decide.rules.head import _begin_case_ticket

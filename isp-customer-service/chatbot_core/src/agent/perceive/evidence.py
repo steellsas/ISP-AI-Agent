@@ -9,7 +9,6 @@ from dataclasses import dataclass
 from typing import Any
 
 from ..contract.locale import vocab
-from ..dialog_utils import asked_recently
 
 
 def unasked_pending_cleared(state: Any) -> str | None:
@@ -45,8 +44,6 @@ def step_perception_options(state: Any, rt: Any):
     build for the standalone classifier, computed once at perception time.
     Returns (None, None) when no asked step awaits an answer (or CLASSIFIER=off,
     the deterministic test mode)."""
-    from ..resolution import StepKind, get_strategy
-
     if os.getenv("CLASSIFIER", "on").lower() == "off":
         return None, None
     # 7 banga. Gedimo kelią veda v2 Case, o šis skaitymas iki šiol klausė TIK v1
@@ -57,26 +54,6 @@ def step_perception_options(state: Any, rt: Any):
     case_options = _case_step_options(state)
     if case_options is not None:
         return case_options
-    r = state.resolution.procedure or {}
-    strat = get_strategy(r.get("verdict")) if r else None
-    step = strat.step(r.get("step", "")) if strat else None
-    if step is None or not r.get("asked") or not asked_recently(state, r):
-        return None, None
-    if step.kind is StepKind.CONFIRM and step.on and step.role != "verify_restored":
-        from ..detectors import glosses as detector_glosses
-        from ..faults import step_options as declared_options
-
-        declared = declared_options(r.get("verdict"), step.id)
-        glosses = detector_glosses(step.detector or "yes_no")
-        options: dict[str, str] = {}
-        for raw in step.on:
-            key = str(getattr(raw, "value", raw))
-            options[key] = (declared or {}).get(key) or glosses.get(key, key)
-        return options, step
-    if step.kind is StepKind.INSTRUCT:
-        from ..detectors import glosses as detector_glosses
-
-        return detector_glosses("instruct_done"), step
     return None, None
 
 
@@ -219,7 +196,7 @@ def ingest_client_evidence(state, rt, user_input: str | None) -> None:
             from ..evidence import read_pending_answer as _rpa
             from ..evidence import spec_for as _spec_for
 
-            _spec = _spec_for((s.resolution.procedure or {}).get("verdict"))
+            _spec = _spec_for(None)
             _item = (_spec.get("client") or {}).get(pending) if _spec else None
             corroborated = (
                 _rpa(pending, user_input, _item) == facts[pending]
@@ -252,7 +229,7 @@ def ingest_client_evidence(state, rt, user_input: str | None) -> None:
     ):
         from ..evidence import read_pending_answer, spec_for
 
-        spec = spec_for((s.resolution.procedure or {}).get("verdict"))
+        spec = spec_for(None)
         spec_item = (spec.get("client") or {}).get(pending) if spec else None
         value = read_pending_answer(pending, user_input, spec_item)
         if value is not None:
@@ -323,7 +300,7 @@ def ingest_client_evidence(state, rt, user_input: str | None) -> None:
                 # the key's OWN answer markers corroborate the flip too.
                 from ..evidence import read_pending_answer, spec_for
 
-                spec = spec_for((s.resolution.procedure or {}).get("verdict"))
+                spec = spec_for(None)
                 spec_item = (spec.get("client") or {}).get(key) if spec else None
                 if read_pending_answer(key, user_input, spec_item) == facts[key]:
                     continue
@@ -367,7 +344,7 @@ def _note_fact_meaning(state, rt, key: str, value: str) -> None:
     in the ACTIVE pack's evidence item, so wording is a file edit."""
     from ..evidence import gloss_label, spec_for
 
-    spec = spec_for((state.resolution.procedure or {}).get("verdict")) or {}
+    spec = spec_for(None) or {}
     item = (spec.get("client") or {}).get(key) or {}
     meaning = (item.get("meaning") or {}).get(value)
     if meaning:
@@ -391,7 +368,7 @@ def _conflict_to_clarify(state, rt, key: str, entry: dict) -> bool:
     consumed here (flagged for clarify or silently settled)."""
     from ..evidence import spec_for
 
-    spec = spec_for((state.resolution.procedure or {}).get("verdict")) or {}
+    spec = spec_for(None) or {}
     if key in (spec.get("client") or {}):
         from ..decide import hypothesis
 
@@ -456,7 +433,7 @@ def ingest_overlay(state, rt, text: str) -> None:
     facts = dict(extract_client_facts(text))
     pending = state.diagnosis.pending_evidence_key
     if pending and pending not in facts:
-        spec = spec_for((s.resolution.procedure or {}).get("verdict"))
+        spec = spec_for(None)
         item = (spec.get("client") or {}).get(pending) if spec else None
         value = read_pending_answer(str(pending), text, item)
         if value is not None:

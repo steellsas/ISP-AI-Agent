@@ -18,7 +18,6 @@ def _plan(action):
 
 def _call(make_state, make_runtime, verdict="router_hung"):
     state = make_state("+37060020112")
-    state.resolution.procedure = {"verdict": verdict, "step": "rh_ability"}
     tracer = _Tracer()
     return state, make_runtime(tracer=tracer), tracer
 

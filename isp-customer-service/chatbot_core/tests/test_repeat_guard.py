@@ -173,7 +173,6 @@ class TestStuckCounter:
     def test_backstop_identified_registers_the_promised_ticket(self, db_connection):
         a = _agent()
         a.state.identity.customer_id = "CUST009"
-        a.state.resolution.procedure = {"verdict": "router_hung", "step": "rh_check"}
         a.state.dialog.stuck_count = 4
 
         plan = _backstop_plan(a)
@@ -182,7 +181,6 @@ class TestStuckCounter:
 
         assert a.state.ticket.ticket_id  # F-5: the promise is kept
         assert a.state.closing.closed_reason == "registered"
-        assert a.state.resolution.procedure["escalate_reason"] == "stuck"
 
 
 def _backstop_plan(a):

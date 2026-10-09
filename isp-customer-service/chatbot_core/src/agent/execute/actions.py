@@ -39,7 +39,7 @@ def run_action(state: Any, rt: Any, plan: Any) -> str | None:
     if action.type == "register_ticket" and action.name == "auto":
         from ..executor_flow import register_ticket_from_state
 
-        register_ticket_from_state(state, rt, None)  # the inform news promises it
+        register_ticket_from_state(state, rt)  # the inform news promises it
         return None
     if action.type == "register_ticket":
         from .ticket import finish_ticket_dialogue

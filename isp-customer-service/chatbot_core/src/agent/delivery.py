@@ -69,11 +69,6 @@ def apply_delivery(state: Any, rt: Any, sentences: list[str], delivered: int) ->
         key = state.diagnosis.pending_evidence_key
         if key and state.diagnosis.evidence_ask_counts.get(key, 0) > 0:
             state.diagnosis.evidence_ask_counts[key] -= 1
-        r = s.resolution.procedure or {}
-        pres = r.get("presented") or {}
-        step_id = r.get("step")
-        if step_id and pres.get(step_id, 0) > 0:
-            pres[step_id] -= 1
         state.voice.unheard_question = tail
         state.voice.undelivered_tail = None  # superseded by the strong directive
     rt.tracer.emit(

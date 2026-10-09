@@ -115,7 +115,6 @@ def _context(state: Any, rt: Any) -> str:
         if m.get("role") in ("user", "assistant") and (m.get("content") or "").strip()
     )
     ledger = summary_lt(s.diagnosis.evidence) if s.diagnosis.evidence else "(empty)"
-    verdict = (s.resolution.procedure or {}).get("verdict") or "(not set)"
     # Damping (live 2026-09-08): a question asked THIS turn has no answer yet — calling
     # that a drift is noise. The off-topic read only makes sense once the same question
     # needed a re-ask.
@@ -127,7 +126,7 @@ def _context(state: Any, rt: Any) -> str:
     )
     return (
         f"CONVERSATION:\n{history}\n\nLEDGER (deterministic facts): {ledger}\n"
-        f"HYPOTHESIS: {verdict}\nACTIVE QUESTION: {asked}\n\nSignals (JSON):"
+        f"HYPOTHESIS: (not set)\nACTIVE QUESTION: {asked}\n\nSignals (JSON):"
     )
 
 

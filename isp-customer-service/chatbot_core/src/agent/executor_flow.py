@@ -19,7 +19,7 @@ from .trace import tools_called_this_session, trace_note
 logger = logging.getLogger(__name__)
 
 
-def register_ticket_from_state(state: Any, rt: Any, step_id: str | None) -> None:
+def register_ticket_from_state(state: Any, rt: Any) -> None:
     """Build + create the ticket DETERMINISTICALLY from state (Phase 3.10/3.11 B):
     cause from the hypothesis/verdict, actions from this call's trace — never from
     the model's free text (which once invented an invalid ticket_type). Idempotent:
@@ -39,7 +39,6 @@ def register_ticket_from_state(state: Any, rt: Any, step_id: str | None) -> None
         s.case.fault
         or (s.diagnosis.verdicts.get("network") or {}).get("reason")
         or (s.diagnosis.hypothesis or {}).get("cause")
-        or (s.resolution.procedure or {}).get("verdict")
         or ""
     )
     from .contract.locale import phrase
@@ -110,10 +109,6 @@ def register_ticket_from_state(state: Any, rt: Any, step_id: str | None) -> None
         details += phrase(
             "ticket.details.anamnesis", text=", ".join(bits) if bits else s.intake.anamnesis_raw
         )
-    from .faults import role_of
-
-    if role_of((s.resolution.procedure or {}).get("verdict"), step_id) == "register_after_bridge":
-        details += phrase("ticket.details.bridge_router")
     # Ledger: what the CALLER established (client-side evidence) — the human
     # taking over sees the checked physical facts, not just telemetry.
     client_bits = []
@@ -135,11 +130,6 @@ def register_ticket_from_state(state: Any, rt: Any, step_id: str | None) -> None
         details += phrase("ticket.details.bridge_live")
     if told.get("nepavyko"):
         details += phrase("ticket.details.not_done", items=told["nepavyko"])
-    # Why it was not solved (refusal / demand / not home) — recorded on the ticket
-    # so the technician knows the context (policy 2026-07-30).
-    reason = (s.resolution.procedure or {}).get("escalate_reason")
-    if reason:
-        details += f" {phrase(f'ticket.reason.{reason}')}"
     # What was already TRIED — the human taking over must not redo it (after-hours
     # philosophy 2026-08-03: the agent attempts, a person takes over via the ticket with
     # the full attempt history).
@@ -169,7 +159,7 @@ def register_ticket_from_state(state: Any, rt: Any, step_id: str | None) -> None
     actions = tools_called_this_session(rt.tracer)
     args = {
         "customer_id": s.identity.customer_id,
-        "ticket_type": fault_type(cause or (s.resolution.procedure or {}).get("verdict")),
+        "ticket_type": fault_type(cause),
         "problem_type": s.intake.problem_type,
         "problem_description": details,
         "notes": phrase("ticket.details.actions", tools=", ".join(actions)) if actions else "",

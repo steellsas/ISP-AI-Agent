@@ -51,13 +51,11 @@ def test_the_stuck_close_keeps_the_promise_for_an_identified_caller(
 ):
     state, rt = make_state("+37060020112"), make_runtime()
     state.identity.customer_id = "CUST009"
-    state.resolution.procedure = {"verdict": "router_hung", "step": "rh_check"}
 
     close_call(state, rt, "stuck", complete=True)
 
     assert state.ticket.ticket_id  # F-5
     assert state.closing.closed_reason == "registered"
-    assert state.resolution.procedure["escalate_reason"] == "stuck"
 
 
 def test_an_unknown_close_reason_is_gated(make_state, make_runtime):

@@ -379,14 +379,14 @@ async def knowledge_reload():
     edit it claimed to check (wave 5). A refusal means the edit is broken and still on disk:
     fix the file and reload again.
     """
-    from agent.contract import loader
+    from agent.contract import cards, loader
     from agent.contract.schema import KnowledgeError
 
     try:
-        knowledge = await asyncio.to_thread(loader.revalidate)
+        await asyncio.to_thread(loader.revalidate)
     except KnowledgeError as e:
         raise HTTPException(status_code=422, detail=e.errors) from None
-    return {"status": "reloaded", "packs": len(knowledge.packs), "modules": len(knowledge.modules)}
+    return {"status": "reloaded", "cards": len(cards.cards()), "modules": len(cards.modules())}
 
 
 @app.put("/admin/config")

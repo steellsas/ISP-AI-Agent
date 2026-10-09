@@ -12,7 +12,6 @@ from agent.perceive.perception import Fact, Perception, fast_read, ground
 
 def _asked(agent, key="lights", verdict="no_mac_observed", step="dr_lights"):
     agent.state.identity.customer_id = "CUST009"
-    agent.state.resolution.procedure = {"verdict": verdict, "step": step, "asked": True}
     agent.state.diagnosis.pending_evidence_key = key
     return agent
 

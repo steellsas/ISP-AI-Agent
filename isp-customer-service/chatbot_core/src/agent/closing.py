@@ -54,7 +54,5 @@ def _close_stuck(state: Any, rt: Any) -> None:
         s.closing.closed_reason = "declined"
         s.closing.unidentified_reason = "stuck"
         return
-    if s.resolution.procedure is not None:
-        s.resolution.procedure["escalate_reason"] = "stuck"
-    register_ticket_from_state(s, rt, None)
+    register_ticket_from_state(s, rt)
     s.closing.closed_reason = "registered" if s.ticket.ticket_id else "declined"

@@ -34,7 +34,6 @@ def _populated() -> GraphState:
     s.diagnosis.evidence["router_lights"] = {"value": "dega", "source": "client", "turn": 3}
     s.diagnosis.failed_hypotheses.append("healthy_to_router")
     s.diagnosis.rejected_hypotheses.append({"cause": "healthy_to_router", "by": "telemetry"})
-    s.resolution.procedure = {"verdict": "foreign_mac", "step": "bind_mac", "asked": True}
     s.ticket.stage = "phone"
     s.ticket.contact_phone = "+37061111111"
     s.dialog.last_question = "Ar mirksi lemputė?"

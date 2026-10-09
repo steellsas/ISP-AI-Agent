@@ -1785,7 +1785,7 @@ def _escalate(state: Any, rt: Any, fault: str | None, note: str | None = None) -
                 rule="case.summary",
                 say=Say(kind="directive", goal="sum up what was done and why", stage="diagnosis"),
             )
-    begin_ticket_dialogue(state, rt, None)
+    begin_ticket_dialogue(state, rt)
     if note:
         state.case.facts.setdefault("_ticket_note", note)
     rt.tracer.emit("case", move="escalate", fault=fault, note=note)

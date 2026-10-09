@@ -34,7 +34,6 @@ def reopen_identification(state: Any, rt: Any, user_input: str) -> None:
     s.identity.service_profile = None
     s.identity.open_tickets = []
     s.identity.address_confirmed = False
-    s.resolution.procedure = None
     s.diagnosis.verdicts.clear()
     s.diagnosis.hypothesis = None
     s.diagnosis.failed_hypotheses.clear()

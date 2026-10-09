@@ -21,17 +21,6 @@ def last_agent_question(state: Any) -> str | None:
     return None
 
 
-def asked_recently(state: Any, r: dict) -> bool:
-    """True when the current step's question actually went out within the
-    last ~3 exchanges. Steps presented long ago (walker benched by the
-    solver/evidence drive) may not read new replies as their answers —
-    test/legacy setups without the stamp count as fresh."""
-    at = r.get("asked_at")
-    if at is None:
-        return True
-    return len(state.messages) - at <= 6
-
-
 def is_question(text: str) -> bool:
     return text.strip().endswith("?")
 

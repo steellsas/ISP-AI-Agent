@@ -161,12 +161,7 @@ class TestRouting:
             "status": "testing",
             "because": ["linijoje nematomas įrenginys"],
         }
-        engine.state.resolution.procedure = {
-            "verdict": "no_mac_observed",
-            "step": "escalate",
-            "asked": True,
-        }
-        begin_ticket_dialogue(engine.state, engine.runtime, None)
+        begin_ticket_dialogue(engine.state, engine.runtime)
 
         names = self._run_turn_capture_tools(session, "O kokiu numeriu jūs skambinsite?")
 

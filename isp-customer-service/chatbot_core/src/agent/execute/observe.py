@@ -3,8 +3,7 @@
 The gateway commits the raw observation; these functions read it the way the engine
 needs it: a resolve/lookup result becomes the identification's note, a fix action chains
 its verification, and a diagnose observation lands the verdict, the ledger facts and the
-belief (a new cause under an active procedure becomes a contradiction, never a silent
-switch — D-05)."""
+belief."""
 
 from __future__ import annotations
 
@@ -51,13 +50,8 @@ def chain_after_bind(state, rt, name: str, observation: str) -> str:
     obs["fixed"] = fixed
     gloss = phrase_or(f"verdict.{reason_now}.gloss", reason_now or "—")
 
-    # Do NOT close or advance here. The bind was announced THIS turn; the walker
-    # advances bind_device -> verify_restored on the caller's next reply, where we
-    # ASK them and re-read telemetry before deciding resolve / client-side /
-    # escalate (_advance_restored). Just record the telemetry reading.
-    r = state.resolution.procedure
-    if r is not None:
-        r["telemetry_fixed"] = fixed
+    # Do NOT close or advance here: the bind was announced THIS turn. Just record the
+    # telemetry reading.
     obs["message"] = (
         obs.get("message", "") or ""
     ).strip() + f" Portas perkrautas. Telemetrija dabar: {gloss}."
@@ -157,13 +151,6 @@ def update_state_from_observation(state, rt, action: str, observation: str):
 
         elif action == "create_ticket" and obs_data.get("success"):
             state.ticket.ticket_id = obs_data.get("ticket_id")
-            # Inside a resolution strategy (escalate step), the fault is now
-            # registered — close the case so create_ticket is withdrawn and the
-            # model narrates the close instead of re-registering in a loop.
-            if state.resolution.procedure and not state.closing.case_closed:
-                from ..closing import close_call
-
-                close_call(state, rt, "registered")
 
         # Diagnostic findings -> case state under their DOMAIN, so the agent
         # reconciles them with the customer and never loses / re-runs them, and

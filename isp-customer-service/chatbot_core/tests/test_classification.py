@@ -290,7 +290,6 @@ class TestPendingFallback:
         agent = make_agent("+37060020112")
         agent.state.identity.customer_id = "CUST112"
         agent.state.intake.problem_type = "internet_down"
-        agent.state.resolution.procedure = {"verdict": "router_hung", "step": "rh_scope"}
         with patch("agent.perceive.understand.understand", return_value=None):
             ingest_client_evidence(agent.state, agent.runtime, "O kiek visa tai kainuos?")
         assert agent.state.diagnosis.evidence.get("fail_scope") is None
@@ -351,13 +350,14 @@ class TestNoPathTicket:
     tiketas, ne svetimo domeno improvizacija (gyvai: TV skambutis buvo
     vedamas per interneto WiFi klausimus)."""
 
-    def test_problem_has_path(self):
-        from agent.faults import problem_has_path
+    def test_problem_has_a_card(self):
+        """v3 stage 3: a card for the reported problem (its `symptom`) is the path."""
+        from agent.execute.diagnosis import _has_cards
 
-        assert problem_has_path("internet_down") is True
-        assert problem_has_path("tv") is False
-        assert problem_has_path("internet_slow") is False
-        assert problem_has_path(None) is False
+        assert _has_cards("internet_down") is True
+        assert _has_cards("tv") is False
+        assert _has_cards("internet_slow") is False
+        assert _has_cards(None) is False
 
     def test_tv_goes_to_unclear_ticket_not_internet_pack(self, db_connection):
         from agent.execute.diagnosis import ensure_diagnosed
@@ -366,8 +366,9 @@ class TestNoPathTicket:
         agent.state.identity.customer_id = "CUST009"
         agent.state.intake.problem_type = "tv"
         assert ensure_diagnosed(agent.state, agent.runtime) is True
-        r = agent.state.resolution.procedure
-        assert r["verdict"] == "unclear_fault" and r["step"] == "escalate"
+        # v3 3c: the Case's unclear_fault card, not v1's procedure
+        assert agent.state.case.fault == "unclear_fault"
+        assert agent.state.diagnosis.verdicts["network"]["reason"] == "unclear_fault"
         assert agent.state.ticket.stage == "phone"  # dialogue began deterministically
         from agent.decide.rules.ticket import ticket_need
 
@@ -380,7 +381,7 @@ class TestNoPathTicket:
         agent.state.identity.customer_id = "CUST009"
         agent.state.intake.problem_type = "internet_down"
         ensure_diagnosed(agent.state, agent.runtime)
-        assert (agent.state.resolution.procedure or {}).get("verdict") != "unclear_fault"
+        assert agent.state.case.fault != "unclear_fault"
 
 
 class TestGateMaxTurns:

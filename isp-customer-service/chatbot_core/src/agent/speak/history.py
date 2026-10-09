@@ -34,10 +34,6 @@ def history_summary(state, rt) -> str | None:
         bits.append(f"Klientas: {s.identity.customer_address or s.identity.customer_id}")
     if s.identity.caller_name:
         bits.append(f"skambina {s.identity.caller_name}")
-    r = s.resolution.procedure or {}
-    if r.get("verdict"):
-        gloss = phrase_or(f"verdict.{r['verdict']}.gloss", r["verdict"])
-        bits.append(f"Diagnozė: {gloss}")
     if s.diagnosis.evidence:
         from ..evidence import summary_lt
 

@@ -13,17 +13,17 @@ from fastapi.testclient import TestClient
 
 def test_shipped_knowledge_starts():
     knowledge = loader.startup()
-    assert knowledge.packs and knowledge.modules and knowledge.limits and knowledge.policies
+    assert knowledge.tools and knowledge.intents and knowledge.limits and knowledge.policies
 
 
-def test_broken_pack_names_the_file_and_key(tmp_path):
+def test_broken_file_names_the_file_and_key(tmp_path):
     root = tmp_path / "knowledge"
     shutil.copytree(KNOWLEDGE_DIR, root)
-    pack = root / "faults" / "internet_pakibes_routeris.yaml"
-    pack.write_text(pack.read_text(encoding="utf-8") + "\nbogus_key: 1\n", encoding="utf-8")
+    tool = root / "tools" / "update_mac.yaml"
+    tool.write_text(tool.read_text(encoding="utf-8") + "\nbogus_key: 1\n", encoding="utf-8")
     with pytest.raises(KnowledgeError) as e:
         validate_knowledge(knowledge_dir=root)
-    assert "faults/internet_pakibes_routeris.yaml: bogus_key" in str(e.value)
+    assert "tools/update_mac.yaml: bogus_key" in str(e.value)
 
 
 def test_unreadable_yaml_is_a_knowledge_error(tmp_path):
@@ -43,10 +43,10 @@ def _app_client(monkeypatch, tmp_path):
 
 def test_app_does_not_start_with_broken_knowledge(db_connection, monkeypatch, tmp_path):
     def broken():
-        raise KnowledgeError(["faults/x.yaml: steps.0.role: Field required"])
+        raise KnowledgeError(["tools/x.yaml: tool: Field required"])
 
     monkeypatch.setattr(loader, "validate", broken)
-    with pytest.raises(KnowledgeError, match="faults/x.yaml"):
+    with pytest.raises(KnowledgeError, match="tools/x.yaml"):
         with _app_client(monkeypatch, tmp_path):
             pass
 
@@ -54,7 +54,7 @@ def test_app_does_not_start_with_broken_knowledge(db_connection, monkeypatch, tm
 def test_reload_endpoint(db_connection, monkeypatch, tmp_path):
     with _app_client(monkeypatch, tmp_path) as client:
         ok = client.post("/admin/knowledge/reload")
-        assert ok.status_code == 200 and ok.json()["packs"] >= 1
+        assert ok.status_code == 200 and ok.json()["cards"] >= 1
 
         def broken():
             raise KnowledgeError(["faq.yaml: faq.0.topic: Field required"])

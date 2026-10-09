@@ -722,7 +722,26 @@ problem_label:
   tv: "bėda su televizija"
 
 evidence:
-  # Built-in evidence facts: label per key and wording per value (packs add their own).
+  # How a card fact reads to a human (recap, ticket): its name and a value wording that only
+  # makes sense for THAT fact („rebooted: yes" → „jau perkrautas"). Moved here from the v1 fault
+  # packs (v3 3c), word for word; these win over the generic `label` / `value` below.
+  fact_label:
+    fail_scope: "kur neveikia"
+    fail_device: "įrenginys"
+    connection_type: "jungimosi būdas"
+    rebooted: "routerio perkrovimas"
+    recent_events: "įvykiai prieš dingstant"
+    changed_device: "routerio keitimas"
+    cable_port: "kabelio lizdas"
+  fact_value:
+    fail_scope: {all: "visuose įrenginiuose", one: "tik viename įrenginyje"}
+    fail_device: {phone: "telefone", computer: "kompiuteryje"}
+    connection_type: {wired: "laidu", wifi: "per WiFi"}
+    rebooted: {"yes": "jau perkrautas", "no": "dar neperkrautas"}
+    recent_events: {"yes": "buvo įvykis (elektra/laidai/audra)", "no": "nieko neįvyko"}
+    changed_device: {"yes": "keitė arba prijungė naują įrenginį", "no": "nieko nekeitė"}
+    cable_port: {wan: "interneto (WAN) lizde", lan: "kitame (LAN) lizde"}
+  # Built-in evidence facts: label per key and wording per value.
   label:
     has_computer: "ar turite kompiuterį"
     lights: "routerio lemputės"
