@@ -1,6 +1,7 @@
 # Agento struktūra v3 — fazės, tyrimo ciklas, pokalbio sluoksnis
 
-**Būsena:** PROJEKTAS, laukia Andriaus patvirtinimo (2026-10-08). Kodo pagal jį dar nėra.
+**Būsena:** PATVIRTINTA kryptis (Andrius, 2026-10-09; atsakymai — §11). Etapas 0 atliktas (10 banga),
+daromas etapas 2.
 **Iš kur:** 2026-10-08 struktūrinė peržiūra (4 tyrimai: LLM kvietimai, fazių savininkai, mazgų
 vidus, seni radiniai) ir Andriaus pokalbis tą pačią dieną. Ankstesnis kontekstas —
 [PERZIURA.md](PERZIURA.md) (radiniai A–AU, principai P-1…P-9), [AGENTO_VEIKIMAS.md](../AGENTO_VEIKIMAS.md).
@@ -35,33 +36,39 @@ variklis.
 | 1 | **Kodėl skambina** | paslauga (internetas / TV / …ateityje kitos) + tikslas (spręsti / registruoti / atsakyti / ne mūsų) | `intake` | problemų katalogas (L1 žodynas → L2 LLM) | paslauga + tikslas žinomi |
 | 2 | **Identifikacija** | klientas, adresas, kas skambina, savininkas | `identify` | adreso/vardo skaitytuvas | klientas rastas (arba registruojam perskambinimą) |
 | 3 | **Tyrimas** ⟲ | suprasti, kodėl neveikia, ir kur galima — sutvarkyti | `investigate` (Case) | žingsnio uždaras skaitytuvas | Case sako: išspręsta / naujiena / reikia meistro / perskambinsim |
-| 4 | **Baigtis** | pasakyti išvadą: kas buvo, ką padarėm, kas toliau | `outcome` | — | išvada pasakyta |
-| 5 | **Tiketas** | kontaktai (telefonas, laikas) → registracija | `ticket` | tiketo skaitytuvas | užregistruota / klientas atsisakė |
-| 6 | **Uždarymas** | „ar dar kuo padėti?" → atsisveikinimas | `close` | — | klientas atsisveikina arba padeda ragelį |
+| 4 | **Tiketas** | kontaktai (telefonas, laikas) → registracija | `ticket` | tiketo skaitytuvas | užregistruota / klientas atsisakė |
+| 5 | **Pabaiga** | išvada (kas buvo, ką padarėm, kas toliau) → „ar dar kuo padėti?" → atsisveikinimas → sąsaja uždaroma | `close` | — | klientas atsisveikina arba padeda ragelį |
 
-„Registruoti" tikslas (sąskaita, persikraustymas, pageidavimas) iš 1 fazės eina **tiesiai į 5**,
-po identifikacijos. „Ne mūsų sritis" — iš 1 į 6.
+**Pabaigos rūšys** (Andrius, 2026-10-09: *„baigtis ir uždarymas kaip ir viena fazė — pokalbis
+baigtas sėkmingai su tiketu ar nesėkmingai informavus… vis tiek baigiasi pokalbis, uždaroma
+sąsaja"*): `išspręsta` · `užregistruotas tiketas` · `informuota` (skola, avarija, ne mūsų sritis) ·
+`perskambinimas` · `klientas atsisakė` · `neidentifikuotas`. Kiekviena pabaiga turi **aiškią
+priežastį ir išvadą klientui** — pabaiga niekada nėra netikėta.
+
+„Registruoti" tikslas (sąskaita, persikraustymas, pageidavimas) iš 1 fazės eina **tiesiai į 4**,
+po identifikacijos. „Ne mūsų sritis" — iš 1 į 5.
 
 ### 1.1 Perėjimai (vienintelis būdas pakeisti fazę)
 
 ```
- 0 ─► 1 ─► 2 ─► 3 ⟲ ─► 4 ─► 5 ─► 6
-           ▲    │  ▲     │  ▲
-           └────┘  └─────┘  │
-   kitas adresas   „vis tiek neveikia",   „palaukit, pabandysiu dar"
-   (3→2)           „dar klausimas" (4/6→3) (5→3)
- 1 ──(registruoti)──────────────► 5
- 1 ──(ne mūsų sritis)────────────────────► 6
+ 0 ─► 1 ─► 2 ─► 3 ⟲ ─► 4 ─► 5
+           ▲    │  ▲     │  ▲    │
+           └────┘  └─────┼──┘    │
+   kitas adresas   „palaukit, pabandysiu dar" (4→3)
+   (3→2)           „vis tiek neveikia" / „dar klausimas" (5→3)
+ 3 ──(išspręsta / informuota / perskambinimas)──► 5
+ 1 ──(registruoti)──────────────► 4
+ 1/2 ──(ne mūsų sritis / neidentifikuotas po 3 paraginimų)──► 5
 ```
 
 | Iš → Į | Kada | Kas nusprendžia |
 |---|---|---|
 | 3 → 2 | klientas pasako kitą adresą (patvirtinus) | `identify` |
-| 4 → 3 | „vis tiek neveikia" po „išspręsta" | `investigate` |
-| 6 → 3 | uždarant iškyla neišspręstas gedimas | `investigate` |
-| 5 → 3 | tiketo metu klientas nori bandyti dar kartą | `investigate` |
-| 3/4 → 5 | Case: reikia meistro / klientas prašo registruoti | `ticket` (vienintelis, kas pradeda) |
-| bet kuri → 6 | tik per `outcome` arba `ticket` pabaigą (žr. §5) | `close` (vienintelis, kas uždaro) |
+| 5 → 3 | „vis tiek neveikia" po „išspręsta", arba uždarant iškyla neišspręstas gedimas | `investigate` |
+| 4 → 3 | tiketo metu klientas nori bandyti dar kartą | `investigate` |
+| 3 → 4 | Case: reikia meistro / klientas prašo registruoti | `ticket` (vienintelis, kas pradeda) |
+| 3 → 5 | išspręsta / informuota / perskambinimas | `close` |
+| 1/2 → 5 | ne mūsų sritis; neidentifikuotas po 3 paraginimų (§5 U8) | `close` (vienintelis, kas uždaro) |
 
 Perėjimas yra plano veiksmas (`Action(type="phase", name=...)`) — ne žymė. Kiekvienam
 perėjimui yra testas.
@@ -194,6 +201,15 @@ ragelio anksčiau laiko… reiktų pagalvoti, ar išvis reikia pokalbio užbaigi
 tekstuose. Jei klientas atsisako ar nebenori kalbėti — tik tuomet agentas gali paklausti kodėl,
 ar tikrai, o pokalbio baigimo fazė būtų atskira, su tiketu ar be."*
 
+Andrius (2026-10-09), papildymas: *„kai klientas atsisako ar nori nutraukti — tikrai turi būti
+informuojamas, kas bus, ko gal dar nepadarė ar neišsiaiškino… numatyti skambučius, kai
+neidentifikuojamas klientas, atsisako identifikuotis, nepasako problemos, tyli… gal trijų
+paraginimų reiktų; aišku, jei klientas nereaguoja į tris paraginimus iš eilės — baigiamas
+pokalbis. Bet iki to turi agentas paaiškinti… turi būti priežasties aiškumas klientui, kodėl
+baigia pokalbį. Ir tai neturi būti labai greitas dalykas: jei klientas nežino, nesupranta ar
+negali padaryti kažko — tai neturi būti priežastis baigti pokalbį… uždarymas neturi būti
+netikėtas klientui."*
+
 Iš to principai:
 
 | # | Principas | Kas keičiasi nuo dabar |
@@ -204,6 +220,9 @@ Iš to principai:
 | U4 | **Uždarymo fazėje (6) atsisveikinimas = pabaiga**, be patvirtinimo klausimo | jau beveik taip (`closing.goodbye`) |
 | U5 | **Klientas visada gali padėti ragelį.** Tai ne klaida: `finalizer` tvarko pagal būseną — liko įsipareigojimas → tiketas; sutartas perskambinimas → perskambinimas; išspręsta / informuota → nieko | tinklas jau yra; 9–10 bangos jį pataisė Case skambučiams |
 | U6 | **Atsisakymas** („nebenoriu", „neturiu laiko") — pokalbio sluoksnis paklausia vieną kartą, kodėl / ar tikrai, ir pasiūlo alternatyvą (perskambinimas, tiketas), nespaudžia | dabar dalinai (`cannot_now` kopėčios — v1, Case turi `_not_now_plan`) |
+| U8 | **Trys paraginimai.** Klientas neidentifikuojasi (atsisako adreso), nepasako problemos ar tyli: kiekvieną kartą paaiškinama, KODĖL to reikia („negalėsiu padėti, kol nežinau paslaugos adreso"). Po trečio iš eilės nereaguoto paraginimo — pabaiga su priežastimi („kadangi jūs neidentifikuotas, o pagalbą teikiu tik abonentams, esu priverstas baigti pokalbį") | dabar: `problem_gate_max_turns` (5), identifikacijos kopėčios, tylos patikra — kiekvienas savaip |
+| U9 | **Nežinojimas nėra atsisakymas.** „Nežinau", „nesuprantu", „negaliu dabar" — tai ne paraginimų skaičius, o darbas pokalbio sluoksniui (paaiškinti, pasiūlyti kitą kelią, perskambinimą) | dabar dalinai sumaišyta su „užstrigo" skaitikliu |
+| U10 | **Pabaiga su išvada.** Kiekviena pabaigos rūšis turi savo išvadą: kas nustatyta, kas padaryta, kas nepavyko, kas bus toliau (tiketas — su aprašymu, ką nustatėm ir ko nepavyko) | dabar išvada yra tik Case eskalavimo kelyje (7c banga) |
 | U7 | **Apsauga nuo per ankstyvos pabaigos:** `close` fazė neįleidžia, kol `outcome` nepasakė išvados ir nėra neįvykdyto įsipareigojimo (`case_owes_ticket`) | 9 banga įvedė šį sargą Case'ui; v3 — vienintelis vartų taškas |
 
 Ar ieškoti atsisveikinimo tekste išvis? **Taip, bet tik kaip signalo** (U2): jo reikia, kad 6
@@ -268,7 +287,7 @@ struktūra (sąrašas su vienu nariu), elgsena — vėliau.
 |---|---|---|
 | **0** ✅ | Greiti taisymai: S1–S7, V1, V4, V5, V7, solver kodas ištrintas, 6 prompto prieštaravimai, TTS gijos (10 banga) | testai + eval |
 | **1** | Šis dokumentas → Andriaus patvirtinimas | — |
-| **2** | `state.phase` šešėlyje: skaičiuojama iš esamų žymių, trace + dashboard, nieko nevaldo | eval: fazių seka kiekvienam scenarijui atitinka lūkestį |
+| **2** | `state.phase` šešėlyje: skaičiuojama iš esamų žymių, trace + dashboard (fazių juosta, dabartinė užsidega spalva, neleistinas perėjimas — raudonai), nieko nevaldo | eval: fazių seka kiekvienam scenarijui atitinka lūkestį |
 | **3** | Savininkai: `close` (U1–U7) ir `ticket`; v1 `unclear_fault` → Case kortelė; `resolution.procedure` ištrintas | testai + eval + gyvas testas |
 | **4** | Tyrimo ciklas: DARYTI → patikra bet kur, `fixes:`, priežasties santrauka | naujas eval „įkišo laidą — veikia" |
 | **5** | Pokalbio sluoksnis (§4) | eval + gyvas testas |
@@ -279,13 +298,13 @@ Kiekvienas etapas — atskira šaka, baigiamas pilnai, tada Andriaus gyvas testa
 
 ---
 
-## 11. Klausimai Andriui
+## 11. Andriaus atsakymai (2026-10-09)
 
-1. Ar fazių sąrašas ir perėjimai (§1) tinka? Ar „Baigtis" (4) ir „Uždarymas" (6) atskirai — ar
-   sujungti?
-2. U3: ar „Ar tikrai norite baigti?" tyrimo metu turi iškart pasakyti, kas liks
-   („routerio keitimo dar neužregistravau"), ar pirma tik paklausti?
-3. U6: atsisakymo atveju — kiek kartų galima pasiūlyti alternatyvą (siūlau vieną)?
-4. §3.5 C: ar LLM siūlymus šešėlyje darom 7 etape, ar anksčiau?
-5. Fazės matomos dashboard'e kaip atskiri mazgai (sąlyginė briauna) — ar užtenka fazės pavadinimo
-   ėjimo kelyje?
+1. **„Baigtis" ir „Uždarymas" — viena fazė „Pabaiga"** su rūšimis (§1). Įrašyta.
+2. **Atsisakius ar norint nutraukti** — pasakoma, kas liko nepadaryta / nepatikrinta / neišsiaiškinta, ir
+   pasiūlomas tiketas arba informacija (U3, U6).
+3. **Nebenori kalbėti** — tas pats: ko nepadarėm, ką galim pasiūlyti. Neidentifikuotas / be problemos / tyli —
+   trys paraginimai su paaiškinimu, tada pabaiga su priežastimi (U8); nežinojimas nėra atsisakymas (U9).
+4. **LLM siūlymai šešėlyje** — vėliau, pagal rekomendaciją (7 etapas).
+5. **Dashboard** — fazių grafikas, dabartinė fazė užsidega spalva; suprantama be gilinimosi, bet informatyvu,
+   kad būtų matyti klaidos (neleistinas perėjimas, užstrigimas fazėje).

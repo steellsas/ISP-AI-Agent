@@ -5,7 +5,7 @@
 "use strict";
 function makeBrain(root, opts = {}) {
   const q = cls => root.querySelector("." + cls);
-  const el = { graph: q("b-graph"), plan: q("b-plan"), state: q("b-state"), timeline: q("b-timeline"), totals: q("b-totals"), filters: q("b-filters") };
+  const el = { phases: q("b-phases"), graph: q("b-graph"), plan: q("b-plan"), state: q("b-state"), timeline: q("b-timeline"), totals: q("b-totals"), filters: q("b-filters") };
   const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
   const PATH = [
     ["asr", "ASR", "kalba → tekstas"],
@@ -15,6 +15,21 @@ function makeBrain(root, opts = {}) {
     ["narrate", "narrate", "kalba"],
     ["tts", "TTS", "tekstas → balsas"],
   ];
+  // Pokalbio fazės (STRUKTURA_V3, 2 etapas — šešėlis): variklis jų dar nevaldo, tik rodo, kur
+  // skambutis yra. Užsidega dabartinė; raudona — neleistinas perėjimas; geltona — per ilgai fazėje.
+  const PHASES = [
+    ["greeting", "Pasisveikinimas"], ["intake", "Kodėl skambina"], ["identify", "Identifikacija"],
+    ["investigate", "Tyrimas"], ["ticket", "Tiketas"], ["closing", "Pabaiga"],
+  ];
+  const PHASE_LT = Object.fromEntries(PHASES);
+  const PHASE_SLOW = { intake: 4, identify: 8, investigate: 14, ticket: 5 };
+  const GOOD_ENDINGS = new Set(["resolved", "ticket", "ticket_appended", "informed", "informed_debt", "informed_outage", "callback"]);
+  const ENDING_LT = {
+    resolved: "išspręsta", ticket: "užregistruotas tiketas", ticket_appended: "pastaba prie tiketo",
+    informed: "informuota", informed_debt: "informuota: skola", informed_outage: "informuota: avarija",
+    callback: "perskambinimas", declined: "klientas atsisakė", closed: "baigta",
+    abandoned: "nutraukta", unidentified: "neidentifikuotas", error: "techninė klaida",
+  };
   const H_STATUS = {
     testing: ["h-testing", "tikrinama"], active: ["h-testing", "aktyvi"],
     doubt: ["h-doubt", "abejojama"], confirming: ["h-confirming", "tikslinama"],
@@ -24,16 +39,17 @@ function makeBrain(root, opts = {}) {
   const PLAN_HINT = '<div class="muted">Ėjimo planas atsiras po pirmo kliento sakinio.</div>';
   const STATE_HINT = '<div class="muted">Būsena — kas žinoma apie skambutį.</div>';
 
-  let turns, cur, last, t0, lastTurnHeader, state, totals, pivot, pinned;
+  let turns, cur, last, t0, lastTurnHeader, state, totals, pivot, pinned, phases;
   const listeners = [];
 
   function reset() {
     turns = []; cur = null; last = null; t0 = null; lastTurnHeader = -1;
     state = {}; totals = { in: 0, out: 0, cost: 0, turns: 0 }; pivot = null; pinned = null;
+    phases = { seen: {}, now: null, ending: null, endedIn: null };
     el.timeline.innerHTML = "";
     el.plan.innerHTML = PLAN_HINT; el.state.innerHTML = STATE_HINT;
     if (el.totals) el.totals.textContent = "";
-    renderGraph();
+    renderGraph(); renderPhases(phases);
   }
 
   function newTurn() {
@@ -70,7 +86,20 @@ function makeBrain(root, opts = {}) {
       }); break;
       case "caller_intro": state.caller = e.name; state.relation = e.relation; break;
       case "verdict": state.verdict = e.reason; break;
-      case "call_summary": state.outcome = e.outcome; state.review = e.needs_review ? e.review_reason : null; state.ticket = e.ticket_id; break;
+      case "phase": {
+        const t = open(), ph = phases.seen[e.phase] || (phases.seen[e.phase] = { turns: 0, bad: false, slow: false });
+        ph.turns += 1;
+        if (!e.ok) ph.bad = true;
+        if (PHASE_SLOW[e.phase] && e.turns_in_phase > PHASE_SLOW[e.phase]) ph.slow = true;
+        phases.now = e.phase;
+        t.phases = JSON.parse(JSON.stringify(phases));
+        if (pinned === null) renderPhases(phases);
+        break;
+      }
+      case "call_summary":
+        phases.ending = e.outcome; phases.endedIn = phases.now;
+        if (pinned === null) renderPhases(phases);
+        state.outcome = e.outcome; state.review = e.needs_review ? e.review_reason : null; state.ticket = e.ticket_id; break;
       case "decision":
         if (e.action === "pivot" || e.intent === "hypothesis_changed") pivot = { from: e.from_step || e.from, to: e.to };
         break;
@@ -111,6 +140,35 @@ function makeBrain(root, opts = {}) {
       return (i ? '<span class="garrow">→</span>' : "") +
         `<div class="${cls}"><div class="n">${n}</div><div class="ms">${has ? fmtMs(ms[k]) : "&nbsp;"}</div>` +
         `<div class="d" title="${detail[k]}">${detail[k]}</div></div>`;
+    }).join("");
+  }
+
+  /* --- fazės --- */
+  function renderPhases(p) {
+    if (!el.phases) return;
+    p = p || { seen: {}, now: null };
+    el.phases.innerHTML = PHASES.map(([k, name], i) => {
+      const seen = p.seen[k];
+      let cls = "ph", note = "";
+      if (k === "closing" && p.ending) {
+        cls += GOOD_ENDINGS.has(p.ending) ? " end-ok" : " end-bad";
+        note = ENDING_LT[p.ending] || p.ending;
+      } else if (k === p.now && !p.ending) cls += " now";
+      else if (seen || (k === "greeting" && Object.keys(p.seen).length)) cls += " done";
+      if (seen && seen.bad) cls += " bad";
+      else if (seen && seen.slow) cls += " slow";
+      const ended = p.ending && p.endedIn && p.endedIn !== "closing" && k === p.endedIn;
+      if (ended) cls += " slow";
+      const title = [
+        seen ? `ėjimų šioje fazėje: ${seen.turns}` : "dar nebuvo",
+        seen && seen.bad ? "į šią fazę pateko NELEISTINU perėjimu" : "",
+        seen && seen.slow ? "per ilgai šioje fazėje" : "",
+        ended ? "pokalbis baigėsi šioje fazėje, nepasiekęs Pabaigos" : "",
+        note ? `baigtis: ${note}` : "",
+      ].filter(Boolean).join(" · ");
+      return (i ? '<span class="ph-arrow">›</span>' : "") +
+        `<div class="${cls}" title="${esc(title)}">${esc(name)}` +
+        (note ? `<div class="c">${esc(note)}</div>` : seen ? `<div class="c">×${seen.turns}</div>` : "") + "</div>";
     }).join("");
   }
 
@@ -165,6 +223,10 @@ function makeBrain(root, opts = {}) {
       .map(([k, v]) => `${k}=${typeof v === "object" ? JSON.stringify(v) : v}`).join(" ").slice(0, 160);
     const rest = o => kv(Object.fromEntries(Object.entries(o).filter(([k]) => !["v", "ts", "session_id", "type"].includes(k))));
     switch (e.type) {
+      case "phase":
+        if (e.prev === e.phase) return null;
+        return [e.ok ? "decide" : "err", "fazė",
+          `${PHASE_LT[e.prev] || "—"} → ${PHASE_LT[e.phase] || e.phase}${e.ok ? "" : " — neleistinas perėjimas"}`];
       case "turn_plan": return ["decide", "planas", `${e.owner} · ${e.rule} · ${(e.say || {}).kind || ""}`];
       case "decision": return ["decide", "sprendimas", [e.intent, e.action, e.from_step && e.to ? `${e.from_step}→${e.to}` : (e.to || ""), e.reason || e.value || e.key || ""].filter(Boolean).join(" ")];
       case "verdict": return ["decide", "verdiktas", `${e.reason || ""} ${e.group || ""} ${e.side || ""}`];
@@ -248,7 +310,7 @@ function makeBrain(root, opts = {}) {
     const t = turns[index];
     if (!t) return;
     pinned = index;
-    renderGraph(); renderPlan(t); renderState(t.state || state);
+    renderGraph(); renderPlan(t); renderState(t.state || state); renderPhases(t.phases || phases);
     const h = el.timeline.querySelector(`.tl-turn[data-turn="${index}"]`);
     if (h) h.scrollIntoView({ block: "start" });
     for (const x of el.timeline.querySelectorAll(".tl-turn")) x.classList.toggle("current", x === h);

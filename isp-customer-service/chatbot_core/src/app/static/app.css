@@ -115,6 +115,20 @@ header h1{font-size:15px; font-weight:600; margin-right:6px}
 
 /* --- graph strip --- */
 
+/* --- fazės (STRUKTURA_V3 2 etapas, šešėlis): kur skambutis yra, kur buvo, kas negerai --- */
+.b-phases{display:flex; align-items:center; gap:3px; flex-wrap:wrap; margin-bottom:8px}
+.ph{flex:1 1 80px; min-width:76px; border:1px solid var(--line); border-radius:99px; padding:3px 8px;
+  font-size:12px; text-align:center; color:var(--dim); background:var(--panel); white-space:nowrap;
+  overflow:hidden; text-overflow:ellipsis; position:relative}
+.ph .c{font-size:11px; opacity:.85}
+.ph.done{color:var(--text); background:var(--panel2); border-color:var(--ok)}
+.ph.now{color:#fff; background:var(--accent); border-color:var(--accent); font-weight:600}
+.ph.end-ok{color:#fff; background:var(--ok); border-color:var(--ok); font-weight:600}
+.ph.end-bad{color:#fff; background:var(--warn); border-color:var(--warn); font-weight:600}
+.ph.slow{border:2px solid var(--warn)}
+.ph.bad{border:2px solid var(--err); color:var(--err)}
+.ph.now.bad{background:var(--err); color:#fff}
+.ph-arrow{color:var(--dim); font-size:11px}
 .b-graph{display:flex; align-items:stretch; gap:4px; flex-wrap:wrap}
 .gnode{flex:1 1 90px; min-width:84px; border:1px solid var(--line); border-radius:7px;
   padding:5px 8px; background:var(--panel)}

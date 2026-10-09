@@ -276,6 +276,11 @@ class DialogState(BaseModel):
     # None | "client_answer" | "client_action" | "system_check"
     awaiting: str | None = None
     awaiting_turns: int = 0
+    # SHADOW (STRUKTURA_V3 stage 2): the phase this turn ended in, how many turns in a row, and
+    # the phases visited — traced for the dashboard, read by no rule (`agent/phase.py`).
+    phase: str | None = None
+    phase_turns: int = 0
+    phase_path: list[str] = Field(default_factory=list)
     # Consecutive side-topic (deviation) turns.
     side_topic_streak: int = 0
     # resolution.detect_turn_intent of the last turn — only "answer"/"done" advance a step.
