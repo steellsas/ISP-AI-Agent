@@ -274,6 +274,33 @@
       }
     },
     {
+      "id": "S4c_dead_router_not_at_home",
+      "phone": "+37060012353",
+      "desc": "3d (gyvai 2026-10-09): vidury tikrinimo klientas sako, kad nėra namie — agentas paklausia, KADA galės prieiti, ir susitaria dėl perskambinimo; jokio „matau naują įrenginį“, jokio tolesnio plano.",
+      "turns": [
+        "Labas, neveikia internetas",
+        "Šįryt dingo, po audros",
+        "Taip",
+        "Giedrius, taip, mano sutartis",
+        "Galėtume kartu patikrinti",
+        "Aš dabar nesu namuose, esu darbe",
+        "Grįšiu vakare",
+        "Gerai, tinka, paskambinsiu",
+        "Ačiū, viso gero"
+      ],
+      "expect": {
+        "verdict_in": "no_mac_observed",
+        "reply_any": [
+          "Kada galėsite"
+        ],
+        "reply_none": [
+          "Matau linijoje naują",
+          "pririšiu"
+        ],
+        "record_outcome": "callback"
+      }
+    },
+    {
       "id": "S3_switch_unreachable_inform",
       "phone": "+37060020103",
       "desc": "Switch nepasiekiamas (avarija neregistruota) — informuoti (nieko daryti nereikia, informuosime), variklis PATS sukuria tiketą (Andrius 2026-09-11)",

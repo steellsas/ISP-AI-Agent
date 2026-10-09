@@ -181,6 +181,10 @@ def registration_claim_guard(state: Any, rt: Any, content: str) -> str | None:
         or state.ticket.stage
         or s.closing.case_closed
         or not s.identity.customer_id
+        # The homework turn says „jei neatsistatys — užregistruosime meistrą": a CONDITIONAL
+        # promise, the callback is what is agreed (N1, eval S4c: the phone question was
+        # appended to the homework).
+        or s.case.awaiting == "later_agreed"
     ):
         return None
     from ..contract.locale import phrase

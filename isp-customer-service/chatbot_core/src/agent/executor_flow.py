@@ -151,6 +151,9 @@ def register_ticket_from_state(state: Any, rt: Any) -> None:
     note = (s.case.facts or {}).get("_ticket_note")
     if note:
         details += f" {note[0].upper()}{note[1:]}."
+    when = (s.case.facts or {}).get("_available_when")
+    if when:
+        details += phrase("ticket.details.available_when", when=when)
     hung_up = (s.case.facts or {}).get("_hangup_note")
     if hung_up:
         details += f" {hung_up}"

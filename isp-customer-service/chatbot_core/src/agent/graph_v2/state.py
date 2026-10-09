@@ -376,6 +376,10 @@ class TurnScratch(BaseModel):
     # The caller answered AND asked in one breath while the Case planned its step: the step
     # stays, and the question gets one short answer first (wave 9, T2).
     also_asked: bool = False
+    # This utterance answered an IDENTIFICATION question (the holder clarification): it is not
+    # an answer to whatever the Case was waiting for (live 2026-10-09: „Taip, kitas šeimos nario
+    # vardu" was taken as „yes, I can reach the router").
+    ident_answer: bool = False
     active_node: str | None = None  # which graph node is running (trace/debug)
     # A background telemetry read that finished between turns (folded in at turn start).
     bg_diagnosis: str | None = None

@@ -289,6 +289,10 @@ class TestWhenTheCallerCannotDoItNow:
         state, rt = self._at_the_reach_step(call)
         said(state, rt, "reachable", "no")
 
+        # N1 (Andrius 2026-10-09): first WHEN they can get to it, then the instruction for later.
+        assert case_rule.plan(state, rt).rule == "case.ask_when"
+        state.dialog.last_heard = "Vakare"
+        state.dialog.turn_count += 1
         plan = case_rule.plan(state, rt)
 
         assert plan.rule == "case.homework" and plan.awaiting == "later_agreed"

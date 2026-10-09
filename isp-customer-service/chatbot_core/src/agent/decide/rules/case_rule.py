@@ -42,6 +42,8 @@ def plan(state: Any, rt: Any) -> TurnPlan | None:
     if reflect is not None:
         return reflect
     facts = ledger.facts_of(state)
+    if _hear_cannot_now(state, rt):
+        facts = ledger.facts_of(state)
     later = _not_now_plan(state, rt, facts)
     if later is not None:
         return later
@@ -168,6 +170,8 @@ def _not_now_plan(state: Any, rt: Any, facts: dict[str, str]) -> TurnPlan | None
     if facts.get("reachable") != "no":
         return None
     agreed = facts.get("later_agreed")
+    if agreed is None and state.case.awaiting == "later_agreed":
+        agreed = _read_homework_answer(state, rt)
     if agreed == "yes":
         rt.tracer.emit("case", move="callback", fault=state.case.fault)
         return TurnPlan(
@@ -176,12 +180,34 @@ def _not_now_plan(state: Any, rt: Any, facts: dict[str, str]) -> TurnPlan | None
             action=Action(type="close", name="callback"),
             say=Say(
                 kind="directive",
-                goal="thank them warmly, repeat that they call if it does not help, say goodbye",
+                goal="thank them warmly, repeat that they call if it does not help, say goodbye"
+                + _when_note(state),
                 stage="closing",
             ),
         )
     if agreed == "no":
         return _escalate(state, rt, state.case.fault)
+    # N1 (Andrius, 2026-10-09): first WHEN they can get to it — once. „Nežinau" / „negalėsiu" is
+    # not a refusal (U9): a technician is the honest way on.
+    heard = state.dialog.last_heard or ""
+    when = state.case.facts.get("_available_when")
+    if not when and state.case.facts.get("_when_asked"):
+        when = _when_from(heard)
+        if when:
+            state.case.facts["_available_when"] = when
+        elif any(m in heard.lower() for m in vocab("never_available")):
+            rt.tracer.emit("case", move="cannot_say_when", fault=state.case.fault)
+            return _escalate(state, rt, state.case.fault)
+    elif not when:
+        state.case.facts["_when_asked"] = "1"
+        rt.tracer.emit("case", move="ask_when", fault=state.case.fault)
+        from ...contract.locale import phrase
+
+        return TurnPlan(
+            owner="procedure",
+            rule="case.ask_when",
+            say=Say(kind="phrase", text=phrase("modules.homework.when_ask"), stage="diagnosis"),
+        )
     if state.case.homework_asks >= 2:
         # They have been told twice and the answer is not readable. Asking again is pressure;
         # the honest end is a warm goodbye with the door open.
@@ -215,6 +241,63 @@ def _not_now_plan(state: Any, rt: Any, facts: dict[str, str]) -> TurnPlan | None
         ),
         awaiting="later_agreed",
     )
+
+
+def _read_homework_answer(state: Any, rt: Any) -> str | None:
+    """The answer to „…Gerai?" after the homework, read with the homework module's own reader.
+
+    Nothing read it: the step readers follow the CARD's step, and the homework is not one —
+    the caller's „Gerai, tinka, paskambinsiu" got the homework again (eval S4c). A goodbye on
+    this question is the consent (as the head rule already treats it).
+    """
+    from ...perceive.detectors import detect_farewell
+
+    heard = state.dialog.last_heard or ""
+    spec = catalog.module("homework")
+    label = modules.label_from(spec.detector, heard) if spec and spec.detector else None
+    said = (spec.answers.get(label) or "") if (spec and label) else ""
+    value = said.split("=", 1)[1] if "=" in said else None
+    words = {w.strip(".,!?…—-") for w in heard.lower().split()}
+    if value is None and (words & set(vocab("homework_agree")) or detect_farewell(heard)):
+        value = "yes"
+    if value is not None:
+        ledger.record_client(state, rt, "later_agreed", value)
+    return value
+
+
+def _hear_cannot_now(state: Any, rt: Any) -> bool:
+    """„Nesu namuose", „esu darbe", „grįšiu po valandos" — at ANY question of the fix (N1).
+
+    The Case used to learn `reachable=no` only from the answer to „ar galite prieiti?"; said
+    while it asked about the lights or the bridge, it went unheard and the plan went on
+    (live 2026-10-09: four times „nesu namuose", and the agent kept instructing). Returns
+    True when the fact changed.
+    """
+    from ...perceive.detectors import detect_cannot_now
+
+    heard = state.dialog.last_heard or ""
+    if state.case.fault is None or state.ticket.stage or state.turn.ident_answer:
+        return False
+    if not detect_cannot_now(heard):
+        return False
+    when = _when_from(heard)
+    if when:
+        state.case.facts["_available_when"] = when
+    changed = ledger.record_client(state, rt, "reachable", "no")
+    if changed:
+        rt.tracer.emit("case", move="cannot_now", fault=state.case.fault, when=when)
+    return changed
+
+
+def _when_from(text: str) -> str | None:
+    """When the caller can get to the device, as they said it („po valandos", „vakare")."""
+    low = (text or "").lower()
+    return next((m for m in vocab("available_when") if m in low), None)
+
+
+def _when_note(state: Any) -> str:
+    when = state.case.facts.get("_available_when")
+    return f" — they said they can get to it {when}; repeat that time back to them" if when else ""
 
 
 def _homework_words(state: Any, call: Any) -> str | None:
@@ -556,6 +639,12 @@ def _absorb(state: Any, rt: Any, facts: dict[str, str]) -> str:
         rt.tracer.emit(
             "case", move="guide_wait", at=state.case.guide_step, said=state.case.guide_said
         )
+        return "waiting"
+    if state.turn.ident_answer:
+        # This utterance answered an IDENTIFICATION question („Taip, kitas šeimos nario
+        # vardu"): it is not the answer to the Case's step (N2, live 2026-10-09: read as
+        # „yes, I can reach the router"). The Case may still speak this turn — it just does not
+        # take these words.
         return "waiting"
     if _is_escalate(call) and state.ticket.stage:
         # The technician has been asked for and the contact dialogue is collecting the
@@ -1688,6 +1777,9 @@ def _module_plan_inner(state: Any, rt: Any, call, facts: dict[str, str], *, rule
     if step.kind == "escalate":
         return _escalate(state, rt, state.case.fault, note=step.note)
     if step.kind == "action":
+        waits = _line_does_not_show(state, rt, call, facts)
+        if waits is not None:
+            return waits
         # A module with words ANNOUNCES what the engine is doing and the turn ends there —
         # the caller hears "pririšiu, sekundėlę" instead of a silent chain of tools (full
         # eval, S1). A module without words is internal plumbing: silent, same turn.
@@ -1738,6 +1830,49 @@ def _module_plan_inner(state: Any, rt: Any, call, facts: dict[str, str], *, rule
             knowledge_need=call.knowledge_need,
         ),
         awaiting=step.awaits,
+    )
+
+
+def _line_does_not_show(state: Any, rt: Any, call, facts: dict[str, str]) -> TurnPlan | None:
+    """An action whose `requires` the line does not show waits (N3): the step that should have
+    produced it is taken back, and the caller hears what we do NOT see yet."""
+    from ...contract.locale import phrase
+
+    spec = catalog.module(call.module)
+    if spec is None or not spec.requires:
+        return None
+    missing = [
+        need for need in spec.requires if facts.get(need.split("=", 1)[0]) != need.split("=", 1)[1]
+    ]
+    if not missing:
+        return None
+    turn = str(state.dialog.turn_count)
+    if state.case.facts.get("_line_read_turn") != turn:
+        # Read the line FIRST, in this same turn: the caller may have just done it, and the
+        # facts are from the last read (the demo's plug simulation changes the line too).
+        state.case.facts["_line_read_turn"] = turn
+        rt.tracer.emit("case", move="line_check_before", module=call.module, missing=missing)
+        return TurnPlan(
+            owner="diagnosis",
+            rule="case.probe",
+            action=Action(
+                type="tool", name="diagnose_connection", args={"customer_id": _cid(state)}
+            ),
+            say=Say(kind="none"),
+            redecide_after_action=True,
+        )
+    rt.tracer.emit("case", move="action_waits", module=call.module, missing=missing)
+    if state.case.step > 0:
+        state.case.step -= 1  # the step that was to produce it is not done after all
+        before = _current(state)
+        if before is not None:
+            for done in (state.case.did, state.case.worked):
+                if done and done[-1] == before.module:
+                    done.pop()
+    return TurnPlan(
+        owner="procedure",
+        rule=f"case.{call.module}.waits",
+        say=Say(kind="phrase", text=phrase(spec.unmet) if spec.unmet else None, stage="diagnosis"),
     )
 
 

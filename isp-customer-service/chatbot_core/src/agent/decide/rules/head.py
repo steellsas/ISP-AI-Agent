@@ -230,8 +230,16 @@ def caller_intro(state: Any, rt: Any, user_input: str) -> bool:
             return True
         # Question by WORDS only — STT sticks "?" onto rising intonation
         # ("Tomas? Ne, mano vardas Tomas…" is the ANSWER, not a question).
-        if is_real_question(user_input):
-            return  # off-script — the LLM answers; the ladder re-asks next turn
+        names_self = any(m in low_intro for m in vocab("caller_own_name_markers"))
+        if is_real_question(user_input) and not names_self:
+            # off-script — the LLM answers; the ladder re-asks next turn. But „Mano vardas —
+            # koks jūsų vardas? Mano vardas — Andrius" GIVES the name (live 2026-10-09: the
+            # name was skipped, and the next sentence „Nesunamosiu" became the name; N4).
+            return
+        from ...perceive.detectors import detect_cannot_now
+
+        if detect_cannot_now(user_input) and not names_self:
+            return  # „nesu namuose" answers something else — never a name (N4)
         if not detect_farewell(user_input):
             # Wait/consent-only replies are NOT a name ("Taip.", "Laukiu, laukiu"
             # were captured as names live) — record "nenurodyta" and move on.

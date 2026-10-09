@@ -438,6 +438,11 @@ class ModuleSpec(_Model):
     simulate_env: str | None = None
     # Klausimas, į kurį atsakymas jau žinomas iš kito fakto (žr. `AnsweredWhen`).
     answered_when: list[AnsweredWhen] = []
+    # What the LINE must show before an action runs („fact=value"), and what to say when it
+    # does not (N3, live 2026-10-09: „Matau linijoje naują įrenginį — pririšiu" with no device
+    # on the line — the caller's „done" was a misread question).
+    requires: list[str] = []
+    unmet: str | None = None  # phrase key
 
 
 class FaultCard(_Model):

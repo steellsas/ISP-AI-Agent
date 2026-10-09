@@ -10,3 +10,8 @@ tool: update_mac
 announce: modules.bind.announce
 goal: "the device seen on the line bound to the caller's port"
 produces: [device_registered, traffic, port_flapped]
+# Pririšti galima tik tai, ką linija MATO. Kliento „padariau" — ne įrodymas (gyvai 2026-10-09
+# klausimas „Namuose kompiuterį?" buvo perskaitytas kaip „įkišau", ir agentas paskelbė, kad
+# mato naują įrenginį, kurio nebuvo).
+requires: [device_seen=yes]
+unmet: modules.bind.not_seen

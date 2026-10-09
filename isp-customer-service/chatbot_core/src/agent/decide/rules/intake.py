@@ -33,6 +33,8 @@ def _apply_caller_relation(state: Any, rt: Any) -> None:
     if not relation:
         return
     s = state
+    state.turn.ident_answer = True  # the Case does not read this utterance (N2)
+    state.turn.perception_step = None  # nor the model's step label taken from it
     s.identity.holder_clarify_open = False
     s.identity.holder_clarify_asked = False
     # The same answer often CORRECTS the name: live 2026-09-30 the caller said „Ne, mano vardu

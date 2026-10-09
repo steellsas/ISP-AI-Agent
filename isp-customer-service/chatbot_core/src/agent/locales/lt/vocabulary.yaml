@@ -488,6 +488,14 @@ addr_no:
 # A-banga P1 (Andrius 2026-09-04, gyva #6: „Ne patogu" buvo ignoruotas ir
 # agentas toliau liepė ieškoti routerio): negalėjimo-DABAR signalai. Sąmoningai
 # be pliko „negaliu" — „negaliu prisijungti/rasti" yra eigos turinys.
+# N1 (Andrius, 2026-10-09): WHEN the caller can get to the device — kept as said, for the
+# callback words and the ticket. More specific first.
+# The answer to the homework's „…Gerai?" (N1): here „gerai" / „tinka" ARE the consent (the
+# generic yes/no keeps them neutral — elsewhere „gerai" is a backchannel). Whole words only.
+homework_agree: ["gerai", "tinka", "sutariam", "sutarta", "susitarėm", "susitarem", "paskambinsiu", "perskambinsiu", "pabandysiu", "padarysiu", "patikrinsiu"]
+available_when: ["po pusvalandžio", "po pusvalandzio", "po valandos", "po dviejų valandų", "po dvieju valandu", "po kelių valandų", "po keliu valandu", "po pietų", "po pietu", "po darbo", "vakare", "šįvakar", "sivakar", "rytoj", "poryt", "savaitgalį", "savaitgali", "šiandien", "siandien", "ryte", "netrukus", "kai grįšiu", "kai grisiu"]
+# …and that they cannot say when, or cannot at all (U9: not a refusal — a technician is offered).
+never_available: ["nežinau", "nezinau", "negalėsiu", "negalesiu", "niekada", "iš viso negaliu", "is viso negaliu", "nebus kam"]
 cannot_now:
   - "nepatogu"
   - "ne patogu"
@@ -509,6 +517,15 @@ cannot_now:
   # RETURNING is a cannot-now, not an in-progress report.
   - "kai grįšiu"
   - "kai grisiu"
+  # Gyvai 2026-10-09: ASR suklijavo „nesu namuose" į „Nesunamosiu"; „esu darbe" — irgi ne namie.
+  - "nesunam"
+  - "esu darbe"
+  - "esu darbą"
+  - "ne prie routerio"
+  - "grįšiu po"
+  - "grisiu po"
+  - "grįčiau po"
+  - "grįsiu po"
   - "grįžęs pad"
   - "grizes pad"
   - "kai būsiu nam"
@@ -665,6 +682,20 @@ no_problem_marks:
   - "bėdų nėra"
   - "bedu nera"
   - "viskas veikia"
+  # N5 (live 2026-10-09): „Neturiu TOKIŲ bėdų" / „jokių bėdų" — a word between the verb and
+  # the noun hid the denial, and the call went into identification for a fault never reported.
+  - "neturiu tokių bėd"
+  - "neturiu tokiu bed"
+  - "neturiu jokių bėd"
+  - "neturiu jokiu bed"
+  - "neturiu jokių problem"
+  - "neturiu jokiu problem"
+  - "jokių bėdų"
+  - "jokiu bedu"
+  - "jokių problemų"
+  - "jokiu problemu"
+  - "nėra jokių bėd"
+  - "nera jokiu bed"
 
 # --- Symptom extraction (A3) -------------------------------------------------
 # Deterministic categorical symptoms from the utterance. Order WITHIN a category

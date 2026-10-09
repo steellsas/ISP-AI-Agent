@@ -601,11 +601,14 @@ modules:
     can_now: "Ar galite dabar prieiti prie įrenginio?"
   homework:
     later: "Kai būsite namuose, pabandykite tai padaryti. Jei internetas neatsistatys per porą minučių — paskambinkite, padėsime arba užregistruosime meistrą. Gerai?"
+    # N1 (Andrius, 2026-10-09): kai klientas negali prieiti — pirma sužinoti, KADA galės.
+    when_ask: "Supratau. Kada galėsite prieiti prie routerio — šiandien ar vėliau?"
   bind:
     # Gyvai 2026-09-30: pririšamas buvo KOMPIUTERIS, o frazė sakė „tai jūsų routeris" — klientas
     # taisė agentą („ne, čia kompiuteris mano"). Frazė nebevardija įrenginio: pririšamas tas,
     # kurį klientas ką tik prijungė.
     announce: "Matau linijoje naują įrenginį — pririšiu jį prie jūsų linijos, sekundėlę."
+    not_seen: "Linijoje kompiuterio dar nematau. Ar jau įkišote laidą iš sienos tiesiai į kompiuterio tinklo lizdą?"
   check_power:
     question: "Patikrinkime maitinimą: ar routerio laidas tvirtai įkištas į patį routerį ir į rozetę? Jei taip — pabandykite kitą rozetę."
   offer_guide:
@@ -835,6 +838,7 @@ ticket:
     # Padėtas ragelis (Andrius, 2026-10-09: *„parašyta, kas buvo atlikta ir kada klientas padėjo
     # ragelį"*): kada ir kurioje pokalbio dalyje ryšys nutrūko.
     hung_up: " Klientas padėjo ragelį {time} ({phase}) — pokalbis nutrūko nebaigtas."
+    available_when: " Klientas prie įrangos galės: {when}."
     assumed_item: "{fact} (dirbome su prielaida: {value})"
     tried: " Bandyta/atmesta: {causes}."
     extra: " Papildomai patikrinti: {items}."
