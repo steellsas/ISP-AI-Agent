@@ -296,7 +296,9 @@ class TestWhenTheCallerCannotDoItNow:
         plan = case_rule.plan(state, rt)
 
         assert plan.rule == "case.homework" and plan.awaiting == "later_agreed"
-        assert "Kai būsite namuose" in plan.say.text
+        assert (
+            "patikrinsime kartu" in plan.say.text
+        )  # nothing done yet: what to check, then together
         assert "maitinimo laidą" in plan.say.text  # what they were about to be asked to do
 
     def test_agreeing_closes_the_call_as_a_callback(self, call):

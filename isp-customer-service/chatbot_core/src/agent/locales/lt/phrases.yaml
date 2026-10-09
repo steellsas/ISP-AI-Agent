@@ -600,7 +600,9 @@ modules:
   reach:
     can_now: "Ar galite dabar prieiti prie įrenginio?"
   homework:
-    later: "Kai būsite namuose, pabandykite tai padaryti. Jei internetas neatsistatys per porą minučių — paskambinkite, padėsime arba užregistruosime meistrą. Gerai?"
+    # Andrius (2026-10-09): niekas dar nepadaryta — tad ne „jei vis tiek neveiks", o KĄ patikrinti
+    # ir kad paskambinus patikrinsime kartu.
+    later: "Tai patikrinkite, kai būsite namuose, ir paskambinkite — patikrinsime kartu ir, jei reikės, užregistruosime meistrą. Gerai?"
     # N1 (Andrius, 2026-10-09): kai klientas negali prieiti — pirma sužinoti, KADA galės.
     when_ask: "Supratau. Kada galėsite prieiti prie routerio — šiandien ar vėliau?"
   bind:

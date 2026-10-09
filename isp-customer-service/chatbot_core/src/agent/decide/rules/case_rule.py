@@ -180,7 +180,8 @@ def _not_now_plan(state: Any, rt: Any, facts: dict[str, str]) -> TurnPlan | None
             action=Action(type="close", name="callback"),
             say=Say(
                 kind="directive",
-                goal="thank them warmly, repeat that they call if it does not help, say goodbye"
+                goal="thank them warmly, repeat in one sentence what to check when they are back "
+                "and that when they call we will check it together, then say goodbye"
                 + _when_note(state),
                 stage="closing",
             ),
