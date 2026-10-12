@@ -6,9 +6,9 @@ change WHAT happens — the rules in `decide` chose that; the card only says wha
 speaker may say and must not say.
 
 Sections, in the order they carry weight on a phone call:
-  SIDE TOPIC / TICKET DIALOGUE  the turn is off the fault path — they lead
+  DIALOGUE                      the acknowledgement + the ONE dialogue move (agent/dialogue.py)
+  TICKET DIALOGUE               the contact questions
   DELIVERY                      what the caller did or did not hear (voice)
-  JUST HEARD                    this turn's understanding pass
   CALLER / PROBLEM / TICKET     durable identity and case facts
   CASE                          closed, registered, resolved states
   DIALOGUE                      stuck, silence, waiting, plain-words requests
@@ -33,10 +33,9 @@ def context_card(state, rt) -> str | None:
     """The card for this turn, or None when nothing is known yet."""
     lines: list[str] = []
     for section in (
-        _side_topic,
+        _dialogue,
         _ticket_dialogue,
         _delivery,
-        _just_heard,
         _identification_notes,
         _case_facts,
         _tool_trouble,
@@ -474,14 +473,11 @@ def _delivery(state, rt) -> list[str]:
     return out
 
 
-def _just_heard(state, rt) -> list[str]:
-    """The understanding pass: the acknowledgement that makes the caller feel heard, and
-    what they did not understand."""
-    u = state.turn.understanding
-    if u is None or state.turn.side_topic_active or state.closing.case_closed:
+def _acknowledge(state) -> list[str]:
+    """The plain acknowledgement that makes the caller feel heard."""
+    understood = ((state.turn.understanding or {}).get("understood") or "").strip()
+    if not understood:
         return []
-    out: list[str] = []
-    understood = (u.get("understood") or "").strip()
     # The pass's summary is INTERNAL wording, often third-person about the caller; quoted
     # verbatim it became the agent's broadcast thought („Supratau — Paulius atliko veiksmą“
     # spoken TO Paulius). Then the instruction goes out without the quote.
@@ -490,26 +486,100 @@ def _just_heard(state, rt) -> list[str]:
         m in understood.lower()
         for m in ("klientas", "klientė", "kliente", "naudotojas", "vartotojas")
     )
-    if understood and third_person:
-        out.append(
+    if third_person:
+        return [
             "ACKNOWLEDGE in half a sentence IN YOUR OWN WORDS, addressing the caller in the "
             "SECOND person („Supratau…“, „Gerai…“) — never quote an internal summary and "
             "never speak about the caller in the third person. Reflect only what they SAID; "
             "do not credit them with an action nobody reported (live 2026-09-28: the caller "
             "said „Galiu?“ and heard „Gerai, kad perkrovėte“)."
-        )
-    elif understood:
-        out.append(
-            f"ACKNOWLEDGE what you understood in half a sentence („{understood}“) — then "
-            "continue with one question or step. Address the CALLER („Supratau — …“), never "
-            "speak about them in the third person (NOT „Klientas sutinka…“)."
-        )
-    if u.get("type") == "confusion" and u.get("confusion"):
-        out.append(
-            f"NOT UNDERSTOOD BY THE CALLER: {u['confusion']} — explain in OTHER, simpler, "
-            "everyday words; do not repeat the same sentence."
-        )
-    return out
+        ]
+    return [
+        f"ACKNOWLEDGE what you understood in half a sentence („{understood}“) — then "
+        "continue with one question or step. Address the CALLER („Supratau — …“), never "
+        "speak about them in the third person (NOT „Klientas sutinka…“)."
+    ]
+
+
+def _caller_confused(state) -> list[str]:
+    confusion = (state.turn.understanding or {}).get("confusion")
+    return [
+        f"NOT UNDERSTOOD BY THE CALLER: {confusion} — explain in OTHER, simpler, "
+        "everyday words; do not repeat the same sentence."
+    ]
+
+
+# --- the dialogue move (agent/dialogue.py chooses ONE) ---------------------------------------
+
+_MOVE_LABEL = {
+    "return": "answer briefly, then bring them back",
+    "answer": "answer their question first",
+    "wait": "say you will wait",
+    "explain": "explain more simply",
+    "clarify": "say what you heard and ask for the missing part",
+    "check_in": "check in with them",
+}
+
+
+def _dialogue(state, rt) -> list[str]:
+    """[acknowledgement] + [ONE dialogue move]; the goal follows further down the card.
+
+    Before stage 5 every signal here wrote its own section, and up to five landed in one
+    card — the model got „say you cannot advise" and „NEVER say you cannot advise" in the
+    same turn. The chooser picks one; this only words it.
+    """
+    from .. import dialogue
+
+    chosen = dialogue.choose(state)
+    out: list[str] = []
+    if chosen.ack == dialogue.ACK_CONFIRM:
+        out += _reading_to_confirm(state)
+    elif chosen.ack == dialogue.ACK_PLAIN:
+        out += _acknowledge(state)
+    if chosen.move == dialogue.NONE:
+        return out
+    words = _MOVE_WORDS[chosen.why](state, rt)
+    if not words:
+        return out
+    out.append(
+        f"THIS REPLY'S DIALOGUE MOVE — {_MOVE_LABEL[chosen.move]}; then the goal below. "
+        "One question at most."
+    )
+    return out + words
+
+
+def _answer_mid_fix(state, rt) -> list[str]:
+    """A question while the fix runs: the written answer when there is one, then the SAME
+    step — never „I cannot advise" (that line is for questions outside our area)."""
+    said = _kb_answer(state, rt)
+    lead = []
+    if said and not said.startswith("(NOT SURE"):
+        lead = [
+            "THE CALLER ASKED HOW: answer in ONE or TWO sentences using ONLY this written "
+            f"knowledge — {said} KEEP the concrete detail it names (an address like 192.168.0.1, "
+            "a setting's name, where to look). Invent nothing."
+        ]
+    return lead + _question_mid_fix(state)
+
+
+_MOVE_WORDS = {
+    "side_topic": lambda state, rt: _side_topic(state, rt),
+    "asked_how": lambda state, rt: _asked_how(state, rt),
+    "question_mid_fix": _answer_mid_fix,
+    "also_asked": lambda state, rt: _also_asked(state, rt),
+    "asked_while_waiting": lambda state, rt: [_AWAITING["asked_while_waiting"]],
+    "in_progress": lambda state, rt: [_AWAITING["in_progress"]],
+    "did_not_follow": lambda state, rt: [_AWAITING["did_not_follow"]],
+    "long_wait": lambda state, rt: [_AWAITING["long_wait"]],
+    "caller_confused": lambda state, rt: _caller_confused(state),
+    "unclear_answer": lambda state, rt: _unclear_case_answer(state),
+    "recheck": lambda state, rt: _recheck_to_ask(state),
+    "change_tactic": lambda state, rt: _stuck(state, rt),
+    "not_understood": lambda state, rt: _stuck(state, rt),
+    "quiet": lambda state, rt: _stuck(state, rt),
+    "silence": lambda state, rt: _assist_the_caller(state),
+    "still_on_step": lambda state, rt: _assist_the_caller(state),
+}
 
 
 # --- identification ----------------------------------------------------------------------
@@ -703,10 +773,10 @@ def _debt_facts(state, rt) -> list[str]:
 
 
 def _dialogue_state(state, rt) -> list[str]:
-    """Stuck ladder, silence, the caller's intent while we wait, plain-words requests."""
+    """What the call stands on beyond the move: the whole address heard so far, an announced
+    outage, the line's proof, the sum-up, the last chance, plain-words requests."""
     s = state
     out: list[str] = []
-    out += _stuck(state, rt)
     # Once stuck AND still unidentified, hand over EVERYTHING the caller said: VAD/STT
     # splits and garbles spoken numbers, and no single turn resolves — the whole buffer
     # lets the model infer the intended address.
@@ -730,15 +800,8 @@ def _dialogue_state(state, rt) -> list[str]:
             "caller's questions about the outage (time, progress, compensation). When they "
             "understand / will wait — say goodbye; the engine closes the call."
         )
-    out += _awaiting(state, rt)
-    out += _unclear_case_answer(state)
-    out += _reading_to_confirm(state)
     out += _proof_to_tell(state)
-    out += _recheck_to_ask(state)
     out += _summary_to_tell(state)
-    out += _also_asked(state, rt)
-    out += _question_mid_fix(state)
-    out += _assist_the_caller(state)
     out += _one_more_chance(state)
     if s.dialog.clarity_level == "basic" and not s.closing.case_closed:
         out.append(
@@ -1019,44 +1082,34 @@ def _unclear_case_answer(state) -> list[str]:
     ]
 
 
-def _awaiting(state, rt) -> list[str]:
-    """Why the turn did not move us on — so the reply answers what the caller actually did
-    instead of re-asking the same sentence."""
-    s = state
-    if not s.dialog.awaiting or s.closing.case_closed:
-        return []
-    from ..perceive.detectors import INTENT_CONFUSED, INTENT_IN_PROGRESS, INTENT_QUESTION
-
-    out: list[str] = []
-    if s.dialog.last_intent == INTENT_IN_PROGRESS:
-        out.append(
-            "THE CALLER IS STILL DOING IT: they said they are going / fetching / about to — "
-            "it is NOT done yet. Briefly confirm that you will wait („Gerai, palauksiu — "
-            "pasakykite, kai būsite pasiruošęs“) and WAIT. Do NOT repeat the instruction, do "
-            "NOT assume it failed, do NOT move on."
-        )
-    elif s.dialog.last_intent == INTENT_QUESTION:
-        out.append(
-            "THE CALLER ASKED SOMETHING: answer their question simply first, then gently "
-            "return to what you asked for. Never repeat your question without answering."
-        )
-    elif s.dialog.last_intent == INTENT_CONFUSED:
-        # Antros pakopos („2+ kartus nesupranta — imk mažiausią įmanomą dalį, paskui siūlyk
-        # meistrą") čia nebėra: ji skaitė `dialog.step_confusions`, kurio v2 niekada nerašė,
-        # ir dar siūlė meistrą tuo metu, kai klientas dirba — o 8 banga būtent tai uždraudė.
-        # Pakopą dabar veda `case.stall` per `_assist_the_caller`.
-        out.append(
-            "THE CALLER DID NOT FOLLOW: do NOT repeat the same words. Break this step into "
-            "a SMALLER one — first lead them to WHERE to look and what it looks like, and "
-            "ask for that one thing only."
-        )
-    if s.dialog.awaiting_turns >= 3:
-        out.append(
-            "LONG WAIT: several turns without progress. Check in like a human, ask how it is "
-            "going and where they are („Ar pavyksta rasti? Gal pasakykite, ką matote“), or "
-            "offer to register the fault."
-        )
-    return out
+# Why the turn did not move us on — so the reply answers what the caller actually did instead
+# of re-asking the same sentence.
+_AWAITING = {
+    "in_progress": (
+        "THE CALLER IS STILL DOING IT: they said they are going / fetching / about to — "
+        "it is NOT done yet. Briefly confirm that you will wait („Gerai, palauksiu — "
+        "pasakykite, kai būsite pasiruošęs“) and WAIT. Do NOT repeat the instruction, do "
+        "NOT assume it failed, do NOT move on."
+    ),
+    "asked_while_waiting": (
+        "THE CALLER ASKED SOMETHING: answer their question simply first, then gently "
+        "return to what you asked for. Never repeat your question without answering."
+    ),
+    # Antros pakopos („2+ kartus nesupranta — imk mažiausią įmanomą dalį, paskui siūlyk
+    # meistrą") čia nebėra: ji skaitė `dialog.step_confusions`, kurio v2 niekada nerašė, ir dar
+    # siūlė meistrą tuo metu, kai klientas dirba — o 8 banga būtent tai uždraudė. Pakopą dabar
+    # veda `case.stall` per `_assist_the_caller`.
+    "did_not_follow": (
+        "THE CALLER DID NOT FOLLOW: do NOT repeat the same words. Break this step into "
+        "a SMALLER one — first lead them to WHERE to look and what it looks like, and "
+        "ask for that one thing only."
+    ),
+    "long_wait": (
+        "LONG WAIT: several turns without progress. Check in like a human, ask how it is "
+        "going and where they are („Ar pavyksta rasti? Gal pasakykite, ką matote“), or "
+        "offer to register the fault."
+    ),
+}
 
 
 # --- what we believe and what is settled ------------------------------------------------------
@@ -1084,7 +1137,6 @@ def _plan_goal(state, rt) -> list[str]:
     out += _goal_ticket(state, rt)
     out += _goal_holder_clarify(state, rt)
     _mark_written_step_said(state)
-    out += _asked_how(state, rt)
     out += _goal_recap_and_findings(state, rt)
     return out
 

@@ -40,10 +40,12 @@ def speak_prompt(skill: str, caller_phone: str, language: str) -> str:
 def build_messages(state: Any, rt: Any, owner: str) -> list[dict]:
     """The payload for one speaking call: the prefix (core + this turn's skill), the
     history summary, the window and the card."""
+    from ..dialogue import observe
     from .context_card import context_card
     from .history import history_summary, prune_history
     from .skill import skill_for
 
+    observe(state, rt)  # the dialogue move, traced for the dashboard (stage 5)
     skill = skill_for(state, owner)
     rt.tracer.emit("skill", skill=skill, owner=owner)
     messages = [

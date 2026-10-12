@@ -76,6 +76,7 @@ function makeBrain(root, opts = {}) {
         totals.cost += e.cost_usd || 0; totals.turns += 1;
         renderTotals(); break;
       case "voice_latency": { const t = last || open(); t.tts = e.tts_ms; break; }
+      case "dialogue": open().dialogue = e; break; // before this turn's plan is traced
       case "graph_node": open().nodes[e.node] = e.ms; break;
       case "asr": open().asr = e; break;
       case "tool_call": open().tools.push(e.name); break;
@@ -184,9 +185,19 @@ function makeBrain(root, opts = {}) {
     el.plan.innerHTML =
       `<div class="k">Ėjimas ${p.turn_index ?? t.index}</div>` +
       `<div><b>${esc(p.owner || "—")}</b> · <code>${esc(p.rule || "—")}</code></div>` +
-      `<div><span class="k">Kalba:</span> ${who}</div>` +
+      `<div><span class="k">Kalba:</span> ${who}${dialoguePill(t.dialogue)}</div>` +
       `<div><span class="k">Hipotezė:</span> ${hypothesisPill(p.hypothesis || s.hypothesis, t.pivot)}</div>` +
       `<div><span class="k">Veiksmas:</span> ${action} · <span class="k">laukia:</span> ${esc(p.awaiting || s.awaiting || "—")}</div>`;
+  }
+
+  // Pokalbio sluoksnis (v3 5 etapas): patvirtinimas + VIENAS pokalbio veiksmas.
+  const MOVE_LT = { return: "grąžina", answer: "atsako", wait: "laukia", explain: "paaiškina", clarify: "persiklausia", check_in: "pasiteirauja" };
+  const ACK_LT = { plain: "patvirtina", confirm: "patikslina, ką suprato" };
+  function dialoguePill(d) {
+    if (!d) return "";
+    const parts = [ACK_LT[d.ack], MOVE_LT[d.move]].filter(Boolean);
+    if (!parts.length) return "";
+    return ` · <span class="pill" title="${esc(d.why || "")}">${esc(parts.join(" + "))}</span>`;
   }
 
   function hypothesisPill(h, pv) {
@@ -227,6 +238,7 @@ function makeBrain(root, opts = {}) {
         if (e.prev === e.phase) return null;
         return [e.ok ? "decide" : "err", "fazė",
           `${PHASE_LT[e.prev] || "—"} → ${PHASE_LT[e.phase] || e.phase}${e.ok ? "" : " — neleistinas perėjimas"}`];
+      case "dialogue": return e.move && e.move !== "none" ? ["decide", "pokalbis", `${MOVE_LT[e.move] || e.move} · ${e.why}`] : null;
       case "turn_plan": return ["decide", "planas", `${e.owner} · ${e.rule} · ${(e.say || {}).kind || ""}`];
       case "decision": return ["decide", "sprendimas", [e.intent, e.action, e.from_step && e.to ? `${e.from_step}→${e.to}` : (e.to || ""), e.reason || e.value || e.key || ""].filter(Boolean).join(" ")];
       case "verdict": return ["decide", "verdiktas", `${e.reason || ""} ${e.group || ""} ${e.side || ""}`];
