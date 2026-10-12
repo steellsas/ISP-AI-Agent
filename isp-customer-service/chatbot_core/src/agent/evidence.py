@@ -155,6 +155,25 @@ def _mark_hit(low_folded: str, mark: str) -> bool:
     )
 
 
+def _computer_in(low: str) -> str | None:
+    """„Do you have a computer?" read in ONE clause (folded, lower-case)."""
+    from .perceive.detectors import detect_no_device
+
+    if not any(w in low for w in vocab("fact_computer_words")):
+        return None
+    if vocab_re("fact_no_computer").search(low):
+        return "no"
+    if any(tok.startswith(vocab("negation_prefixes")) and "tur" in tok for tok in low.split()):
+        return "no"  # „Neniauturiu kompiuterio" — STT of „ne, neturiu"
+    if any(_mark_hit(low, m) for m in vocab("fact_has_computer")) or vocab_re(
+        "fact_only_computer"
+    ).search(low):
+        return "yes"
+    if detect_no_device(low) and not any(w in low for w in vocab("only_words")):
+        return "no"
+    return None
+
+
 def extract_client_facts(text: str | None) -> dict[str, str]:
     """Keyword-read canonical facts from one caller utterance. Deliberately
     conservative: no match -> no fact (never guesses). Negations first —
@@ -167,17 +186,19 @@ def extract_client_facts(text: str | None) -> dict[str, str]:
     # kompiuterį" is a YES (eval S4 regression: the loose "netur…kompiuter"
     # match read it as no and the solution flipped to ticket instead of bridge).
 
-    from .perceive.detectors import detect_no_device
-
-    if any(w in low for w in vocab("fact_computer_words")):
-        if vocab_re("fact_no_computer").search(low):
-            facts["has_computer"] = "no"
-        elif any(_mark_hit(low, m) for m in vocab("fact_has_computer")) or vocab_re(
-            "fact_only_computer"
-        ).search(low):
-            facts["has_computer"] = "yes"
-        elif detect_no_device(low) and not any(w in low for w in vocab("only_words")):
-            facts["has_computer"] = "no"
+    # Clause by clause: „Routerį neturiu, BET kompiuterį turiu" is a yes (live 2026-10-12: the
+    # whole-sentence „neturiu" made it a no, a „Mhm" settled the conflict that way, and the
+    # bridge was skipped for a caller with a computer). The clause that names the computer
+    # decides; a yes anywhere wins over a no elsewhere.
+    computer = None
+    for clause in vocab_re("clause_split").split(low):
+        said = _computer_in(clause)
+        if said == "yes":
+            computer = "yes"
+            break
+        computer = said or computer
+    if computer:
+        facts["has_computer"] = computer
     if any(w in low for w in vocab("fact_lights_words")):
         if any(_fold(m) in low for m in vocab("fact_lights_no")):
             facts["lights"] = "off"

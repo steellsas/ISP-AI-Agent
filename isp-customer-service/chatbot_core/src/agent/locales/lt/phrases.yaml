@@ -11,6 +11,7 @@ identification:
     # atsako į pirmą klausimą ir antro neišgirsta. Ryšys su sutartimi skaitomas
     # iš atsakymo, jei pats pasako (detect_caller_relation).
     caller: "O su kuo kalbu — koks jūsų vardas?"
+    caller_again: "Atsiprašau, vardo gerai neišgirdau — gal galite pakartoti, kaip jūs vardu?"
     contact_phone: "Kokiu numeriu geriausia su jumis susisiekti, jei nutrūktų ryšys?"
 
   # SCRIPTED identification replies (2026-07-31): the mechanical ladder turns are
@@ -703,7 +704,9 @@ case:
       "off": "Noriu įsitikinti: routerio lemputės visai nedega — ar teisingai?"
       "on": "Noriu įsitikinti: routerio lemputės dega — ar teisingai?"
     done: "Ar jau tai padarėte?"
-    done_plug_power: "Ar jau įkišote maitinimo laidą ir užsidegė routerio lemputės?"
+    # Tik apie VEIKSMĄ — lemputes ir liniją patikrina kitas žingsnis. Dviejų dalykų klausimas
+    # gyvai 2026-10-12 gavo „įkišau, bet nedega" — nei taip, nei ne — ir nuskambėjo du kartus.
+    done_plug_power: "Ar jau įkišote maitinimo laidą?"
 
 verdict:
   # How a verdict is named to the caller (gloss) and why a ticket is needed.

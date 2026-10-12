@@ -114,7 +114,7 @@ def finish_ticket_dialogue(state: Any, rt: Any) -> str:
     from ..closing import close_call
 
     close_call(state, rt, "registered" if s.ticket.ticket_id else "declined")
-    val = s.ticket.contact_hours
+    val = s.ticket.contact_hours.rstrip(".")  # the template ends the sentence itself
     val = val[:1].lower() + val[1:]  # mid-sentence: "skambinti galima bet kada"
     done = (
         "identification.ticket_done_request"

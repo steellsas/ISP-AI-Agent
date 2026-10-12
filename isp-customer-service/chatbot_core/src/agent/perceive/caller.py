@@ -60,5 +60,46 @@ def extract_caller_name(text: str | None) -> str | None:
         return m.group(1).capitalize()
     for tok in _re.findall(vocab_text("name_word"), text):
         if tok.lower() not in vocab_set("name_stop_words") and len(tok) >= 3:
+            if _garbled_marker(tok):
+                continue  # „Panavardos" — STT of „mano vardas" (live 2026-10-12)
             return tok
     return None
+
+
+def _garbled_marker(token: str) -> bool:
+    """A word that is no name: the name QUESTION's own vocabulary mangled by STT, or a filler."""
+    low = token.lower()
+    if len(set(low)) <= 2:
+        return True  # „Ėėė", „Mmm" — a filler sound, not a name
+    return any(m in low for m in vocab("name_marker_stems"))
+
+
+def introduced_name(text: str | None) -> str | None:
+    """A name the caller GAVE unasked — „Labą dieną, esu Paulius, neveikia internetas".
+
+    Strict on purpose (it runs over sentences that were about something else): only after an
+    introduction marker, and only a capitalised word that is not a filler. „Aš esu darbe" is
+    no name. Live 2026-10-12 the caller said „esu Paulius" first and was asked for the name
+    anyway („tikiuosi minėjau").
+    """
+    if not text:
+        return None
+    import re as _re
+
+    markers = "|".join(_re.escape(m) for m in vocab("caller_intro_markers"))
+    m = _re.search(
+        rf"(?:^|[\s,.;])(?:{markers})\s+({vocab_text('name_word')})", text, _re.IGNORECASE
+    )
+    if not m:
+        return None
+    name = m.group(1)
+    if not name[:1].isupper() or name.lower() in vocab_set("name_stop_words"):
+        return None
+    after = text[m.end() :].strip().lower().split()
+    if after and (
+        after[0][:1].isdigit() or any(after[0].startswith(w) for w in vocab("not_name_followers"))
+    ):
+        return None  # „čia Vilniaus g. 29" — an address, not a name
+    if len(name) < 3 or _garbled_marker(name):
+        return None
+    return name.capitalize()

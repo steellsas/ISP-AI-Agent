@@ -81,7 +81,9 @@ def register_ticket_from_state(state: Any, rt: Any) -> None:
             phone=s.ticket.contact_phone or s.identity.caller_phone,
         )
         if s.ticket.contact_hours:
-            details += phrase("ticket.details.contact_hours", hours=s.ticket.contact_hours)
+            details += phrase(
+                "ticket.details.contact_hours", hours=s.ticket.contact_hours.rstrip(".")
+            )
         details += "."
     # The caller's anamnesis rides on the ticket — the human sees WHEN it broke
     # and after what, not just the telemetry verdict (Step 2 analysis).
@@ -252,7 +254,9 @@ def _register_request(state: Any, rt: Any) -> None:
             phone=s.ticket.contact_phone or s.identity.caller_phone,
         )
         if s.ticket.contact_hours:
-            details += phrase("ticket.details.contact_hours", hours=s.ticket.contact_hours)
+            details += phrase(
+                "ticket.details.contact_hours", hours=s.ticket.contact_hours.rstrip(".")
+            )
         details += "."
     args = {
         "customer_id": s.identity.customer_id,

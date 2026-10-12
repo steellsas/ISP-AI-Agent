@@ -445,8 +445,12 @@ class TestHolderNameCheck:
         agent.state.identity.result_pending = True
 
         caller_intro(agent.state, agent.runtime, "Aišku, ačiū, lauksiu")
+        # 2026-10-12 (A4): nothing readable is asked once more, not guessed …
+        assert agent.state.identity.caller_name is None
+        assert agent.state.identity.caller_name_reasked
+        caller_intro(agent.state, agent.runtime, "Aišku, ačiū, lauksiu")
 
-        assert agent.state.identity.caller_name == "nenurodyta"
+        assert agent.state.identity.caller_name == "nenurodyta"  # … and then let go
         assert agent.state.identity.holder_clarify_open is False
 
     def test_the_soft_clarification_rides_along_instead_of_taking_the_turn(self, db_connection):

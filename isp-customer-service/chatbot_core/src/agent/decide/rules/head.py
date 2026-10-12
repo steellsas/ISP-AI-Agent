@@ -255,6 +255,12 @@ def caller_intro(state: Any, rt: Any, user_input: str) -> bool:
                 # Live 2026-09-17: „Po anas mano vardas." went on the record and into
                 # „Malonu, Po anas mano vardas!" — no readable name is "nenurodyta".
                 name = extract_caller_name(user_input)
+                if name is None and not s.identity.caller_name_reasked:
+                    # Nothing readable as a name — ask once more instead of guessing
+                    # (Andrius, 2026-10-12: patikslinti, ne spėti).
+                    s.identity.caller_name_reasked = True
+                    rt.tracer.emit("caller_intro", name=None, reask=True)
+                    return True
                 s.identity.caller_name = name or "nenurodyta"
                 s.identity.caller_relation = detect_caller_relation(user_input)
                 # Phrasebook (reference dialogue, 2026-09-03): the caller JUST introduced
