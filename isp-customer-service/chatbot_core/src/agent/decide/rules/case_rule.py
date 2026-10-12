@@ -768,9 +768,18 @@ def _absorb(state: Any, rt: Any, facts: dict[str, str]) -> str:
         # iš routerio ir įkišau atgal" against "can you get to it now" — the engine waited
         # three turns for a yes it no longer needed) and finishes an instruction.
         if not (_reported_done(state) or _reported_outcome(state, call)):
-            # The model's word alone (eval S4: „Neturiu kito routerio, tik kompiuterį" read as
-            # „done" — and the demo powered the router on for it). Ask first.
-            return _park(state, rt, call, None, None)
+            from ...perceive.detectors import says_done_action
+
+            if says_done_action(state.dialog.last_heard):
+                pass  # their own words say it is done („Patikrinau…", eval S9)
+            elif _bare_acknowledgement(state) or state.dialog.last_intent == "in_progress":
+                # „Gerai" to an instruction is „ok, doing it", not „done" — wait, do not ask
+                # whether it is done (eval S4b under 6a: two extra turns of „Ar jau padarėte?").
+                return "waiting"
+            else:
+                # The model's word alone (eval S4: „Neturiu kito routerio, tik kompiuterį" read
+                # as „done" — and the demo powered the router on for it). Ask first.
+                return _park(state, rt, call, None, None)
         if awaited:
             ledger.record_client(state, rt, awaited, _done_value(awaited))
         return _advance(state, rt, by_words=True)
@@ -919,6 +928,13 @@ def _confirm_plan(state: Any, rt: Any) -> TurnPlan:
         rule="case.confirm",
         say=Say(kind="phrase", text=text, stage="diagnosis"),
     )
+
+
+def _caller_says_it_works(state: Any) -> bool:
+    from ... import modules as _modules
+    from .stage import statements_only
+
+    return _modules.label_from("restored", statements_only(state.dialog.last_heard)) == "yes"
 
 
 def _verify_must_be_told(state: Any, call: Any) -> bool:
@@ -1247,6 +1263,14 @@ def _done_value(fact: str) -> str:
     """What a done-report settles: being able to reach something is proven by having done
     it; anything else is simply confirmed."""
     return "yes"
+
+
+def _bare_acknowledgement(state: Any) -> bool:
+    """„Gerai", „Ok", „Aha" — a short nod with nothing else in it."""
+    from ...contract.locale import vocab
+
+    low = (state.dialog.last_heard or "").lower().strip(" .!,")
+    return 0 < len(low.split()) <= 3 and any(mark in low for mark in vocab("acknowledge"))
 
 
 def _just_acknowledged(state: Any) -> bool:
@@ -1938,6 +1962,19 @@ def _module_plan_inner(state: Any, rt: Any, call, facts: dict[str, str], *, rule
             # Įrodymas jau yra (zondas atsakė ankstesniame ėjime), tad šis ėjimas nebezonduoja —
             # jis PASAKO, ką linija rodo, ir paklausia kliento. Andrius (2026-09-28): *„turėtų
             # pasakyti, kad matau, jog srautas atsirado… ir pasiklausti kliento."*
+            if _caller_says_it_works(state):
+                # …unless they already said it („Gerai, ačiū, veikia…"): the line agrees and
+                # their answer is in — asking „ar jums jau veikia?" again drifted the call away
+                # from the registration (eval S4b, 2026-10-12). Settle it and decide again.
+                state.case.step_said = state.case.step
+                ledger.record_client(state, rt, "restored", "yes")
+                rt.tracer.emit("case", move="restored_unasked", step=state.case.step)
+                return TurnPlan(
+                    owner="procedure",
+                    rule=rule,
+                    say=Say(kind="none"),
+                    redecide_after_action=True,
+                )
             return _proof_plan(state, rt, call, facts, step, rule)
         state.case.awaiting_probe = True
         return TurnPlan(

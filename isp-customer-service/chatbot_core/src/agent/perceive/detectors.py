@@ -598,7 +598,12 @@ def detect_farewell(text: str | None) -> bool:
                 return True
         return False
 
-    if any(m in low for m in vocab("farewell")):
+    from ..contract.locale import lang
+
+    # Folded on both sides: STT drops the ogonek — „Ne, ačiu, viskas" is „ačiū, viskas", and
+    # unread it turned into „still not working" and reopened a solved call (eval S1, 6a).
+    folded = lang().fold(low)
+    if any(lang().fold(m) in folded for m in vocab("farewell")):
         return True
     if any(w in tokens and _standalone_goodbye(w) for w in vocab("standalone_goodbye")):
         return True

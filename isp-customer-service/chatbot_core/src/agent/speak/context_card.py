@@ -710,7 +710,7 @@ def _case_facts(state, rt) -> list[str]:
         out.append(f"Problem type: {s.intake.problem_type}")
     if s.intake.symptoms:
         parts = ", ".join(f"{k}={v}" for k, v in s.intake.symptoms.items())
-        out.append(f"SYMPTOMS (the caller's): {parts}.")
+        out.append(f"SYMPTOMS (the caller's — ask only what is missing): {parts}.")
     if s.ticket.ticket_id:
         out.append(f"Ticket: {s.ticket.ticket_id}")
     out += _debt_facts(state, rt)

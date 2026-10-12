@@ -707,6 +707,10 @@ case:
     # Tik apie VEIKSMĄ — lemputes ir liniją patikrina kitas žingsnis. Dviejų dalykų klausimas
     # gyvai 2026-10-12 gavo „įkišau, bet nedega" — nei taip, nei ne — ir nuskambėjo du kartus.
     done_plug_power: "Ar jau įkišote maitinimo laidą?"
+    done_connect_direct: "Ar jau įkišote tą laidą į kompiuterį?"
+    done_reboot: "Ar jau ištraukėte ir vėl įkišote routerio maitinimo laidą?"
+    done_cable: "Ar jau perkišote laidą?"
+    done_device_check: "Ar jau pažiūrėjote?"
 
 verdict:
   # How a verdict is named to the caller (gloss) and why a ticket is needed.

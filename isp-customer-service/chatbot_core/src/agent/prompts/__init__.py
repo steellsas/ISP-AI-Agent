@@ -97,8 +97,9 @@ def check_prompts() -> None:
         load_node_prompt(path.relative_to(PROMPTS_DIR).with_suffix("").as_posix())
 
 
-def load_speak_prompt(caller_phone: str, language: str = "lt") -> str:
-    """Load the speaker's CORE prompt (composes its partials, then fills placeholders)."""
+def load_speak_prompt(caller_phone: str = "", language: str = "lt") -> str:
+    """Load the speaker's CORE prompt (composes its partials, then fills placeholders). The
+    caller's number is no longer part of it — only the ticket phase carries it (v3 6a)."""
     template = _localize(_expand(_read("speak/system")))
     return template.format(
         caller_phone=caller_phone,
