@@ -799,6 +799,9 @@ fact_lights_yes: ["dega", "šviečia", "sviecia", "žiba", "ziba"]
 
 fact_has_computer:
   - "turiu kompiuter"
+  - "kompiuteri turiu"
+  - "kompiuteri turim"
+  - "kompiuteri yra"
   - "yra kompiuter"
   - "turim kompiuter"
   - "kompiuteris yra"
@@ -1045,6 +1048,12 @@ name_stop_words:
   - "nezinau"
 
 name_word: "[A-ZĄČĘĖĮŠŲŪŽ][a-ząčęėįšųūž]+"
+# Vardo klausimo žodžiai, STT sudarkyti į „vardą" („Panavardos sėra gėdras", 2026-10-12).
+name_marker_stems: ["vard", "pavard"]
+# Prisistatymas nepaklaustam: „esu Paulius", „čia Jonas", „mano vardas Ona".
+caller_intro_markers: ["mano vardas yra", "mano vardas", "mano vardu", "aš esu", "as esu", "čia kalba", "cia kalba", "esu", "čia", "cia", "vadinuosi"]
+# Po šių žodžių einantis žodis yra adresas, ne vardas („čia Vilniaus g. 29").
+not_name_followers: ["g.", "g", "gatv", "pr.", "prospekt", "al.", "alėj", "alej", "kel", "skg", "skersgat", "mikrorajon", "namas", "butas"]
 
 # --- agent/decide/rules/identification.py ----------------------------------------
 
@@ -1233,6 +1242,24 @@ hour_words:
 # Dienos dalys ir dienos, kurias verta išsaugoti tikete.
 # „Kada tik norit", „nesvarbu" — tiketui tai ta pati „bet kada".
 hours_anytime_words: ["bet kada", "bet kuriuo", "kada tik", "kada jums", "nesvarbu", "visada", "visą dieną", "visa dieną", "visa diena"]
+# Kada skambinti: diena ir dienos dalis yra laiko dalis (gyvai 2026-10-12 „vakare" ir „rytoj"
+# dingdavo iš tiketo). Raktas — žodžio pradžia, reikšmė — kaip užrašoma tikete.
+hours_day_words:
+  rytoj: "rytoj"
+  poryt: "poryt"
+  šiandien: "šiandien"
+  siandien: "šiandien"
+  pirmad: "pirmadienį"
+  antrad: "antradienį"
+  trečiad: "trečiadienį"
+  treciad: "trečiadienį"
+  ketvirtad: "ketvirtadienį"
+  penktad: "penktadienį"
+  šeštad: "šeštadienį"
+  sestad: "šeštadienį"
+  sekmad: "sekmadienį"
+hours_pm_words: ["vakar", "po pietų", "po pietu", "popiet"]
+hours_workday_words: ["darbo laik", "darbalaik", "darbo valand", "darbo metu"]
 hours_when_words: ["bet kada", "rytais", "ryte", "vakare", "vakarais", "po pietų", "po pietu", "darbo dienomis", "savaitgalį", "savaitgali", "šiandien", "siandien", "rytoj"]
 
 contact_hours_marks: ["bet kada", "bet kad", "kada nor", "visada", "ryt", "vakar", "val", "darbo", "diena", "dien", "po ", "iki ", "nuo ", "savait", "pirmad", "antrad", "trečiad", "treciad", "ketvirtad", "penktad", "šeštad", "sestad", "sekmad", "dabar", "šiandien", "siandien"]

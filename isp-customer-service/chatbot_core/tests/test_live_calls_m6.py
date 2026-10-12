@@ -114,5 +114,7 @@ class TestCallerName:
 
         state = self._owed(make_state)
         caller_intro(state, make_runtime(), "po anas mano vardas.")
+        assert state.identity.caller_name is None  # asked once more (A4, 2026-10-12)
+        caller_intro(state, make_runtime(), "po anas mano vardas.")
         assert state.identity.caller_name == "nenurodyta"
         assert state.identity.caller_name_heard is False

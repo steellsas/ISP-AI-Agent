@@ -381,6 +381,8 @@ def reply_plan(state: Any, rt: Any, user_input: str | None) -> TurnPlan | None:
         )
     if not state.identity.result_pending:
         return None
+    if not s.identity.caller_name and _name_given_unasked(state, rt):
+        pass  # the caller said it before we asked (A3) — the result goes out below
     if not s.identity.caller_name:
         # The caller-intro question turn (with the address echo on a fresh
         # commit) + the CHECKING cue — the engine resolves/diagnoses silently
@@ -395,7 +397,10 @@ def reply_plan(state: Any, rt: Any, user_input: str | None) -> TurnPlan | None:
         from ..question import register as _q_register
 
         _q_register(state, rt, "ident", "caller_name")
-        parts.append(caller_question())
+        if s.identity.caller_name_reasked:
+            parts = [phrase("identification.questions.caller_again")]
+        else:
+            parts.append(caller_question())
         return _words("identification.caller_name", " ".join(p for p in parts if p))
     # The caller introduced themselves — deliver the deferred result. INFORM
     # verdicts are fully mechanical; a strategy result (finding + step question)
@@ -483,6 +488,25 @@ def _plan(
     else:
         say = Say(kind="phrase", text=words, stage=stage)
     return TurnPlan(owner=owner, rule=rule, action=action or Action(type="none"), say=say)
+
+
+def _name_given_unasked(state: Any, rt: Any) -> bool:
+    """The caller introduced themselves before the name question („esu Paulius, neveikia
+    internetas") — take it through the same intro path (holder check included)."""
+    from ...perceive.caller import introduced_name
+    from .head import caller_intro
+
+    for said in state.intake.heard_utterances or []:
+        name = introduced_name(said)
+        if name:
+            rt.tracer.emit("caller_intro", name=name, volunteered=True)
+            caller_intro(state, rt, f"Mano vardas {name}")
+            if state.identity.caller_name == name:
+                from ...perceive.caller import detect_caller_relation
+
+                state.identity.caller_relation = detect_caller_relation(said)
+            return bool(state.identity.caller_name)
+    return False
 
 
 def _words(rule: str, words: str | None) -> TurnPlan:

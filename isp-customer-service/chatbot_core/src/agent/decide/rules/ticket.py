@@ -353,16 +353,28 @@ def hours_words(text: str) -> str:
     low = " ".join(spelled)
     anytime = any(w in low for w in vocab("hours_anytime_words"))
     when = [w for w in vocab("hours_when_words") if w in low]
+    # Live 2026-10-12: „Nuo 5 iki 6 vakare" went on the ticket as „nuo 5 iki 6 val." (a
+    # technician would call at five in the morning), „Rytoj, nuo 8 iki 10" lost „rytoj", and
+    # „darbo laiku" became „bet kada". The day and the part of the day are part of WHEN.
+    day = next((d for stem, d in vocab_map("hours_day_words").items() if stem in low), "")
+    pm = any(w in low for w in vocab("hours_pm_words"))
+    prefix = f"{day} " if day else ""
+
+    def _clock(hour: int) -> int:
+        return hour + 12 if pm and hour < 12 else hour
+
     span = _NUO_IKI_RE.search(low) or _DASH_RE.search(low)
     if span:
         first, second = int(span.group(1)), int(span.group(2))
         if first <= 24 and second <= 24:
-            return f"nuo {first} iki {second} val."
+            return f"{prefix}nuo {_clock(first)} iki {_clock(second)} val."
     one = _PO_RE.search(low) or _IKI_RE.search(low) or _APIE_RE.search(low)
     if one and int(one.group(2)) <= 24:
-        return f"{one.group(1)} {int(one.group(2))} val."
+        return f"{prefix}{one.group(1)} {_clock(int(one.group(2)))} val."
+    if any(w in low for w in vocab("hours_workday_words")):
+        return f"{prefix}darbo laiku"
     if anytime:
-        return "bet kada"
+        return f"{prefix}bet kada"
     if when:
         # Dienos dalis perskaitoma ir kliento žodžiais („per pietus arba ryte"), tad sakinys su
         # ja paliekamas, o ne suvienodinamas iki vieno žodžio.
@@ -370,7 +382,7 @@ def hours_words(text: str) -> str:
         return said if len(said.split()) <= 6 else when[0]
     hours = [int(h) for h in _HOUR_RE.findall(low) if int(h) <= 24]
     if len(hours) == 1:
-        return f"apie {hours[0]} val."
+        return f"{prefix}apie {_clock(hours[0])} val."
     return ""  # nei laiko, nei dienos dalies — perklausiam
 
 

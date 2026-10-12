@@ -108,6 +108,9 @@ class IdentityState(BaseModel):
     holder_clarify_soft: bool = False
     # The caller just introduced themselves — accept warmly, once.
     caller_name_heard: bool = False
+    # The name answer was unreadable once and asked again (A4, 2026-10-12): the second
+    # unreadable answer is „nenurodyta", never a garbled word used as a name.
+    caller_name_reasked: bool = False
 
     def set_customer(
         self,

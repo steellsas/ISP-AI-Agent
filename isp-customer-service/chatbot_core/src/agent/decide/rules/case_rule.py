@@ -1127,7 +1127,7 @@ def _reported_index(state: Any, steps: list) -> int | None:
     for index, call in enumerate(steps):
         spec = catalog.module(call.module)
         key = getattr(spec, "reported", None) if spec else None
-        if key and any(marker.lower() in heard for marker in vocab(key)):
+        if key and _heard_any(heard, vocab(key)):
             found = index
     return found
 
@@ -1272,6 +1272,15 @@ def _action_ran(state: Any, call: Any) -> bool:
     return state.tools.calls.get(spec.tool, 0) > state.case.act_count
 
 
+def _heard_any(heard: str | None, markers: list[str]) -> bool:
+    """A marker in the caller's words, diacritics folded on both sides (ASR drops or swaps
+    them: „Ikišau", „ikisau", „įkišau")."""
+    from ...evidence import _fold
+
+    low = _fold((heard or "").lower())
+    return bool(low) and any(_fold(m.lower()) in low for m in markers)
+
+
 def _reported_done(state: Any) -> bool:
     """Did the caller just say they did it?
 
@@ -1287,6 +1296,13 @@ def _reported_done(state: Any) -> bool:
     heard = state.dialog.last_heard
     intent = detect_turn_intent(heard)
     if intent == "done":
+        return True
+    # The step's own words, whatever the ASR did to the letters: „Ikišau." (live 2026-10-12) is
+    # neither „įkišau" nor „ikisau" until both are folded — and the agent asked twice.
+    call = _current(state)
+    spec = catalog.module(call.module) if call is not None else None
+    key = getattr(spec, "reported", None) if spec else None
+    if key and _heard_any(heard, vocab(key)):
         return True
     # A done-report WITH a question in it is still a done-report (live 2026-09-28, C1):
     # "Tai padariau. Kas toliau?" was read as a question, the step never moved, and the same

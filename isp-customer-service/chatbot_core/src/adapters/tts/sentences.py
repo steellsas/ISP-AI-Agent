@@ -22,16 +22,40 @@ _IP_RE = re.compile(r"(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})")
 # admin" būtų netiesa (tai vardas IR slaptažodis), o „slash" klientui nieko nesako.
 _SLASH_RE = re.compile(r"(?<=\w)\s*/\s*(?=\w)")
 _DOT_WORD = {"lt": "taškas", "en": "dot"}
+# Telefono numeris — po vieną skaitmenį, grupėmis su pauze. Gyvai 2026-10-12 Andrius: numeris
+# skambėjo kaip „trys milijardai…". Septyni ir daugiau skaitmenų iš eilės (tarpai leidžiami, su
+# „+" ar be) yra numeris; datos su brūkšneliais ir sumos su žodžiais čia nepakliūna.
+_PHONE_RE = re.compile(r"\+?\d(?:[  ]?\d){6,}")
+_PLUS_WORD = {"lt": "plius", "en": "plus"}
+
+
+def _dictate_phone(number: str, plus: str) -> str:
+    """„+370 600 12353" -> „plius 3 7 0, 6 0 0, 1 2 3 5 3" (the groups the agent wrote, or
+    threes when it wrote none)."""
+    lead = f"{plus} " if number.startswith("+") else ""
+    groups = number.lstrip("+").split()
+    if len(groups) == 1:
+        digits = groups[0]
+        if digits.startswith("370") and len(digits) == 11:
+            groups = [digits[:3], digits[3:6], digits[6:]]  # 370 · 6XX · XXXXX
+        else:
+            groups = [digits[i : i + 3] for i in range(0, len(digits), 3)]
+            if len(groups) > 1 and len(groups[-1]) == 1:
+                groups[-2:] = [groups[-2] + groups[-1]]  # no lone digit at the end
+    return lead + ", ".join(" ".join(group) for group in groups)
 
 
 def speakable(text: str, language: str | None = "lt") -> str:
-    """Tas pats sakinys, bet DIKTUOJAMAS: IP adresas po gabalo, pasvirasis brūkšnys — pauzė.
+    """Tas pats sakinys, bet DIKTUOJAMAS: IP adresas po gabalo, telefono numeris po skaitmenį,
+    pasvirasis brūkšnys — pauzė.
 
     Taikoma tik prieš sintezę; ekrane, trace'e ir tikete tekstas lieka toks, kokį parašė agentas.
     """
     lang = (language or "lt").split("-")[0].lower()
     dot = _DOT_WORD.get(lang, _DOT_WORD["en"])
     spoken = _IP_RE.sub(lambda m: f" {dot} ".join(m.groups()), text or "")
+    plus = _PLUS_WORD.get(lang, _PLUS_WORD["en"])
+    spoken = _PHONE_RE.sub(lambda m: _dictate_phone(m.group(0).strip(), plus), spoken)
     spoken = _SLASH_RE.sub(", ", spoken)
     return spoken
 
