@@ -352,6 +352,12 @@ def _case_step(state, rt) -> list[str]:
         return []
     say = plan.get("say") or {}
     goal, words = say.get("goal"), say.get("text")
+    from .. import dialogue
+
+    if dialogue.choose(state).move == dialogue.WAIT:
+        # They are on their way / still doing it: the step waits, and saying it again under
+        # „palauksiu" was the live 2026-10-12 mix-up („palauksiu… pažiūrėkite į panelę").
+        return ["THE STEP WAITS for them — do not say it again and give no new step."]
     out: list[str] = []
     if goal:
         out.append(f"PLAN GOAL — {goal}. Nothing else in this reply.")

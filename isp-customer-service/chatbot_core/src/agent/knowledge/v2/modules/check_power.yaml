@@ -14,7 +14,7 @@ confirms: true
 params:
   device: {required: true}
 ask: modules.check_power.question
-detector: yes_no
+detector: power_cable   # kliento žodžiai, ne tik taip / ne (2026-10-12)
 answers:
   "yes": power_cable=plugged
   "no": power_cable=unplugged

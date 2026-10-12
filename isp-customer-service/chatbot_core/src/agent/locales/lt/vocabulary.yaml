@@ -389,6 +389,13 @@ done_actions:
 # Čia ĮEINA ir esamasis laikas („perkraunu"), nes tai irgi reiškia, kad žingsnis prasidėjo — variklis
 # tada laukia rezultato, o ne kartoja instrukciją.
 # The caller says the power lead is back in / the router came on (plug_power).
+# Atsakymas į „ar maitinimo laidas tvirtai įkištas?" kliento žodžiais (Andrius, 2026-10-12:
+# agentas turi suprasti, teigiamai ar neigiamai atsakyta). Neiginiai tikrinami pirmi —
+# „neįkištas" savyje turi „įkištas".
+power_cable_out: ["ištrauk", "istrauk", "neįkišt", "neikist", "iškrit", "iskrit", "atjungt", "neprijungt", "nebuvo įkišt", "nebuvo ikist", "išsitrauk", "issitrauk", "laisvai kabo", "ne iki galo", "neįjungt", "neijungt"]
+power_cable_in: ["įkišt", "ikist", "prijungt", "įjungtas į", "ijungtas i", "tvirtai", "laikosi", "viskas įkišta", "viskas ikista"]
+# „Ar galite dabar prieiti prie routerio?" — jau ten (taip), ne „einu" (dar ne atsakymas).
+reach_there: ["stoviu prie", "esu prie", "prie routerio", "prie jo", "jau čia", "jau cia", "šalia jo", "salia jo", "šalia routerio", "salia routerio", "priėjau", "priejau", "jau priėj", "jau priej"]
 reported_plug_power: ["įkišau", "ikisau", "įjungiau", "ijungiau", "įsijungė", "isijunge", "užsidegė", "uzsidege", "dega lemput", "lemputės dega", "lemputes dega", "jau dega"]
 reported_reboot:
   - "perkroviau"

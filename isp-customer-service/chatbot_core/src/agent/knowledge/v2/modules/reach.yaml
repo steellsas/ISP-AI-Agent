@@ -9,7 +9,7 @@ goal: "clear whether the caller can get to the {device} right now — ONLY that;
   will be asked to DO with it is the next turn's, not this one's"
 text: "equipment:{device}.locate"   # kaip jį atpažinti, jei nežino kur jis
 ask: modules.reach.can_now
-detector: yes_no
+detector: reach   # kliento žodžiai, ne tik taip / ne (2026-10-12)
 answers:
   "yes": reachable=yes
   "no": reachable=no
