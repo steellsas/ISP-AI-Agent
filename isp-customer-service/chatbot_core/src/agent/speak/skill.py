@@ -45,10 +45,11 @@ def skill_for(state: Any, owner: str) -> str:
     plan = state.turn.plan or {}
     rule = str(plan.get("rule") or "")
     directives = state.turn.directives
-    understanding = state.turn.understanding or {}
+    from ..dialogue import choose
 
-    # The caller said they do not follow — that owns the reply whatever the stage.
-    if understanding.get("type") == "confusion" and understanding.get("confusion"):
+    # The caller said they do not follow — that owns the reply whatever the stage (the
+    # dialogue layer's EXPLAIN move, stage 5).
+    if choose(state).why == "caller_confused":
         return "reexplain_confused"
     # A finding / recap moment is announced, not asked.
     if directives.findings or directives.recap:

@@ -1,7 +1,7 @@
 # Agento struktūra v3 — fazės, tyrimo ciklas, pokalbio sluoksnis
 
-**Būsena:** PATVIRTINTA kryptis (Andrius, 2026-10-09; atsakymai — §11). Etapai 0, 2, 3, 4 atlikti;
-toliau etapas 5 (pokalbio sluoksnis).
+**Būsena:** PATVIRTINTA kryptis (Andrius, 2026-10-09; atsakymai — §11). Etapai 0, 2, 3, 4, 5 atlikti;
+toliau etapas 6 (promptai pagal fazę).
 **Iš kur:** 2026-10-08 struktūrinė peržiūra (4 tyrimai: LLM kvietimai, fazių savininkai, mazgų
 vidus, seni radiniai) ir Andriaus pokalbis tą pačią dieną. Ankstesnis kontekstas —
 [PERZIURA.md](PERZIURA.md) (radiniai A–AU, principai P-1…P-9), [AGENTO_VEIKIMAS.md](../AGENTO_VEIKIMAS.md).
@@ -193,10 +193,38 @@ vienas klausimas, ≤2 sakiniai. Pokalbio veiksmas ir fazės tikslas — du atsk
 persiklausimas nebeišmeta gedimo žingsnio (gyvai 2026-10-07 šalutinis klausimas ištrynė Case
 išvadą), o LLM gauna dvi aiškias instrukcijas vietoj 15 skyrių.
 
-Dabar tai išbarstyta: `_just_heard`, `_unclear_case_answer`, `_reading_to_confirm`,
+Iki 5 etapo tai buvo išbarstyta: `_just_heard`, `_unclear_case_answer`, `_reading_to_confirm`,
 `_also_asked`, `_question_mid_fix`, `_asked_how`, `_side_topic`, `_stuck`, PLAIN WORDS,
-`reexplain_confused` įgūdis, `reply_plan` šakos. v3 — viena funkcija, kuri renkasi veiksmą, ir
-vienas kortelės skyrius, kuris jį perduoda.
+`reexplain_confused` įgūdis, `reply_plan` šakos — ir vienoje kortelėje galėjo atsidurti iki
+penkių skyrių, kartais prieštaraujančių („pasakyk, kad negali patarti" šalia „NIEKADA nesakyk,
+kad negali patarti").
+
+### 4.1 Kaip padaryta (✅ 5 etapas)
+
+`agent/dialogue.py` — `choose(state)` kiekvienam ėjimui parenka **patvirtinimą** ir **VIENĄ
+pokalbio veiksmą**, eilės tvarka (aukštesnis laimi):
+
+```
+GRĄŽINTI     side_topic                     nukrypo nuo gedimo
+ATSAKYTI     question_mid_fix · asked_how · also_asked · asked_while_waiting
+LAUKTI       in_progress                    „einu, tuoj"
+PAAIŠKINTI   caller_confused · did_not_follow
+PERSIKLAUSTI unclear_answer · recheck · change_tactic · not_understood
+PASITEIRAUTI silence · quiet
+PAAIŠKINTI   still_on_step                  ilgai tame pačiame žingsnyje
+PASITEIRAUTI long_wait
+patvirtinimas: plain („Supratau — …") | confirm (neužtikrintas skaitymas — pasakom, ką supratom)
+```
+
+- Kortelė: vienas skyrius `_dialogue` (pirmas) — patvirtinimas + veiksmo žodžiai; fazės tikslas
+  (Case žingsnis, identifikacija, tiketas) lieka savo vietoje. Senų skyrių tekstai išlikę kaip
+  kiekvieno veiksmo „žodžiai" (eval jų nekeitė).
+- Klausimas vidury sprendimo: žinių bazės atsakymas, jei yra, ir TAS PATS žingsnis — „negaliu
+  patarti" nebeateina (pašalintas prieštaravimas).
+- Įgūdis `reexplain_confused` renkamas iš to paties sprendimo (`caller_confused`).
+- Trace `dialogue` {ack, move, why}; dashboard plane — „Kalba: LLM · patvirtina + paaiškina",
+  laiko juostoje — „pokalbis".
+- Sprendimų (faktų, žingsnių, tiketų) šis sluoksnis neliečia — tik skaito.
 
 ---
 
@@ -298,7 +326,7 @@ struktūra (sąrašas su vienu nariu), elgsena — vėliau.
 | **2** ✅ | `state.phase` šešėlyje: skaičiuojama iš esamų žymių, trace + dashboard (fazių juosta, dabartinė užsidega spalva, neleistinas perėjimas — raudonai), nieko nevaldo | eval: fazių seka kiekvienam scenarijui atitinka lūkestį |
 | **3** ✅ | 3a: pabaigos taisyklės U3/U6/U8/U10; 3c: v1 vedlys ištrintas (`resolution.procedure`, strategijos, 7 v1 paketai; `unclear_fault` → Case kortelė); 3b: vienas tiketo įėjimas `request_ticket(why)`, pabaigos būsena tik `agent/closing.py` (sargas-testas) | testai + eval 207–208/208; laukia Andriaus gyvo testo |
 | **4** ✅ | Tyrimo ciklas: `run_when:` + `fixes:` patikra bet kurioje kortelės vietoje, `case.cause` → pabaigoje pasakoma priežastis; `plug_power` modulis + demo „⚡ Maitinimas" | eval S4d „įkišo laidą — veikia"; pytest 1590, eval 219/221 (I2, K1 — Gemma flaky, pakartotinai praeina) |
-| **5** | Pokalbio sluoksnis (§4) | eval + gyvas testas |
+| **5** ✅ | Pokalbio sluoksnis (§4.1): `agent/dialogue.py` — patvirtinimas + VIENAS veiksmas (grąžinti / atsakyti / laukti / paaiškinti / persiklausti / pasiteirauti), vienas kortelės skyrius vietoj ~10, trace + dashboard | pytest 1619; eval 215/221 → pakartotinai praeina; S4/S4b kartais krenta dėl 4 etapo spragos (Gemma „Vis tiek nedega"→unplugged) |
 | **6** | Promptai pagal fazę (§7) | A/B + vėlavimas |
 | **7** | Kelios problemos (§8), LLM siūlymai šešėlyje (§3.5 C) | šešėlio žurnalas |
 
