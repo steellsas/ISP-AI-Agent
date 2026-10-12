@@ -176,22 +176,45 @@ class TestTheModelIsToldWhatWeAsked:
 
         assert step_perception_options(state, rt) == (None, None)
 
-    def test_a_confident_reading_settles_the_step(self, call):
+    def _read_by_the_model(self, call, heard, confidence):
         state, rt = self._at_the_offer(call)
         state.case.step_said = state.case.step
         case_rule.plan(state, rt)  # pastato `awaiting`
         state.dialog.turn_count += 1
-        # žodynas to neskaito, bet neiginys sakinyje yra — modelio „ne" priimamas (7e sargas)
-        state.dialog.last_heard = "Nelabai, nebūtina man to."
+        state.dialog.last_heard = heard
         state.turn.perception = {
-            "step": {"label": "no", "is_answer": True, "confidence": 0.9},
+            "step": {"label": "no", "is_answer": True, "confidence": confidence},
         }
+        return state, rt, case_rule.plan(state, rt)
 
+    def test_a_confident_reading_is_confirmed_before_it_is_taken(self, call):
+        """Andrius (2026-10-12): patikslinti visada geriau nei spėti. Žodynas to neskaito, tad
+        tai tik modelio skaitymas — agentas pasako, ką suprato, ir klausia, ar teisingai."""
+        state, rt, plan = self._read_by_the_model(call, "Nelabai, nebūtina man to.", 0.9)
+
+        assert plan.rule == "case.confirm" and "ar teisingai" in plan.say.text
+        assert state.case.facts.get("bridge_agreed") is None
+        assert any(e.get("move") == "read_by_model" for e in rt.tracer.of("case"))
+
+        state.dialog.turn_count += 1
+        state.dialog.last_heard = "Taip"
+        state.turn.perception = None
         case_rule.plan(state, rt)
 
         assert state.case.facts.get("bridge_agreed") == "no"
-        assert state.turn.confirm_reading is None  # tikras — nereikia tikslintis
-        assert any(e.get("move") == "read_by_model" for e in rt.tracer.of("case"))
+        assert state.case.confirming is None
+
+    def test_a_denied_reading_is_dropped_and_the_question_asked_simply(self, call):
+        state, rt, _ = self._read_by_the_model(
+            call, "Mano anūkas tuo užsiima, jo šiandien nėra.", 0.6
+        )
+        state.dialog.turn_count += 1
+        state.dialog.last_heard = "Ne, ne taip"
+        state.turn.perception = None
+        case_rule.plan(state, rt)
+
+        assert state.case.facts.get("bridge_agreed") is None
+        assert state.case.unclear == state.case.step  # perklausiama dviem pasirinkimais
 
     def test_a_model_no_needs_the_callers_own_negation(self, call):
         """7e / eval D8: į „Visuose" (atsakymą apie įrenginius) modelis pasakė, kad klientas prie
@@ -207,19 +230,6 @@ class TestTheModelIsToldWhatWeAsked:
         case_rule.plan(state, rt)
 
         assert state.case.facts.get("bridge_agreed") is None
-
-    def test_a_middling_reading_is_taken_but_said_out_loud(self, call):
-        state, rt = self._at_the_offer(call)
-        state.case.step_said = state.case.step
-        case_rule.plan(state, rt)
-        state.dialog.turn_count += 1
-        state.dialog.last_heard = "Mano anūkas tuo užsiima, jo šiandien nėra."
-        state.turn.perception = {"step": {"label": "no", "is_answer": True, "confidence": 0.6}}
-
-        case_rule.plan(state, rt)
-
-        assert state.case.facts.get("bridge_agreed") == "no"
-        assert state.turn.confirm_reading, "vidutinį supratimą pasakom pakeliui"
 
     def test_a_weak_reading_changes_nothing(self, call):
         state, rt = self._at_the_offer(call)

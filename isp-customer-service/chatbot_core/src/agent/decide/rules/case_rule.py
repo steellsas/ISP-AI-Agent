@@ -86,6 +86,8 @@ def plan(state: Any, rt: Any) -> TurnPlan | None:
             return _escalate(state, rt, state.case.fault)
         if status == "solved":
             return _resolved(state, rt)
+        if status == "confirm":
+            return _confirm_plan(state, rt)
         step = _current(state)
         if step is not None:
             # The facts this turn's words established belong to THIS turn's decision. Live
@@ -688,6 +690,9 @@ def _absorb(state: Any, rt: Any, facts: dict[str, str]) -> str:
             rt.tracer.emit("case", move="fix_check_negative", fault=state.case.fault)
             return _advance(state, rt)
         return _retry_or_give_up(state, rt)
+    if state.case.confirming and state.case.confirming.get("step") == state.case.step:
+        return _read_confirmation(state, rt, call)
+    state.case.confirming = None  # the step it was about is behind us
     walked = _jumped_ahead(state, rt)
     if walked is not None:
         return walked
@@ -723,8 +728,9 @@ def _absorb(state: Any, rt: Any, facts: dict[str, str]) -> str:
         if state.case.awaiting and state.case.awaiting not in facts:
             model = _model_read(state, rt, call)
             if model is not None:
-                ledger.record_client(state, rt, model[0], model[1])
-                facts = ledger.facts_of(state)
+                # Only the model read it — no word of theirs says so. Ask, do not guess
+                # (Andrius, 2026-10-12; eval S4: „Vis tiek nedega" became „the lead was out").
+                return _park(state, rt, call, model[0], model[1])
             else:
                 _note_reader_silent(state, rt, call)
     awaited = state.case.awaiting
@@ -761,6 +767,10 @@ def _absorb(state: Any, rt: Any, facts: dict[str, str]) -> str:
         # They DID it. That answers any question about being able to (live S6: "ištraukiau
         # iš routerio ir įkišau atgal" against "can you get to it now" — the engine waited
         # three turns for a yes it no longer needed) and finishes an instruction.
+        if not (_reported_done(state) or _reported_outcome(state, call)):
+            # The model's word alone (eval S4: „Neturiu kito routerio, tik kompiuterį" read as
+            # „done" — and the demo powered the router on for it). Ask first.
+            return _park(state, rt, call, None, None)
         if awaited:
             ledger.record_client(state, rt, awaited, _done_value(awaited))
         return _advance(state, rt, by_words=True)
@@ -803,13 +813,13 @@ def _model_read(state: Any, rt: Any, call: Any) -> tuple[str, str] | None:
         # visada nešasi neiginį; be jo tai spėjimas, ir klausiame iš naujo (7e banga).
         rt.tracer.emit("case", move="model_no_without_words", module=call.module, label=label)
         return None
-    if confidence < limits.get("reading_accept_confidence"):
-        # Vidutinis pasitikėjimas: užskaitom, bet atsakyme pakeliui patvirtinam — kad klientas
-        # galėtų pataisyti, o ne kad agentas apsimestų tikras.
-        from ...evidence import gloss_label, gloss_value
+    from ...perceive.detectors import INTENT_IN_PROGRESS
 
-        said = f"{gloss_label(answer[0])} {gloss_value(answer[1], answer[0])}".strip()
-        state.turn.confirm_reading = said or None
+    if state.dialog.last_intent == INTENT_IN_PROGRESS:
+        # „Palaukite, einu prie routerio" is somebody on their way, not a yes (live 2026-10-12:
+        # the agent said „palauksiu" and gave the lights step in the same breath).
+        rt.tracer.emit("case", move="model_while_in_progress", module=call.module, label=label)
+        return None
     rt.tracer.emit(
         "case",
         move="read_by_model",
@@ -819,6 +829,96 @@ def _model_read(state: Any, rt: Any, call: Any) -> tuple[str, str] | None:
         sets=f"{answer[0]}={answer[1]}",
     )
     return answer
+
+
+def _utterance_mark(state: Any) -> list[int]:
+    """Which caller utterance this is. `turn_count` alone does not move on a scripted turn (the
+    confirm question itself is one), but every caller message lands on the history."""
+    said = sum(1 for m in state.messages or [] if m.get("role") == "user")
+    return [state.dialog.turn_count, said]
+
+
+def _park(state: Any, rt: Any, call: Any, fact: str | None, value: str | None) -> str:
+    """Hold a reading only the model made until the caller confirms it (fact None = done)."""
+    state.case.confirming = {
+        "step": state.case.step,
+        "fact": fact,
+        "value": value,
+        "turn": _utterance_mark(state),
+        "asks": 1,
+    }
+    rt.tracer.emit("case", move="confirm_ask", module=call.module, fact=fact, value=value)
+    return "confirm"
+
+
+def _read_confirmation(state: Any, rt: Any, call: Any) -> str:
+    """The caller's answer to „ar teisingai supratau?" — yes takes the reading, no drops it.
+
+    „Taip" answers OUR question, not the step's (a yes/no step would read it as its own yes).
+    After a no, their own words may still carry the answer: „Ne, jis įkištas".
+    """
+    from ...perceive.detectors import detect_yes_no
+    from ...resolution import Outcome
+
+    held = state.case.confirming or {}
+    if held.get("turn") == _utterance_mark(state):
+        return "confirm"  # asked this very turn — nothing to read yet
+    fact, value = held.get("fact"), held.get("value")
+    heard = state.dialog.last_heard or ""
+    answer = detect_yes_no(heard)
+    if answer is Outcome.YES or (fact is None and _reported_done(state)):
+        state.case.confirming = None
+        rt.tracer.emit("case", move="confirmed", fact=fact, value=value)
+        if fact:
+            ledger.record_client(state, rt, fact, value)
+        elif state.case.awaiting:
+            ledger.record_client(state, rt, state.case.awaiting, _done_value(state.case.awaiting))
+        return _advance(state, rt, by_words=True)
+    own = modules.read_answer(call, heard, device=_device(state)) if fact else None
+    # Their own words settle it either way — the guess in their words is a yes, another
+    # value is the correction; only a bare „ne" repeating the guess's own yes/no is a denial.
+    if own is not None and own[0] == fact and not (answer is Outcome.NO and own[1] == value):
+        state.case.confirming = None
+        rt.tracer.emit("case", move="confirm_own_words", fact=fact, value=own[1])
+        ledger.record_client(state, rt, fact, own[1])
+        return _advance(state, rt, by_words=True)
+    if answer is Outcome.NO or held.get("asks", 1) >= 2:
+        state.case.confirming = None
+        rt.tracer.emit(
+            "case",
+            move="confirm_denied" if answer is Outcome.NO else "confirm_unclear",
+            fact=fact,
+            value=value,
+        )
+        if fact:
+            return _answer_was_unclear(state, rt, call)  # ask the question itself, simply
+        return "waiting"  # not done yet — the step stays
+    held["asks"] = held.get("asks", 1) + 1
+    held["turn"] = _utterance_mark(state)
+    return "confirm"
+
+
+def _confirm_plan(state: Any, rt: Any) -> TurnPlan:
+    """„Noriu įsitikinti, kad gerai supratau: … — ar teisingai?" in the locale's words."""
+    from ...contract.locale import phrase, phrase_or
+    from ...evidence import gloss_label, gloss_value
+
+    held = state.case.confirming or {}
+    fact, value = held.get("fact"), held.get("value")
+    call = _current(state)
+    if fact:
+        said = f"{gloss_label(fact)} {gloss_value(value, fact)}".strip()
+        text = phrase_or(f"case.confirm.{fact}.{value}", None) or phrase(
+            "case.confirm.fact", said=said
+        )
+    else:
+        module = call.module if call is not None else ""
+        text = phrase_or(f"case.confirm.done_{module}", None) or phrase("case.confirm.done")
+    return TurnPlan(
+        owner="procedure",
+        rule="case.confirm",
+        say=Say(kind="phrase", text=text, stage="diagnosis"),
+    )
 
 
 def _verify_must_be_told(state: Any, call: Any) -> bool:

@@ -574,6 +574,10 @@ class CaseState(BaseModel):
     summarised: bool = False
     # Why the fault happened, when a fix check found it (a phrase key; v3 stage 4).
     cause: str | None = None
+    # A reading only the MODEL made (no word of the caller's backs it), parked until the caller
+    # confirms it: {step, fact, value, turn, asks}; fact None = „did you do it?" (Andrius,
+    # 2026-10-12: patikslinti visada geriau nei spėti).
+    confirming: dict[str, Any] | None = None
     # Pati išvada. Ji NEIŠTRINAMA ją pasakius, nes turi antrą adresatą: tą patį sąrašą gauna ir
     # tiketas — meistras turi matyti, kas buvo ir kas padaryta (Andrius, 2026-10-02: *„tuomet
     # tiketai bus informatyvūs ir meistrams bus aiškiau, kas ten įvyko"*).

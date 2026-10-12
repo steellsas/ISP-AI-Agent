@@ -428,6 +428,43 @@ def is_greeting(text: str | None) -> bool:
     return any(m in low for m in vocab("greeting"))
 
 
+def detect_power_cable(text: str | None) -> str | None:
+    """„Ar maitinimo laidas tvirtai įkištas?" — „yes" įkištas, „no" ištrauktas, kliento žodžiais.
+
+    Iki 2026-10-12 šį klausimą skaitė tik `yes_no`, tad „Laidas įkištas, tvirtai" nereiškė
+    nieko, o „Vis tiek nedega" modelis perskaitė kaip „ištrauktas" (eval S4). Neiginys pirmas:
+    „neįkištas" savyje turi „įkištas". Be šių žodžių — įprastas taip / ne.
+    """
+    if not text:
+        return None
+    low = text.lower()
+    if any(m in low for m in vocab("power_cable_out")):
+        return "no"
+    if any(m in low for m in vocab("power_cable_in")):
+        return "yes"
+    outcome = detect_yes_no(text)
+    return outcome.value.lower() if outcome is not None else None
+
+
+def detect_reach(text: str | None) -> str | None:
+    """„Ar galite dabar prieiti prie routerio?" — „einu / tuoj" dar NĖRA atsakymas.
+
+    Gyvai 2026-10-12: „Palaukite, einu prie routerio" buvo „taip", ir agentas tame pačiame
+    sakinyje pasakė „palauksiu" ir davė lempučių žingsnį.
+    """
+    if not text:
+        return None
+    low = text.lower()
+    if any(m in low for m in vocab("reach_there")) and not any(
+        m in low for m in vocab("in_progress")
+    ):
+        return "yes"
+    if detect_turn_intent(text) == INTENT_IN_PROGRESS:
+        return None
+    outcome = detect_yes_no(text)
+    return outcome.value.lower() if outcome is not None else None
+
+
 def detect_bridge_consent(text: str | None) -> str | None:
     """Atsakymas į PASIŪLYMĄ laikinai paleisti internetą į vieną įrenginį.
 

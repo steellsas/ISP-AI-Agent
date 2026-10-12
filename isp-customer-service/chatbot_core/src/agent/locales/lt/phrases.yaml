@@ -689,6 +689,21 @@ equipment:
 case:
   heard: "Gerai — {said}."
   say_when_done: "Pasakykite, kai padarysite."
+  # Patikslinimas vietoj spėjimo (Andrius, 2026-10-12): kai atsakymą perskaitė tik modelis, be
+  # kliento žodžių, agentas pasako, ką suprato, ir paklausia, ar teisingai.
+  confirm:
+    fact: "Noriu įsitikinti, kad gerai supratau: {said} — ar teisingai?"
+    power_cable:
+      unplugged: "Noriu įsitikinti, kad gerai supratau: routerio maitinimo laidas buvo ištrauktas — ar teisingai?"
+      plugged: "Noriu įsitikinti, kad gerai supratau: maitinimo laidas įkištas ir į routerį, ir į rozetę — ar teisingai?"
+    reachable:
+      "yes": "Ar jūs jau prie routerio?"
+      "no": "Supratau, kad dabar prie routerio prieiti negalite — ar teisingai?"
+    lights:
+      "off": "Noriu įsitikinti: routerio lemputės visai nedega — ar teisingai?"
+      "on": "Noriu įsitikinti: routerio lemputės dega — ar teisingai?"
+    done: "Ar jau tai padarėte?"
+    done_plug_power: "Ar jau įkišote maitinimo laidą ir užsidegė routerio lemputės?"
 
 verdict:
   # How a verdict is named to the caller (gloss) and why a ticket is needed.

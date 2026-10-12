@@ -226,6 +226,26 @@ patvirtinimas: plain („Supratau — …") | confirm (neužtikrintas skaitymas 
   laiko juostoje — „pokalbis".
 - Sprendimų (faktų, žingsnių, tiketų) šis sluoksnis neliečia — tik skaito.
 
+### 4.2 Patikslinti, ne spėti (Andrius, 2026-10-12)
+
+*„Kaip klientas atsakytų, agentas turi suprasti, teigiamai ar neigiamai atsakė… patikslinti
+visuomet geriau nei galvoti ar spėti, ką klientas pasakė."*
+
+```
+kliento žodžiai ── modulio skaitytuvas („įkištas" / „ištrauktas", „stoviu prie" / „einu") ─► faktas
+      │
+      └─ skaitytuvas tyli ─► modelis spėja ─► NEPRIIMAMA: „Noriu įsitikinti, kad gerai supratau:
+                                               routerio maitinimo laidas buvo ištrauktas — ar teisingai?"
+                                                 ├ taip / tas pats savais žodžiais ─► faktas
+                                                 ├ kita reikšmė savais žodžiais („Laidas įkištas") ─► ta reikšmė
+                                                 └ ne / neaišku 2× ─► klausimas iš naujo, dviem pasirinkimais
+```
+
+- Tas pats „padariau" spėjimui: „Ar jau įkišote maitinimo laidą ir užsidegė lemputės?".
+- „Einu / tuoj / palaukite" nėra atsakymas: žingsnis laukia, agentas sako „palauksiu" ir naujo
+  žingsnio neduoda (pokalbio veiksmas LAUKTI nuima žingsnio sakinį).
+- Nauji skaitytuvai: `detect_power_cable`, `detect_reach`; frazės `case.confirm.*`.
+
 ---
 
 ## 5. Pokalbio užbaigimas (Andriaus principai, 2026-10-08)
