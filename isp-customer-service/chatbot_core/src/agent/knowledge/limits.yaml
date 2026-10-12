@@ -25,6 +25,12 @@ tts_stall_seconds: 3                # no first audio chunk within this -> abando
 tts_budget_seconds: 10              # total per sentence across reconnects before the sentence is lost
 reply_max_chars: 280                # a longer reply is trimmed at its last full sentence
 speak_max_tokens: 150               # generation cap for a spoken reply (~2 short sentences + a question)
+# v3 6c (docs/review/PROMPTAI.md): parameters per LLM role. Reading the caller is not writing —
+# at 0.3 the same sentence was read differently between runs (eval S4); the largest reading seen
+# was 131 tokens. The spoken reply keeps a little variety, less than before.
+speak_temperature: {value: 0.2, env: SPEAK_TEMPERATURE}
+perception_temperature: {value: 0.0, env: PERCEPTION_TEMPERATURE}
+perception_max_tokens: 200
 # 3 = the longest honest chain one turn can need (wave 3): reflect the caller's action,
 # read the line, then say what it showed. Each hop is a deterministic decide pass, no LLM.
 plan_redecide_max: 3

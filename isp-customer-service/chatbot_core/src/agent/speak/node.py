@@ -156,7 +156,7 @@ def _stream_tokens(state: Any, rt: Any, messages: list[dict]):
         messages=messages,
         tools=None,
         model=rt.config.model,
-        temperature=rt.config.temperature,
+        temperature=limits.get("speak_temperature"),
         # A spoken reply is ~2 short sentences: the cap stops a runaway generation
         # early (review finding AC); a lower configured max_tokens still wins.
         max_tokens=min(rt.config.max_tokens, limits.get("speak_max_tokens")),

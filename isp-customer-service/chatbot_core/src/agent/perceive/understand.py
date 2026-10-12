@@ -195,7 +195,11 @@ def understand(
                 messages.append({"role": role, "content": content})
         messages.append({"role": "user", "content": utterance[:400]})
         data = llm_json_completion(
-            messages=messages, model=perception_model(model), role="perception"
+            messages=messages,
+            model=perception_model(model),
+            role="perception",
+            temperature=limits.get("perception_temperature"),
+            max_tokens=limits.get("perception_max_tokens"),
         )
         if not isinstance(data, dict):
             return None
@@ -313,6 +317,8 @@ def understand_ticket(
             ],
             model=perception_model(model),
             role="ticket_reader",
+            temperature=limits.get("perception_temperature"),
+            max_tokens=limits.get("perception_max_tokens"),
         )
         if not isinstance(data, dict):
             return None
