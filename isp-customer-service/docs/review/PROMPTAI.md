@@ -30,7 +30,7 @@ Terminai (Andrius, 2026-10-12): „maršrutizatorius" yra taisyklingas lietuviš
 | 6c | Parametrai pagal vaidmenį | ✅ paliekama; stabilumo pagerėjimas nepasitvirtino |
 | 6a | Kalbėjimo promptas pagal fazę | ✅ −22 % tokenų; 39/40, 0 nestabilių |
 | 6b | Suvokimo LLM nekviesti, kai atsakymą perskaitė skaitytuvas | bus aptarta |
-| 6d | Lietuvių kalbos taisyklės ir terminai | bus aptarta |
+| 6d | Lietuvių kalbos taisyklės ir terminai | ✅ nežinomi žodžiai −31 %; `kalba.yaml` |
 
 ---
 
@@ -193,3 +193,67 @@ paslėpdavo klaidą.
 | Praėję visus 3 kartus | 38 / 40 | **39 / 40** |
 | Nestabilūs | 2 | **0** |
 | Visada krenta | — | I2 (Gemma „nerodu" — 6d) |
+
+---
+
+### Išspręsto gedimo išvada ir sargas (2026-10-13, Andrius)
+
+Ne prompto, o variklio pakeitimas, bet keičia tai, ką modelis gauna kaip PLAN GOAL:
+
+- **Išvada** visada: koks buvo gedimas (`summary.resolved.<gedimas>` arba `fixes:` priežastis),
+  ką padarėme (`summary.did`), kad veikia — ir tik tada „ar dar turite klausimų?". Atsisveikinus
+  tame pačiame sakinyje — išvada ir atsisveikinimas, be klausimo.
+- **Sargas**: patikra su klausimu („ar veikia?") užbaigiama tik kai linija IR klientas sutinka;
+  „vis tiek neveikia" / „vėl nebeveikia" — neištaisyta; kita — perklausiama.
+- Eval ×3: 41/42, 0 nestabilių (`logs/eval_concl.json`).
+
+---
+
+### 6d Lietuvių kalba (2026-10-13, Andrius pritarė)
+
+**Kodėl.** ~9 400 agento atsakymų (eval + gyvi skambučiai): ~5 % LLM atsakymų turėjo aiškią
+kalbos klaidą — dažniausios „sutvarkėsi" (55), „lemputžių" (42), „nerodu" (25), sugadintas
+„Telefonu šio … neišspręsim" (29), išgalvoti žodžiai („pusmogaudis", „sušlykštėjo").
+
+**Kur gyvena kalbos taisymai** — `locales/lt/kalba.yaml` (Andriaus sprendimas: ne į promptus):
+
+| Sąrašas | Kam |
+|---|---|
+| `taisymai` | klaida → teisinga forma; taisytuvas keičia prieš balsą (pilni žodžiai, didžioji raidė išlaikoma), kiekvienas pakeitimas — trace `language_fix` |
+| `i_prompta` | kurios iš jų keliauja į promptą kaip „nesakyk → sakyk" (tik dažniausios) |
+| `teisingi` | teisingi žodžiai, kurių nėra kirčiavimo žodyne — kad matavimas jų nelaikytų klaida |
+
+Naujas žodis — viena eilutė šiame faile; kodo ir prompto keisti nereikia.
+
+**Pakeitimai:**
+
+| Žingsnis | Kas | Kodėl |
+|---|---|---|
+| 6d.1 | `metrics.py`: atsakymai su žodžiu, kurio nėra žodyne (balso kirčiavimo žodynas + mūsų frazės + `teisingi`), taisytuvo pataisymai, 15 įtartiniausių žodžių | be skaičiaus nežinotume, ar padėjo; įtartini žodžiai — kandidatai į `taisymai` / `teisingi` |
+| 6d.2 | `summary.did` frazės bendrine forma („pažiūrėjome", ne „pasižiūrėjom"); „Telefonu neišspręsim" → „Telefonu šio gedimo neišspręsime" | modelis perrašydavo šnekamąsias formas ir nepilną sakinį — ir sugadindavo |
+| 6d.3 | Kalbos instrukcijoje: „tik žodžiai, kuriais tikras; jei ne — paprastas kasdienis; neišgalvok"; „kortelės cituojamų žodžių nelinksniuok"; „nesakyk → sakyk" eilutė iš `i_prompta` | konkretūs pavyzdžiai veikia geriau nei bendras „rašyk taisyklingai" |
+| 6d.4 | Taisytuvas sakinių sarge (kartu su kirilicos keitimu) | kas praslysta pro promptą — klientas vis tiek išgirsta teisingai |
+
+Prompto dydis +~450 simbolių; testo riba 5 300 → 5 600.
+
+**Pagrindas (prieš 6d, `logs/eval_concl.json`):** 36 / 1 077 atsakymų su žodžiu, kurio nėra
+žodyne (3,3 %); visada krenta I2 („nerodu").
+
+**Rezultatas (eval ×3, `logs/eval_6d.json`, palyginta su pagrindu):**
+
+| | Prieš 6d | 6d |
+|---|---|---|
+| Atsakymai su žodžiu, kurio nėra žodyne | 29 / 1 077 | **20 / 1 077 (−31 %)** |
+| Taisytuvo pataisytos klaidos | — | 9 (pajungti ×6, nesusprendau, dalykštį, išgirta) |
+| I2 („nerodu") | krenta 3/3 | praeina 2/3 |
+| Kalbėjimo įeinantys tokenai | 1 947 | 2 114 (+167 — kalbos taisyklės) |
+| Praėję visus 3 kartus | 41 / 42 | 39 / 42 |
+
+- Nauji įtartini žodžiai (kandidatai į `taisymai`): nedėgamės, skoningos, perkišėme,
+  išsaugtumėte, užtrūkimus, nenuradinau, nesužinau, prispaudžtas.
+- S1 ir S4b nestabilumas — ne dėl 6d: abiem atvejais modelis pats pasako „užregistruosiu",
+  ir pažado sargas paleidžia registraciją (S1 — identifikacijos metu, netikra; S4b — prie
+  išvados prideda telefono klausimą, atsakymas 305 simb.). Tas pats S1 atvejis buvo ir prieš
+  6d (1/3). Atskiras klausimas — kada modelio žodis gali paleisti veiksmą (aptarti).
+
+Sprendimas: **paliekama**.

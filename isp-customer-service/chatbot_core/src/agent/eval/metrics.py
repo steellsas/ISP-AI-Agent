@@ -42,6 +42,30 @@ def _pct(values: list[float], q: float) -> float:
     return ordered[min(len(ordered) - 1, int(len(ordered) * q))]
 
 
+_LEXICON = Path(__file__).resolve().parents[4] / "models" / "tts" / "piper" / "lt_kirciai.tsv"
+_WORD = r"[A-Za-zĄČĘĖĮŠŲŪŽąčęėįšųūž]+"
+
+
+def _known_words() -> set[str] | None:
+    """Lithuanian word forms we accept: the voice's accent lexicon, our own phrases, prompts
+    and knowledge, and `kalba.yaml` `teisingi`. None when the lexicon is not installed."""
+    import re
+
+    if not _LEXICON.exists():
+        return None
+    words = {line.split("\t", 1)[0].lower() for line in _LEXICON.open(encoding="utf-8")}
+    agent = Path(__file__).resolve().parents[1]
+    for folder in ("locales", "prompts", "knowledge"):
+        for path in (agent / folder).rglob("*.*"):
+            if path.suffix in (".yaml", ".md", ".yml") and path.name != "kalba.yaml":
+                words |= {w.lower() for w in re.findall(_WORD, path.read_text(encoding="utf-8"))}
+    import yaml
+
+    kalba = agent / "locales" / "lt" / "kalba.yaml"
+    data = yaml.safe_load(kalba.read_text(encoding="utf-8")) if kalba.exists() else {}
+    return words | {str(w).lower() for w in (data or {}).get("teisingi") or []}
+
+
 def measure(report_path: str) -> dict:
     """The numbers of one eval report."""
     report = json.loads(Path(report_path).read_text(encoding="utf-8"))
@@ -50,6 +74,10 @@ def measure(report_path: str) -> dict:
     kinds: dict[str, int] = defaultdict(int)
     outcomes: dict[str, list[bool]] = defaultdict(list)
     readings: dict[tuple[str, int], list[str]] = defaultdict(list)
+    known = _known_words()
+    suspicious: dict[str, int] = defaultdict(int)
+    corrected: dict[str, int] = defaultdict(int)
+    replies_with_trouble = 0
     for row in report:
         outcomes[row["id"]].append(all(c["pass"] for c in row["checks"]))
         turn = 0
@@ -62,6 +90,19 @@ def measure(report_path: str) -> dict:
                 role["ms"].append(e.get("latency_ms") or 0)
             elif kind == "agent_reply" and e.get("text"):
                 replies.append(len(e["text"]))
+                if known is not None:
+                    import re
+
+                    odd = [
+                        w.lower()
+                        for w in re.findall(_WORD, e["text"])
+                        if len(w) > 3 and not w[:1].isupper() and w.lower() not in known
+                    ]
+                    for w in odd:
+                        suspicious[w] += 1
+                    replies_with_trouble += bool(odd)
+            elif kind == "language_fix":
+                corrected[str(e.get("wrong", "")).lower()] += 1
             elif kind == "turn_plan":
                 kinds[str((e.get("say") or {}).get("kind") or "?")] += 1
             elif kind == "user_turn":
@@ -105,6 +146,12 @@ def measure(report_path: str) -> dict:
             "sentences_compared": len(compared),
             "read_differently": unstable_readings,
         },
+        "language": {
+            "replies_with_unknown_words": replies_with_trouble,
+            "corrected": sum(corrected.values()),
+            "corrected_top": sorted(corrected.items(), key=lambda kv: -kv[1])[:10],
+            "suspicious_top": sorted(suspicious.items(), key=lambda kv: -kv[1])[:15],
+        },
     }
 
 
@@ -132,6 +179,13 @@ def _print(m: dict) -> None:
             f"perception: {pc['read_differently']}/{pc['sentences_compared']} sentences read "
             "differently across runs"
         )
+    lg = m["language"]
+    print(
+        f"language: {lg['replies_with_unknown_words']}/{rp['count']} replies with a word not in "
+        f"the lexicon; {lg['corrected']} known mistakes corrected {lg['corrected_top']}"
+    )
+    if lg["suspicious_top"]:
+        print("  suspicious: " + ", ".join(f"{w} ×{n}" for w, n in lg["suspicious_top"]))
 
 
 def _print_compare(a: dict, b: dict) -> None:
@@ -161,6 +215,12 @@ def _print_compare(a: dict, b: dict) -> None:
     )
     if newly:
         print(f"NEW trouble: {newly}")
+    la, lb = a["language"], b["language"]
+    print(
+        f"replies with unknown words {la['replies_with_unknown_words']} -> "
+        f"{lb['replies_with_unknown_words']}; known mistakes corrected {la['corrected']} -> "
+        f"{lb['corrected']}"
+    )
     ca, cb = a["perception"], b["perception"]
     if ca["sentences_compared"] and cb["sentences_compared"]:
         print(

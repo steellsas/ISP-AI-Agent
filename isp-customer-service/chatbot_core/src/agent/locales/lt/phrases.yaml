@@ -50,7 +50,9 @@ identification:
   end_offer_ticket: "Gerai. Ar užregistruoti gedimą, kad kolegos su jumis susisiektų?"
   goodbye: "Ačiū, kad paskambinote. Geros dienos!"
   turn_error: "Atsiprašau, įvyko trikdis mano pusėje. Pakartokite, prašau, ką sakėte."
-  ticket_intro: "Telefonu neišspręsim — {reason}. Registruoju meistrą."
+  # v3 6d: „Telefonu neišspręsim" modelis bandydavo papildyti ir gadindavo („Telefonu šio
+  # nešaldymo neišspręsim") — dabar sakinys pilnas.
+  ticket_intro: "Telefonu šio gedimo neišspręsime — {reason}. Registruoju meistrą."
   # A question outside the agent's knowledge, registered for the responsible person.
   ticket_intro_request: "Šiuo klausimu jums geriausiai atsakys atsakingas žmogus — užregistruosiu jūsų klausimą, ir jis su jumis susisieks."
   ticket_done_request: "Užregistravau jūsų klausimą. Atsakingas žmogus paskambins {phone}, {hours}. Ar dar kuo padėti?"
@@ -929,16 +931,18 @@ summary:
   # Čia tik DARBAI — žingsnių, kurie vien klausia (ar galite prieiti, ar turite kompiuterį),
   # sąraše nėra: klientui svarbu, kas buvo PADARYTA.
   did:
-    check_lights: "pasižiūrėjom routerio lemputes"
-    check_power: "patikrinom, ar routerį pasiekia elektra"
-    cable: "patikrinom kabelį"
-    reboot: "perkrovėm routerį"
-    connect_direct: "prijungėm kompiuterį tiesiai prie linijos"
-    bind: "pririšom jį prie jūsų linijos"
-    port_reset: "perkrovėm jūsų prievadą"
-    guide: "kartu ėjom per routerio nustatymus"
-    device_check: "patikrinom įrenginį"
-    homework: "susitarėm, ką patikrinsit, kai būsit namuose"
+    # v3 6d: bendrinės formos (-ome), ne šnekamosios (-om) — modelis jas perrašydavo ir
+    # sugadindavo („Pasižiūrėjome lemputžių").
+    check_lights: "pažiūrėjome routerio lemputes"
+    check_power: "patikrinome, ar routerį pasiekia elektra"
+    cable: "patikrinome kabelį"
+    reboot: "perkrovėme routerį"
+    connect_direct: "prijungėme kompiuterį tiesiai prie linijos"
+    bind: "pririšome jį prie jūsų linijos"
+    port_reset: "perkrovėme jūsų prievadą"
+    guide: "kartu ėjome per routerio nustatymus"
+    device_check: "patikrinome įrenginį"
+    homework: "susitarėme, ką patikrinsite, kai būsite namuose"
   bridge_live: "internetas dabar laikinai veikia tik tame kompiuteryje — kol pakeisim routerį"
   # Išspręsto gedimo išvada (Andrius, 2026-10-13: „visuomet išvada, koks gedimas čia buvo"):
   # KAS buvo — kliento kalba; KĄ padarėm — `did`; ir kad veikia. Priežastis iš `fixes:`

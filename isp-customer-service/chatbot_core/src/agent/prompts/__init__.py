@@ -101,8 +101,11 @@ def load_speak_prompt(caller_phone: str = "", language: str = "lt") -> str:
     """Load the speaker's CORE prompt (composes its partials, then fills placeholders). The
     caller's number is no longer part of it — only the ticket phase carries it (v3 6a)."""
     template = _localize(_expand(_read("speak/system")))
+    from ..contract.language import prompt_lines
+
     return template.format(
         caller_phone=caller_phone,
         language_instruction=get_language_instruction(language),
         output_language=get_language_name(language),
+        language_fixes=prompt_lines() or "—",
     )

@@ -183,10 +183,21 @@ def _stream_tokens(state: Any, rt: Any, messages: list[dict]):
     from .guard import ReplyGuard, latin_lookalikes
 
     streamed: list[str] = []
+
+    def _fix(sentence: str) -> str:
+        from ..contract.language import fix_words
+
+        fixed, applied = fix_words(latin_lookalikes(sentence))
+        for wrong, right in applied:
+            # v3 6d: the model's known mistake, corrected before the caller hears it — and
+            # counted, so measuring still sees how often the model makes it.
+            rt.tracer.emit("language_fix", wrong=wrong, right=right)
+        return fixed
+
     guard = ReplyGuard(
         stop_chars=limits.get("reply_stop_chars"),
         drop=lambda sentence: unbacked_promise(state, sentence),
-        fix=latin_lookalikes,
+        fix=_fix,
     )
     while True:
         try:
