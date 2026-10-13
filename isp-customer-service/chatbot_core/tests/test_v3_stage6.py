@@ -82,3 +82,57 @@ def test_a_goodbye_without_its_diacritics_is_a_goodbye(said):
 
     assert detect_farewell(said)
     assert not _still_down(said)
+
+
+class TestLiveCall1013:
+    """Live 2026-10-13: „Veikia, valio, ačiū, viso gero" after „ar jums veikia?" got „Gedimo dar
+    neišsprendėme, ar tikrai baigti?", and „Ne, viskas susigaro" to „anything else?" reopened
+    the solved call for a technician."""
+
+    def test_the_result_goes_before_the_goodbye(self):
+        from agent.decide.rules.head import _says_it_works
+
+        assert _says_it_works("Veikia, valio, ačiū, viso gero")
+        assert not _says_it_works("Ačiū, viso gero")
+        assert not _says_it_works("Ar veikia? Viso gero")
+
+    def test_a_no_to_anything_else_is_not_still_down(self):
+        from agent.decide.rules.closing import _still_down
+
+        assert not _still_down("Ne, viskas susigaro", asked_anything_else=True)
+        assert _still_down("Ne, vis tiek neveikia", asked_anything_else=True)  # said outright
+        assert _still_down("Ne", asked_anything_else=False)  # „ar veikia?" — „ne" is an answer
+
+    def test_resolved_with_a_goodbye_closes_with_its_result(self, make_state, make_runtime):
+        from agent.decide.rules.case_rule import _resolved
+
+        state, rt = make_state("+37060020112"), make_runtime()
+        state.case.fault = "router_hung"
+        state.dialog.last_heard = "Veikia, valio, ačiū, viso gero"
+        plan = _resolved(state, rt)
+
+        assert plan.action.type == "close" and plan.action.args == {"complete": True}
+        assert "goodbye" in plan.say.goal and "service is back" in plan.say.goal
+
+
+@pytest.mark.parametrize(
+    ("said", "works"),
+    [
+        ("Veikia, valio, ačiū, viso gero", True),
+        ("Taip, atsirado internetas", True),
+        ("Taip, galiu prieiti", False),  # a bare „taip" answers whatever was asked (D5)
+        ("Vilma, taip, mano sutartis", False),
+        ("Ar veikia? Viso gero", False),
+        ("Ne, neveikia", False),
+    ],
+)
+def test_it_works_only_in_so_many_words(said, works):
+    from agent.perceive.detectors import says_it_works
+
+    assert says_it_works(said) is works
+
+
+def test_perkisau_is_done():
+    from agent.perceive.detectors import says_done_action
+
+    assert says_done_action("Perkišau")

@@ -55,6 +55,29 @@ def detect_restored(text: str | None) -> Outcome | None:
     return None
 
 
+def statements_only(text: str | None) -> str:
+    """The sentences that are not questions — „Ar veikia jūsų sistema?" says nothing worked."""
+    import re
+
+    parts = re.split(r"(?<=[.!?])\s+", (text or "").strip())
+    return " ".join(p for p in parts if p and not p.rstrip().endswith("?"))
+
+
+def says_it_works(text: str | None) -> bool:
+    """The caller SAYS the service is back, in a statement and in so many words („veikia",
+    „atsirado") — a bare „taip" answers whatever was asked, a question says nothing."""
+    low = statements_only(text).lower()
+    if not low or any(m in low for m in vocab("restored_no")):
+        return False
+    return any(m in low for m in vocab("works_words"))
+
+
+def says_it_fails(text: str | None) -> bool:
+    """The caller says it still does not work, in a statement."""
+    low = statements_only(text).lower()
+    return bool(low) and any(m in low for m in vocab("restored_no"))
+
+
 def detect_reboot_check(text: str | None) -> Outcome | None:
     """YES/NO/None for the S6 post-reboot check ("ar lemputė mirksi?
     pabandykite atsidaryti puslapį"). Dedicated vocabulary: NEGATION WINS

@@ -126,19 +126,18 @@ def _carries_a_fix_answer(state: Any) -> bool:
     the caller did it („įkišau")."""
     if not state.case.in_progress:
         return False
-    from ...modules import label_from
-    from ...perceive.detectors import says_done_action
+    from ...perceive.detectors import says_done_action, says_it_fails, says_it_works
 
-    heard = statements_only(state.dialog.last_heard)
-    return label_from("restored", heard) is not None or says_done_action(heard)
+    heard = state.dialog.last_heard
+    from ...perceive.detectors import statements_only as _statements
+
+    return says_it_works(heard) or says_it_fails(heard) or says_done_action(_statements(heard))
 
 
 def statements_only(text: str | None) -> str:
-    """The sentences that are not questions — „Ar veikia jūsų sistema?" says nothing worked."""
-    import re
+    from ...perceive.detectors import statements_only as _statements
 
-    parts = re.split(r"(?<=[.!?])\s+", (text or "").strip())
-    return " ".join(p for p in parts if p and not p.rstrip().endswith("?"))
+    return _statements(text)
 
 
 def _side_topic(state: Any) -> bool:

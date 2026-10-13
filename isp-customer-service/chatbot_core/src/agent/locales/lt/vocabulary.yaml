@@ -86,6 +86,9 @@ restored_no:
   - "nedirba"
   - "neprisijung"
 
+# The RESULT said outright — not a bare „taip", which answers whatever was asked (2026-10-13:
+# „Taip, galiu prieiti" was read as „it works").
+works_words: ["veikia", "atsirad", "atsarad", "satsarad", "susitvark", "pavyko", "sugrįžo", "sugrizo"]
 restored_yes:
   - "taip"  # the plain answer to "ar internetas atsirado?" — was missing, so a
   - "aha"  # confirmed fix looked unanswered and ended in a needless ticket
@@ -366,6 +369,8 @@ done:
 # instrukciją šešis kartus. Klausimas lieka klausimu, bet žingsnis pajuda.
 done_actions:
   - "padariau"
+  - "perkišau"
+  - "perkisau"
   # 2026-10-12 (eval S9): „Patikrinau, WiFi įjungtas" is a done-report in the caller's words.
   - "patikrinau"
   - "pasitikrinau"

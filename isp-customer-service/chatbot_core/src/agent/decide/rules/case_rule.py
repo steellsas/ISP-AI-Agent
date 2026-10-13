@@ -931,10 +931,9 @@ def _confirm_plan(state: Any, rt: Any) -> TurnPlan:
 
 
 def _caller_says_it_works(state: Any) -> bool:
-    from ... import modules as _modules
-    from .stage import statements_only
+    from ...perceive.detectors import says_it_works
 
-    return _modules.label_from("restored", statements_only(state.dialog.last_heard)) == "yes"
+    return says_it_works(state.dialog.last_heard)
 
 
 def _verify_must_be_told(state: Any, call: Any) -> bool:
@@ -1332,7 +1331,9 @@ def _reported_done(state: Any) -> bool:
     # "Tai padariau. Kas toliau?" was read as a question, the step never moved, and the same
     # instruction came back six times. Only a question — confusion keeps its own path, because
     # "nesuprantu, ką padariau" is not a completed action.
-    if intent == "question" and says_done_action(heard):
+    if intent in ("question", "answer") and says_done_action(heard):
+        # …and so is a plain past-tense report the turn intent did not list („Perkišau",
+        # eval D5 2026-10-13: the confirm „Ar jau perkišote laidą?" was asked twice).
         return True
     return detect_yes_no(heard) is Outcome.YES
 
@@ -1798,6 +1799,23 @@ def _resolved(state: Any, rt: Any) -> TurnPlan:
     """The solution ran and the line agrees: say it works and close warmly. The engine
     closes on ITS verdict, never on the caller's word alone (D-07)."""
     rt.tracer.emit("case", move="resolved", fault=state.case.fault)
+    from ...perceive.detectors import detect_farewell
+
+    if detect_farewell(state.dialog.last_heard):
+        # They said goodbye in the same breath as „veikia": no „anything else?" — the result,
+        # its cause, and the goodbye, and the call ends (live 2026-10-13).
+        return TurnPlan(
+            owner="diagnosis",
+            rule="case.resolved",
+            action=Action(type="close", name="resolved", args={"complete": True}),
+            say=Say(
+                kind="directive",
+                goal="say briefly that the service is back"
+                + _cause_words(state)
+                + ", thank them and say a warm goodbye — no question",
+                stage="closing",
+            ),
+        )
     return TurnPlan(
         owner="diagnosis",
         rule="case.resolved",

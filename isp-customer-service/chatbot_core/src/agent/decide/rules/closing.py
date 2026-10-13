@@ -44,7 +44,7 @@ def plan(state: Any, rt: Any) -> TurnPlan | None:
         and s.closing.closed_reason == "resolved"
         and not s.ticket.ticket_id
         and _was_a_fault(s)
-        and _still_down(user_input)
+        and _still_down(user_input, _asked_anything_else(s))
     ):
         reopen_call(state, rt, "still_down")
         return _escalate(state, rt, "closing.still_down_reopen")
@@ -194,7 +194,15 @@ def maybe_close_inform(state: Any, rt: Any, user_input: str | None) -> None:
         )
 
 
-def _still_down(user_input: str | None) -> bool:
+def _asked_anything_else(state: Any) -> bool:
+    """Was our last question „anything else?"."""
+    from ...contract.locale import vocab
+
+    asked = (state.dialog.last_question or "").lower()
+    return any(m in asked for m in vocab("offer_more_markers"))
+
+
+def _still_down(user_input: str | None, asked_anything_else: bool = False) -> bool:
     """The caller says it still does not work. An explicit report ("neveikia") always
     counts; a bare "ne" counts only when it is not a goodbye — "Ne, ačiū, viso gero" is a
     no to "anything else?", not a broken line (F-20: it reopened a resolved case and
@@ -206,4 +214,8 @@ def _still_down(user_input: str | None) -> bool:
     low = (user_input or "").lower()
     if any(m in low for m in vocab("restored_no")):
         return True
+    if asked_anything_else:
+        # „Ar dar kuo galiu padėti?" — a „ne" answers THAT („Ne, viskas susitvarkė", live
+        # 2026-10-13: read as „still down", the solved call was reopened for a technician).
+        return False
     return detect_restored(user_input) is Outcome.NO and not detect_farewell(user_input)

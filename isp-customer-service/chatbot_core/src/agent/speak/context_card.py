@@ -714,7 +714,10 @@ def _case_facts(state, rt) -> list[str]:
     if s.ticket.ticket_id:
         out.append(f"Ticket: {s.ticket.ticket_id}")
     out += _debt_facts(state, rt)
-    if s.closing.case_closed and s.closing.is_complete:
+    resolved_now = str((s.turn.plan or {}).get("rule") or "") == "case.resolved"
+    if s.closing.case_closed and s.closing.is_complete and resolved_now:
+        pass  # „veikia… viso gero": the PLAN GOAL says the result AND the goodbye (2026-10-13)
+    elif s.closing.case_closed and s.closing.is_complete:
         out.append(
             "CALL OVER: the caller said goodbye / has nothing more. Say ONLY one short "
             "farewell („Ačiū, kad paskambinote. Geros dienos!“) and NOTHING else — no new "
