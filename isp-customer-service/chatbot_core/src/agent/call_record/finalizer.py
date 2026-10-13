@@ -97,6 +97,10 @@ def finalize(state: GraphState, rt: AgentRuntime, transport_end: str | None = No
                 s.ticket.contact_phone = s.identity.caller_phone
             if not s.ticket.contact_hours:
                 s.ticket.contact_hours = phrase("ticket.default_hours")
+            if not s.ticket.reason:
+                from ..contract.registration import mark
+
+                mark(s, "padejo_rageli")
             register_ticket_from_state(state, rt)
             if s.ticket.ticket_id:
                 close_call(state, rt, "registered")

@@ -338,7 +338,7 @@ class TestWhatWeClaimWeDid:
         assert "connect_direct" in state.case.did, "`only_after` turi matyti, kad žingsnis pereitas"
         assert "connect_direct" not in state.case.worked
         told = state.case.summary or {}
-        assert "prijungėm kompiuterį" not in told.get("padaryta", "")
+        assert "prijungėme kompiuterį" not in told.get("padaryta", "")
         assert "lemput" in told.get("padaryta", ""), "o tai, kas tikrai vyko, pasakoma"
 
     def test_no_computer_is_not_a_refusal(self, call):

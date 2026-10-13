@@ -122,7 +122,7 @@ def _no_path_ticket(state, rt) -> None:
     from .ticket import request_ticket
 
     case_rule.announce(state, rt, "unclear_fault")
-    request_ticket(state, rt, "no_path")
+    request_ticket(state, rt, "neaiskus_gedimas")
 
 
 def _seed_evidence_from_call(state, rt) -> None:

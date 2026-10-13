@@ -194,8 +194,10 @@ def test_piper_session_is_bounded(monkeypatch):
 
 
 class TestAPromiseNothingBacksIsNotSpoken:
-    """A: „užregistruosiu" with no reason to register is withheld before TTS (eval K1); with a
-    reason it stays — the claim guard then turns it into the contact dialogue (wave 9, T3)."""
+    """A: „užregistruosiu" the ENGINE has not decided is withheld before TTS (eval K1). Since
+    2026-10-13 a fault being worked on or debt news told is not a decision — only a running or
+    done registration, or the Case having summed up for a technician, is (Andrius: the engine
+    decides, the model only says it)."""
 
     PROMISE = "Šiuo klausimu geriausiai atsakys atsakingas žmogus — užregistruosiu jūsų klausimą."
 
@@ -206,17 +208,25 @@ class TestAPromiseNothingBacksIsNotSpoken:
         state.case.fault, state.case.solution = None, None  # still identifying the fault
         assert unbacked_promise(state, self.PROMISE)
 
-    @pytest.mark.parametrize("backing", ["case", "debt", "ticket"])
-    def test_a_backed_promise_stays(self, case_call, backing):
+    @pytest.mark.parametrize("backing", ["fault_in_progress", "debt_told"])
+    def test_a_promise_the_engine_has_not_decided_is_withheld(self, case_call, backing):
         from agent.execute.ticket import unbacked_promise
 
         state, _ = case_call
-        if backing == "debt":
+        if backing == "debt_told":
             state.case.fault = None
             state.diagnosis.verdicts["network"] = {"reason": "billing_suspended"}
             state.diagnosis.news_delivered = True
-        if backing == "ticket":
-            state.case.fault = None
+        assert unbacked_promise(state, self.PROMISE)
+
+    @pytest.mark.parametrize("decided", ["summed_up", "ticket_running"])
+    def test_a_decided_registration_may_be_said(self, case_call, decided):
+        from agent.execute.ticket import unbacked_promise
+
+        state, _ = case_call
+        if decided == "summed_up":
+            state.case.summarised = True
+        else:
             state.ticket.stage = "phone"
         assert not unbacked_promise(state, self.PROMISE)
 

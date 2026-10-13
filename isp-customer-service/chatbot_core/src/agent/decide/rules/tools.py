@@ -39,7 +39,7 @@ def plan(state: Any, rt: Any) -> TurnPlan | None:
     if fallback == "ticket":
         from ...execute.ticket import request_ticket
 
-        request_ticket(state, rt, "systems_down")  # contacts first, then register + close
+        request_ticket(state, rt, "sistemos_neatsako")  # contacts first, then register + close
         return None
     if fallback == "end_call":
         return TurnPlan(

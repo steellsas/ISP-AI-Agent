@@ -23,15 +23,30 @@ from ..trace import trace_note
 logger = logging.getLogger(__name__)
 
 
-@lru_cache(maxsize=32)
-def speak_prompt(skill: str, caller_phone: str, language: str) -> str:
-    """The byte-stable prefix for this SKILL: the core prompt plus the one skill the reply
-    needs (wave 2b — the narrator used to get every stage's rules at once, ~3500 tokens
-    for a reply of ~90)."""
+# v3 6a: the rules of the phase the call is in, and only those (docs/review/PROMPTAI.md).
+# Greeting and intake are the start of identifying the caller; closing needs nothing beyond
+# its skill.
+_PHASE_BLOCK = {
+    "greeting": "identify",
+    "intake": "identify",
+    "identify": "identify",
+    "investigate": "investigate",
+    "ticket": "ticket",
+}
+
+
+@lru_cache(maxsize=64)
+def speak_prompt(skill: str, caller_phone: str, language: str, phase: str | None = None) -> str:
+    """The prefix for this reply: the core prompt, the PHASE's rules and the one skill it
+    needs (wave 2b: skills; v3 6a: phases — the identification and ticket rules no longer
+    travel with a question about the lights)."""
     from ..prompts import load_node_prompt, load_speak_prompt
     from .skill import SKILLS
 
     parts = [load_speak_prompt(caller_phone=caller_phone, language=language)]
+    block = _PHASE_BLOCK.get(phase or "")
+    if block:
+        parts.append(load_node_prompt(f"phases/{block}").replace("{caller_phone}", caller_phone))
     if skill in SKILLS:
         parts.append(load_node_prompt(f"skills/{skill}"))
     return "\n\n".join(parts)
@@ -46,12 +61,15 @@ def build_messages(state: Any, rt: Any, owner: str) -> list[dict]:
     from .skill import skill_for
 
     observe(state, rt)  # the dialogue move, traced for the dashboard (stage 5)
+    from ..phase import phase_of
+
     skill = skill_for(state, owner)
-    rt.tracer.emit("skill", skill=skill, owner=owner)
+    phase = phase_of(state)
+    rt.tracer.emit("skill", skill=skill, owner=owner, phase=phase)
     messages = [
         {
             "role": "system",
-            "content": speak_prompt(skill, state.identity.caller_phone, rt.config.language),
+            "content": speak_prompt(skill, state.identity.caller_phone, rt.config.language, phase),
         }
     ]
     # When the window cut older turns, a short DETERMINISTIC summary from STATE bridges
@@ -156,7 +174,7 @@ def _stream_tokens(state: Any, rt: Any, messages: list[dict]):
         messages=messages,
         tools=None,
         model=rt.config.model,
-        temperature=rt.config.temperature,
+        temperature=limits.get("speak_temperature"),
         # A spoken reply is ~2 short sentences: the cap stops a runaway generation
         # early (review finding AC); a lower configured max_tokens still wins.
         max_tokens=min(rt.config.max_tokens, limits.get("speak_max_tokens")),
@@ -165,10 +183,21 @@ def _stream_tokens(state: Any, rt: Any, messages: list[dict]):
     from .guard import ReplyGuard, latin_lookalikes
 
     streamed: list[str] = []
+
+    def _fix(sentence: str) -> str:
+        from ..contract.language import fix_words
+
+        fixed, applied = fix_words(latin_lookalikes(sentence))
+        for wrong, right in applied:
+            # v3 6d: the model's known mistake, corrected before the caller hears it — and
+            # counted, so measuring still sees how often the model makes it.
+            rt.tracer.emit("language_fix", wrong=wrong, right=right)
+        return fixed
+
     guard = ReplyGuard(
         stop_chars=limits.get("reply_stop_chars"),
         drop=lambda sentence: unbacked_promise(state, sentence),
-        fix=latin_lookalikes,
+        fix=_fix,
     )
     while True:
         try:

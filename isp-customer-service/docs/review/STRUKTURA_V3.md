@@ -301,6 +301,26 @@ fazės savininkas.
 
 ---
 
+### 6.1 Registracija — tik variklio sprendimas, tik dėl įvardytos priežasties (Andrius, 2026-10-13)
+
+*„Sprendimas turi būti variklio — jis viską nusprendžia. Kalbėjimo modelis tik sako, ką
+nusprendė variklis. Bet koks veiksmas turi praeiti per variklį, jis turi žinoti, kam tai daro."*
+
+- `knowledge/registracija.yaml` — vienintelis sąrašas, KADA registruojama: sprendimas baigtas,
+  telefonu nepataisoma, neaiškus gedimas, mūsų tinklo gedimas, klientas nenori / negali / prašo,
+  nesusikalbame, vėl neveikia, sistemos neatsako, ne mūsų klausimas, padėjo ragelį. Kiekviena
+  su `kada`, `sutikimas` (klausiama ar ne) ir `tiketui` (kas įrašoma tikete — „Registruota, nes: …").
+- `request_ticket(state, rt, <priežastis>)` priima tik priežastį iš sąrašo (nežinoma — klaida);
+  testas tikrina, kad kiekviena kode naudojama priežastis yra sąraše.
+- **Modelio žodis registracijos nepradeda.** Pažado sargas („claim guard", banga 9), kuris
+  „užregistruosiu" paversdavo registracija, pašalintas. „Užregistruosiu", kurio variklis
+  nenusprendė, neištariamas (sakinių sargas); nusprendus (vyksta registracija arba Case
+  pasakė išvadą meistrui) — ištariamas.
+- Kortelė nebesiūlo modeliui „offer to register" (STUCK, LONG WAIT, ONE MORE CHANCE) — ar
+  laikas meistrui, sprendžia variklio taisyklės.
+- Toliau (D): analitikas varikliui siunčia signalus `dead_end`, `wants_technician` — variklis
+  nusprendžia.
+
 ## 7. Promptai pagal fazę
 
 | Dalis | Dabar | v3 |

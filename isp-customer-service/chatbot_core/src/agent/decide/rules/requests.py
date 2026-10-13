@@ -19,7 +19,7 @@ def start_request(state: Any, rt: Any, ticket_type: str | None = None) -> None:
 
     ticket_type = ticket_type or problem_entry(state.intake.problem_type).get("ticket_type")
     rt.tracer.emit("decision", intent="request", action="register", value=ticket_type)
-    request_ticket(state, rt, "request", request_type=ticket_type)
+    request_ticket(state, rt, "ne_musu_klausimas", request_type=ticket_type)
 
 
 def answer_ticket_status(state: Any, rt: Any) -> None:

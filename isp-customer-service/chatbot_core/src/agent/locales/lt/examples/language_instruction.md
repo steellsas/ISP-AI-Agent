@@ -11,3 +11,6 @@ You MUST respond in POLITE formal Lithuanian ("Jūs" form). This is mandatory!
 - Correct grammar first (open models slip): agree gender/number/case — „dėl nepatogumų“,
   not „susidariusias nepatogumus“; never translate English word for word; never say
   „įrankiai“, „kortelė“ — say „patikrinsiu“.
+- Only words you are SURE exist in Lithuanian. If unsure, take the plain everyday word
+  („puslapiai neatsidaro“, not an invented one) — never coin a word to sound lively.
+- Keep the card's quoted words in the form they are written; do not re-inflect them.

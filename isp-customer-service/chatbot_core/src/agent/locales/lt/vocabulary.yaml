@@ -69,6 +69,9 @@ device_change:
 # Negatives are tested first because "neveikia" contains "veik".
 restored_no:
   - "neveik"
+  - "nebeveik"  # „vėl nebeveikia" (Andrius, 2026-10-13)
+  - "vėl dingo"
+  - "vel dingo"
   - "nevyk"  # STT garble of "neveikia"
   - "neatsirad"
   - "vis dar ne"
@@ -86,6 +89,9 @@ restored_no:
   - "nedirba"
   - "neprisijung"
 
+# The RESULT said outright — not a bare „taip", which answers whatever was asked (2026-10-13:
+# „Taip, galiu prieiti" was read as „it works").
+works_words: ["veikia", "atsirad", "atsarad", "satsarad", "susitvark", "pavyko", "sugrįžo", "sugrizo"]
 restored_yes:
   - "taip"  # the plain answer to "ar internetas atsirado?" — was missing, so a
   - "aha"  # confirmed fix looked unanswered and ended in a needless ticket
@@ -326,6 +332,9 @@ in_progress:
   - "ieškau"
   - "iesk"
   - "einam"
+  # „Turiu kabelį rankoje" — holding it is doing it, not done (eval S4b, 2026-10-12).
+  - "rankoje"
+  - "laikau"
 
 done:
   - "padariau"
@@ -363,6 +372,15 @@ done:
 # instrukciją šešis kartus. Klausimas lieka klausimu, bet žingsnis pajuda.
 done_actions:
   - "padariau"
+  - "perkišau"
+  - "perkisau"
+  # 2026-10-12 (eval S9): „Patikrinau, WiFi įjungtas" is a done-report in the caller's words.
+  - "patikrinau"
+  - "pasitikrinau"
+  - "pažiūrėjau"
+  - "paziurejau"
+  - "pasižiūrėjau"
+  - "pasiziurejau"
   - "padarėme"
   - "padareme"
   - "atlikau"

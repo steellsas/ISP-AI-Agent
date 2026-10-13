@@ -710,11 +710,14 @@ def _case_facts(state, rt) -> list[str]:
         out.append(f"Problem type: {s.intake.problem_type}")
     if s.intake.symptoms:
         parts = ", ".join(f"{k}={v}" for k, v in s.intake.symptoms.items())
-        out.append(f"SYMPTOMS (the caller's): {parts}.")
+        out.append(f"SYMPTOMS (the caller's — ask only what is missing): {parts}.")
     if s.ticket.ticket_id:
         out.append(f"Ticket: {s.ticket.ticket_id}")
     out += _debt_facts(state, rt)
-    if s.closing.case_closed and s.closing.is_complete:
+    resolved_now = str((s.turn.plan or {}).get("rule") or "") == "case.resolved"
+    if s.closing.case_closed and s.closing.is_complete and resolved_now:
+        pass  # „veikia… viso gero": the PLAN GOAL says the result AND the goodbye (2026-10-13)
+    elif s.closing.case_closed and s.closing.is_complete:
         out.append(
             "CALL OVER: the caller said goodbye / has nothing more. Say ONLY one short "
             "farewell („Ačiū, kad paskambinote. Geros dienos!“) and NOTHING else — no new "
@@ -829,14 +832,14 @@ def _stuck(state, rt) -> list[str]:
     if s.dialog.stuck_count >= 2 and not s.identity.customer_id:
         return [
             "STUCK: do NOT repeat the same question. Change tactic — offer the account code "
-            "(„Gal turite abonento kodą nuo sąskaitos?“) or register the problem for a "
-            "call-back."
+            "(„Gal turite abonento kodą nuo sąskaitos?“). Promise no registration — the "
+            "engine decides that."
         ]
     if s.dialog.stuck_count >= 2:
         return [
-            "STUCK: do NOT repeat the same question. Rephrase it differently or offer to "
-            "register the fault (a technician will get in touch). Do NOT ask for the account "
-            "code — the caller is already identified."
+            "STUCK: do NOT repeat the same question. Rephrase it differently — a smaller, "
+            "simpler question. Promise no registration or technician — the engine decides "
+            "that. Do NOT ask for the account code — the caller is already identified."
         ]
     if s.dialog.stuck_count != 1:
         return []
@@ -929,8 +932,8 @@ def _one_more_chance(state) -> list[str]:
     return [
         f"WE ARE NOT GETTING THERE — say it plainly and give ONE more try: name what we could "
         f"not establish together ({what}), without blaming them.{why} Then ask them to try that "
-        "one thing once more, and say that if it does not work you will register a technician. "
-        "Do NOT register anything in this reply — this is the last try."
+        "one thing once more. Promise nothing about a technician or a registration — if it "
+        "does not work, the engine decides what comes next."
     ]
 
 
@@ -1112,8 +1115,8 @@ _AWAITING = {
     ),
     "long_wait": (
         "LONG WAIT: several turns without progress. Check in like a human, ask how it is "
-        "going and where they are („Ar pavyksta rasti? Gal pasakykite, ką matote“), or "
-        "offer to register the fault."
+        "going and where they are („Ar pavyksta rasti? Gal pasakykite, ką matote“). Promise "
+        "no registration — the engine decides that."
     ),
 }
 

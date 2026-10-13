@@ -66,20 +66,20 @@ def test_a_fault_ticket_carries_its_card_note_and_its_reason(call):
 
     state, rt, tracer = call
     state.case.fault, state.case.solution = "no_mac_observed", 0
-    request_ticket(state, rt, "case_escalate")
+    request_ticket(state, rt, "sprendimas_baigtas")
 
     assert state.ticket.stage == "phone"
     assert state.case.facts.get("_ticket_note")  # the card's note for the technician
     asked = [e for e in tracer.events if e.get("intent") == "ticket_requested"]
-    assert asked and asked[0]["action"] == "case_escalate"
+    assert asked and asked[0]["action"] == "sprendimas_baigtas"
 
 
 def test_a_request_is_typed_and_a_running_one_is_not_restarted(call):
     from agent.execute.ticket import request_ticket
 
     state, rt, tracer = call
-    request_ticket(state, rt, "request", request_type="billing_request")
-    request_ticket(state, rt, "promise")  # already collecting — nothing changes
+    request_ticket(state, rt, "ne_musu_klausimas", request_type="billing_request")
+    request_ticket(state, rt, "klientas_praso")  # already collecting — nothing changes
 
     assert state.ticket.request_type == "billing_request"
     assert len([e for e in tracer.events if e.get("intent") == "ticket_requested"]) == 1

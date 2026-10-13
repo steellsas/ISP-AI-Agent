@@ -47,7 +47,7 @@ def plan(state: Any, rt: Any) -> TurnPlan:
     if (
         str(stage_plan.rule).startswith("case.")
         and scripted.rule == "dialog.question_passthrough"
-        and _case_heard_an_answer(state, stage_plan.rule)
+        and (_case_heard_an_answer(state, stage_plan.rule) or state.turn.also_asked)
     ):
         state.turn.also_asked = True
         rt.tracer.emit("decision", intent="question_mid_case", action="answer_then_step")
@@ -91,6 +91,14 @@ def _stage_plan(state: Any, rt: Any) -> TurnPlan:
     from ...execute.diagnosis import ensure_diagnosed
 
     ensure_diagnosed(state, rt)
+    if _side_topic(s) and _carries_a_fix_answer(s):
+        # „Gerai, ačiū, veikia. Alio, kada dėl routerio paskambinsit?" — the result of the fix
+        # AND a question in one breath. Freezing the Case lost the result: the fault stayed
+        # unregistered and the model filled the turn with a step of its own (eval S4b under 6a,
+        # 2026-10-12). The Case takes the turn; the question gets one short answer in it.
+        s.turn.side_topic_active = False
+        s.turn.also_asked = True
+        rt.tracer.emit("decision", intent="side_topic", action="answer_with_the_fix")
     if _side_topic(s):
         return TurnPlan(
             owner="side_topic",
@@ -111,6 +119,25 @@ def _stage_plan(state: Any, rt: Any) -> TurnPlan:
         rule="diagnosis.free_reply",
         say=Say(kind="directive", stage="diagnosis"),
     )
+
+
+def _carries_a_fix_answer(state: Any) -> bool:
+    """A fix is running and this utterance says how it went („veikia", „neveikia") or that
+    the caller did it („įkišau")."""
+    if not state.case.in_progress:
+        return False
+    from ...perceive.detectors import says_done_action, says_it_fails, says_it_works
+
+    heard = state.dialog.last_heard
+    from ...perceive.detectors import statements_only as _statements
+
+    return says_it_works(heard) or says_it_fails(heard) or says_done_action(_statements(heard))
+
+
+def statements_only(text: str | None) -> str:
+    from ...perceive.detectors import statements_only as _statements
+
+    return _statements(text)
 
 
 def _side_topic(state: Any) -> bool:

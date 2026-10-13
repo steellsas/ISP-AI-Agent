@@ -64,5 +64,8 @@ def _close_stuck(state: Any, rt: Any) -> None:
         s.closing.closed_reason = "declined"
         s.closing.unidentified_reason = "stuck"
         return
+    from .contract.registration import mark
+
+    mark(s, "nesusikalbame")
     register_ticket_from_state(s, rt)
     s.closing.closed_reason = "registered" if s.ticket.ticket_id else "declined"

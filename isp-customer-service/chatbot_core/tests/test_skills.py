@@ -63,11 +63,15 @@ def test_a_skill_prompt_is_far_smaller_than_the_old_owner_prompt():
     """The whole point: ~1.2-1.5k tokens instead of ~2.3-3.5k.
 
     7000 -> 7300 (2026-10-07): the Lithuanian grammar rules for open models (Gemma 4)
-    cost ~220 chars and instruct_step had 15 left. Temporary headroom — a prompt
-    size/quality review is planned; bring this back down after it."""
+    cost ~220 chars. 7300 -> 5300 (v3 6a, 2026-10-12): the review happened — duplicated rules
+    removed, phase rules travel only in their phase (docs/review/PROMPTAI.md). 5300 -> 5600
+    (v3 6d): the model's own frequent language mistakes and two word rules (~450 chars)."""
+    from agent.phase import PHASES
+
     for skill in SKILLS:
-        text = speak_prompt(skill, "+37060000000", "lt")
-        assert len(text) < 7300, f"{skill}: {len(text)} chars"
+        for phase in PHASES:
+            text = speak_prompt(skill, "+37060000000", "lt", phase)
+            assert len(text) < 5600, f"{skill}/{phase}: {len(text)} chars"
 
 
 # Every family a decide rule can name (grep 'rule="' in agent/decide) plus the plan owners.

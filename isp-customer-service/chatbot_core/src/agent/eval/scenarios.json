@@ -789,6 +789,53 @@
       }
     },
     {
+      "id": "D8b_works_and_goodbye_in_one_breath",
+      "phone": "+37060020112",
+      "desc": "Gyvai 2026-10-13: po perkrovimo į „ar jums veikia?“ klientas atsako ir atsisveikina vienu sakiniu. Agentas turi įskaityti „veikia“ ir atsisveikinti — ne „Gedimo dar neišsprendėme, ar tikrai baigti?“.",
+      "turns": [
+        "Neveikia internetas visuose įrenginiuose",
+        "Taip",
+        "Paulius",
+        "Visuose",
+        "Taip, galiu prieiti",
+        "Perkroviau, ką tik padariau",
+        "Veikia, valio, ačiū, viso gero"
+      ],
+      "expect": {
+        "verdict_in": "router_hung",
+        "disposition": "resolved",
+        "reply_none": [
+          "neišsprendėme",
+          "užregistruosiu",
+          "meistr"
+        ]
+      }
+    },
+    {
+      "id": "D8c_no_to_anything_else_after_solved",
+      "phone": "+37060020112",
+      "desc": "Gyvai 2026-10-13: išspręsta, „Ar dar kuo galiu padėti?“ → „Ne, viskas susigaro“ (ASR: susitvarkė). „Ne“ atsako į klausimą, o ne „vis dar neveikia“ — skambutis neatidaromas meistrui.",
+      "turns": [
+        "Neveikia internetas visuose įrenginiuose",
+        "Taip",
+        "Paulius",
+        "Visuose",
+        "Taip, galiu prieiti",
+        "Perkroviau, internetas atsirado",
+        "Taip, jau veikia",
+        "Ne, viskas susigaro"
+      ],
+      "expect": {
+        "verdict_in": "router_hung",
+        "disposition": "resolved",
+        "reply_none": [
+          "užregistruosiu",
+          "meistr",
+          "telefonu šio neišspręsim"
+        ]
+      }
+    },
+    {
       "id": "X_dhcp_silent",
       "phone": "+37060020106",
       "desc": "dhcp_silent (CUST106): 6 banga — vedimas SIŪLOMAS, o dokumentas einamas po VIENĄ PUNKTĄ (prijungti → adresas → prisijungimas → WAN → DHCP → išsaugoti); nepavykus — meistras, o tiketas pasako, ką bandėme. Klientui be žargono (F-8)",

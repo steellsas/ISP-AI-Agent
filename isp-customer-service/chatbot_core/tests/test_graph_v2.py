@@ -161,7 +161,7 @@ class TestRouting:
             "status": "testing",
             "because": ["linijoje nematomas įrenginys"],
         }
-        request_ticket(engine.state, engine.runtime, "test")
+        request_ticket(engine.state, engine.runtime, "sprendimas_baigtas")
 
         names = self._run_turn_capture_tools(session, "O kokiu numeriu jūs skambinsite?")
 

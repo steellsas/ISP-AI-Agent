@@ -1,0 +1,100 @@
+# KALBOS TAISYMAI — ką modelis (Gemma) pasako neteisingai ir kaip tai pataisyti (v3 6d).
+#
+# Andrius (2026-10-13): kalbos klaidos — ne į promptus, o į vieną failą, kurį galima pildyti
+# nekeičiant kodo. Kaip pildyti:
+#   1. `metrics.py` po eval parodo įtartinus žodžius (nėra žodyne ir nėra mūsų frazėse);
+#   2. klaida → eilutė į `taisymai` (dažna → ir į `i_prompta`);
+#      teisingas žodis, kurio nėra žodyne → į `teisingi`.
+#
+# Taisytuvas keičia tik PILNUS žodžius, prieš balsą, ir kiekvieną pakeitimą užrašo trace'e
+# (`language_fix`). Raidžių dydis išlaikomas („Sutvarkėsi" → „Susitvarkė").
+
+# Klaida → teisinga forma. Šaltinis: ~9 400 agento atsakymų, eval ir gyvi skambučiai 2026-10-12–13.
+taisymai:
+  sutvarkėsi: susitvarkė
+  lemputžių: lemputes  # „Pasižiūrėjome lemputžių" — galininkas
+  lemputtes: lemputes
+  nerodu: nerandu
+  vaikščio: vaikšto
+  nevaikšta: nevaikšto
+  pajungsite: prijungsite
+  pajungti: prijungti
+  pajunkite: prijunkite
+  tiešiai: tiesiai
+  seferį: sykį
+  dalykštį: dalyką
+  sužinsite: sužinosite
+  nesusprendau: nesupratau
+  netiketa: netikėtai
+  geriaus: geriausio
+  sulaužtų: sugestų
+  išgirta: išgirsta
+
+# Kurios klaidos keliauja į promptą kaip „nesakyk → sakyk" — tik dažniausios, kad promptas
+# neišsipūstų. Kitas sutvarko taisytuvas.
+i_prompta: [sutvarkėsi, lemputžių, nerodu, vaikščio, pajungsite, geriaus]
+
+# Teisingi žodžiai, kurių nėra kirčiavimo žodyne (`models/tts/piper/lt_kirciai.tsv`) — kad
+# matavimas jų nelaikytų klaida.
+teisingi:
+  - lipduko
+  - kasimo
+  - magistralinis
+  - susirūpinote
+  - nustatymuose
+  - apžiūrą
+  - persikraus
+  - peržiūrėjome
+  - šiek
+  - užlenktas
+  - nesakėte
+  - baigta
+  - spustelėkite
+  - užklausą
+  - suprantama
+  - įvesite
+  - spauskite
+  - routeriui
+  - routeryje
+  - perkišome
+  - maršrutizatorius
+  - maršrutizatoriaus
+  - maršrutizatoriui
+  - maršrutizatoriumi
+  - ryšiu
+  - gamykliniu
+  - kitkart
+  - nustatykite
+  - negaunama
+  - iškviesime
+  - konfigūracijai
+  - išsaugotumėte
+  - pakeistumėte
+  - laukime
+  - sukonfigūruos
+  - užregistruosiu
+  - užregistravau
+  - užregistruoju
+  - neišsprendėme
+  - patikrinkime
+  - patikrinome
+  - tikėtinai
+  - laikinai
+  - papildomai
+  - neapmokėtų
+  - apmokėjus
+  - būtent
+  - keitėte
+  - perkišote
+  - naršyklę
+  - detalių
+  - atidarysime
+  - prijungtą
+  - abonento
+  - sutartis
+  - įkištas
+  - įkiškite
+  - ištraukite
+  - turėtojos
+  - admin
+  - perkrovus

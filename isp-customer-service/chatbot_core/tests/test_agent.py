@@ -35,14 +35,29 @@ def _fake_tool_call(call_id, name, arguments):
 class TestSpeakPrompt:
     """The speaker's prompt: persona and the caller's number, and NO tools (M5)."""
 
-    def test_prompt_has_no_tools_and_carries_the_phone(self):
+    def test_prompt_has_no_tools(self):
         from agent.speak.node import speak_prompt
 
         prompt = speak_prompt("intake", "+37060012345", "lt")
 
-        assert "+37060012345" in prompt
         assert "You have NO tools" in prompt
         assert "find_customer" not in prompt
+
+    def test_the_phone_travels_only_in_the_ticket_phase(self):
+        """v3 6a: the caller's number is needed to register, not to ask about the lights."""
+        from agent.speak.node import speak_prompt
+
+        assert "+37060012345" in speak_prompt("ticket_offscript", "+37060012345", "lt", "ticket")
+        assert "+37060012345" not in speak_prompt("ask_fact", "+37060012345", "lt", "investigate")
+
+    def test_each_phase_carries_only_its_own_rules(self):
+        """v3 6a (docs/review/PROMPTAI.md): identification rules stay out of the fault fix."""
+        from agent.speak.node import speak_prompt
+
+        identify = speak_prompt("ask_identity", "+370", "lt", "identify")
+        investigate = speak_prompt("ask_fact", "+370", "lt", "investigate")
+        assert "contract holder's name" in identify and "contract holder's name" not in investigate
+        assert "what you SEE on the line" in investigate and "what you SEE" not in identify
 
 
 class TestAgentConfig:
@@ -73,10 +88,14 @@ class TestAgentBuildMessages:
 
         messages = build_messages(agent.state, agent.runtime, "intake")
 
+        from agent.phase import phase_of
+
         skill = skill_for(agent.state, "intake")
         assert skill == "ask_identity"
         assert messages[0]["role"] == "system"
-        assert messages[0]["content"] == speak_prompt(skill, "+37060012345", "lt")
+        assert messages[0]["content"] == speak_prompt(
+            skill, "+37060012345", "lt", phase_of(agent.state)
+        )
 
     def test_build_messages_carries_the_history(self):
         from agent.speak.node import build_messages
@@ -101,7 +120,7 @@ class TestPromptLoader:
         prompt = load_speak_prompt(caller_phone="+37060012345", language="lt")
 
         assert isinstance(prompt, str)
-        assert "+37060012345" in prompt
+        assert "+37060012345" not in prompt  # v3 6a: only the ticket phase carries it
         assert "Lithuanian" in prompt
         assert "You have NO tools" in prompt
 
@@ -295,7 +314,7 @@ class TestReviewGaps:
             "diagnose_connection",
             json.dumps({"verdict": {"reason": "no_mac_observed", "side": "unclear"}}),
         )
-        request_ticket(agent.state, agent.runtime, "test")
+        request_ticket(agent.state, agent.runtime, "sprendimas_baigtas")
         agent.state.dialog.side_topic_streak = 2
         assert agent.state.diagnosis.evidence and agent.state.ticket.stage == "phone"
 

@@ -47,7 +47,6 @@ _FLOW_OF = {
     "_prune_history": "agent.speak.history.prune_history",
     "_refresh_diagnosis": "agent.decide.rules.diagnosis.refresh_diagnosis",
     "_register_ticket_from_state": "agent.executor_flow.register_ticket_from_state",
-    "_registration_claim_guard": "agent.execute.ticket.registration_claim_guard",
     "_reject_and_rediagnose": "agent.decide.procedure.reject_and_rediagnose",
     "_reopen_identification": "agent.decide.rules.identification.reopen_identification",
     "_result_narration_tail": "agent.speak.context_card.result_narration_tail",

@@ -89,7 +89,7 @@ def end_confirm_answer(state: Any, rt: Any, user_input: str) -> bool:
             state.dialog.end_ticket_offer = False
             consent = detect_ticket_consent(user_input) == "yes"
             if consent and _case_can_escalate(s):
-                request_ticket(state, rt, "caller_ended_call")
+                request_ticket(state, rt, "klientas_nenori")
                 rt.tracer.emit("decision", intent="end_ticket_offer", action="register")
             else:
                 _end_declined(state, rt)
@@ -187,6 +187,13 @@ def farewell_mid_process(state: Any, rt: Any, user_input: str) -> bool:
             and not (state.diagnosis.news_delivered or s.diagnosis.outage_reported)
         )
     )
+    if mid_process and s.case.in_progress and _says_it_works(user_input):
+        # „Veikia, valio, ačiū, viso gero" — the fix's answer AND the goodbye. The Case reads
+        # the answer first and closes with the goodbye; asking „Ar tikrai baigti? Gedimo dar
+        # neišsprendėme" told a caller whose internet had just come back that it had not
+        # (live 2026-10-13).
+        rt.tracer.emit("decision", intent="farewell_mid_process", action="result_first")
+        return False
     if mid_process and (detect_farewell(user_input) or refuses_to_continue(user_input)):
         # F1 (live 2026-09-09: "Gerai, sutariam, viso gero" answering the
         # HOMEWORK consent got "Ar tikrai norite baigti?" twice): on the Case's
@@ -204,6 +211,13 @@ def farewell_mid_process(state: Any, rt: Any, user_input: str) -> bool:
             rt.tracer.emit("decision", intent="farewell_mid_process", action="confirm_end")
             return True
     return False
+
+
+def _says_it_works(user_input: str | None) -> bool:
+    """„Veikia" in a statement (not in a question)."""
+    from ...perceive.detectors import says_it_works
+
+    return says_it_works(user_input)
 
 
 def caller_intro(state: Any, rt: Any, user_input: str) -> bool:

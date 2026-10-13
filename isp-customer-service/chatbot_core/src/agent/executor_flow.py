@@ -65,6 +65,12 @@ def register_ticket_from_state(state: Any, rt: Any) -> None:
     if need:
         # Sentence-cased as its own sentence — "Reikalinga: reikalingas…" doubled up.
         details += f" {need[0].upper()}{need[1:]}."
+    # WHY it was registered (knowledge/registracija.yaml) — the technician reads it first.
+    from .contract.registration import for_the_ticket
+
+    why = for_the_ticket(s.ticket.reason)
+    if why:
+        details += f" Registruota, nes: {why}."
     # Bridge attempt outcome (2026-08-12): the technician reads WHAT was
     # already tried — "pajungti PC nepavyko (LAN aktyvus)" changes what
     # they bring and check first.

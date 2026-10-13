@@ -358,7 +358,7 @@ class TestTicketUnderstanding:
         from agent.execute.ticket import request_ticket
 
         agent = _diagnosing_agent(monkeypatch)
-        request_ticket(agent.state, agent.runtime, "test")
+        request_ticket(agent.state, agent.runtime, "sprendimas_baigtas")
         scripted_words(agent.state, agent.runtime, None)  # asks phone
         if stage == "hours":
             turn_head(
