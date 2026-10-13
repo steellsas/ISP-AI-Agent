@@ -753,7 +753,7 @@ class TestThePowerQuestionIsAlwaysAsked:
 
         assert case_rule.plan(state, rt).rule == "case.plug_power"
 
-    def _at_the_fix_check(self, call, line, *, asked=True):
+    def _at_the_fix_check(self, call, line, *, asked=True, heard="Taip, veikia"):
         """The lead was out, the caller put it in, and the line is read again."""
         from agent.decide.rules.case_rule import _absorb, _current
 
@@ -766,6 +766,7 @@ class TestThePowerQuestionIsAlwaysAsked:
         state.case.awaiting_probe = False
         if asked:  # „ar atsigavo?" already out
             state.case.step_said = state.case.step
+        state.dialog.last_heard = heard
         record_telemetry(state, rt, {**BASE, **line})
         return state, rt, _absorb(state, rt, case_rule.ledger.facts_of(state))
 
@@ -778,6 +779,22 @@ class TestThePowerQuestionIsAlwaysAsked:
         assert status == "solved"
         assert state.case.cause == "pack.no_mac_observed.cause.power"
         assert "ištrauktas" in _resolved(state, rt).say.goal  # the caller hears WHY
+
+    def test_the_line_alone_does_not_solve_it(self, call):
+        """The guard (Andrius, 2026-10-13): the line AND the caller — no answer, no „solved"."""
+        state, _, status = self._at_the_fix_check(
+            call, {"device_seen": True, "traffic": "flowing"}, heard="Hmm"
+        )
+        assert status == "waiting" and state.case.cause is None
+
+    def test_the_caller_says_it_still_does_not_work(self, call):
+        from agent.decide.rules.case_rule import _current
+
+        state, _, status = self._at_the_fix_check(
+            call, {"device_seen": True, "traffic": "flowing"}, heard="Ne, vis tiek neveikia"
+        )
+        assert status not in ("solved",) and state.case.cause is None
+        assert _current(state).module == "offer_bridge"  # the card goes on
 
     def test_the_line_back_is_told_before_it_is_solved(self, call):
         _, _, status = self._at_the_fix_check(

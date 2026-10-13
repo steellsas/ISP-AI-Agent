@@ -69,6 +69,9 @@ device_change:
 # Negatives are tested first because "neveikia" contains "veik".
 restored_no:
   - "neveik"
+  - "nebeveik"  # „vėl nebeveikia" (Andrius, 2026-10-13)
+  - "vėl dingo"
+  - "vel dingo"
   - "nevyk"  # STT garble of "neveikia"
   - "neatsirad"
   - "vis dar ne"

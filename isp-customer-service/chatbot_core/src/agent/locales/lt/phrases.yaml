@@ -940,6 +940,18 @@ summary:
     device_check: "patikrinom įrenginį"
     homework: "susitarėm, ką patikrinsit, kai būsit namuose"
   bridge_live: "internetas dabar laikinai veikia tik tame kompiuteryje — kol pakeisim routerį"
+  # Išspręsto gedimo išvada (Andrius, 2026-10-13: „visuomet išvada, koks gedimas čia buvo"):
+  # KAS buvo — kliento kalba; KĄ padarėm — `did`; ir kad veikia. Priežastis iš `fixes:`
+  # patikros (pvz., ištrauktas maitinimo laidas) yra tikslesnė ir eina vietoj šios.
+  resolved:
+    router_hung: "routeris buvo pakibęs — ryšys iki jo buvo, bet internetas per jį nėjo"
+    foreign_mac: "linijoje buvo naujas jūsų routeris, kurio mūsų sistema dar nežinojo"
+    crc_errors: "linijoje buvo daug klaidų — laidas buvo blogai įkištas arba pažeistas"
+    link_down_local: "ryšys iki routerio buvo nutrūkęs — laidas buvo blogai įkištas"
+    healthy_to_router: "tinklas iki routerio veikė — kliūtis buvo pačiame įrenginyje"
+    dhcp_silent: "routeris buvo pametęs interneto nustatymus"
+    no_mac_observed: "routerio linijoje nesimatė"
+    works_now: "internetas vėl veikia"
   declined_bridge: "laikino interneto per kompiuterį nenorėjot"
   no_computer: "laikino interneto paleisti nebuvo kuo — kompiuterio prijungti neturėjot"
   lost_the_thread: "telefonu šių žingsnių kartu pabaigti nepavyko"

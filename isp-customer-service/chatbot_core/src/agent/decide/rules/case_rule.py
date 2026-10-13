@@ -662,6 +662,18 @@ def _absorb(state: Any, rt: Any, facts: dict[str, str]) -> str:
     if state.case.awaiting_probe:
         return "waiting"  # its own reading has not come back yet
     settled = modules.step_done(call, facts)
+    if settled is True and call.args.get("ask") and not _verify_must_be_told(state, call):
+        # THE GUARD (Andrius, 2026-10-13): the line showing it works is half of it — the
+        # caller's own answer is the other half. „Vis tiek neveikia" / „vėl nebeveikia" means
+        # the fault is NOT fixed; an answer that says neither is asked again, simply.
+        said = _caller_on_the_check(state, rt, call, facts)
+        if said == "no":
+            rt.tracer.emit("case", move="check_denied_by_caller", step=state.case.step)
+            if getattr(call, "fixes", None):
+                return _advance(state, rt)  # the fix check found nothing — the card goes on
+            return _retry_or_give_up(state, rt)
+        if said is None:
+            return _answer_was_unclear(state, rt, call)
     if settled is True and getattr(call, "fixes", None) and not _verify_must_be_told(state, call):
         # A FIX CHECK came back (v3 stage 4): the fault is solved by what the caller just did,
         # and the cause is known — it goes into the conclusion they hear.
@@ -928,6 +940,27 @@ def _confirm_plan(state: Any, rt: Any) -> TurnPlan:
         rule="case.confirm",
         say=Say(kind="phrase", text=text, stage="diagnosis"),
     )
+
+
+def _caller_on_the_check(state: Any, rt: Any, call: Any, facts: dict[str, str]) -> str | None:
+    """„yes" / „no" / None: what the caller said about the check we asked („ar veikia?")."""
+    from ...perceive.detectors import says_it_fails
+
+    here = str(state.case.step)
+    if state.case.facts.get("restored") in ("yes", "no") and "restored" in (state.case.said or []):
+        return state.case.facts["restored"]  # this check was answered (cleared when it began)
+    heard = state.dialog.last_heard
+    said = None
+    if says_it_fails(heard):
+        said = "no"
+    else:
+        read = modules.read_answer(call, heard, device=_device(state)) if heard else None
+        if read is not None and read[0] == "restored":
+            said = read[1]
+    if said:
+        ledger.record_client(state, rt, "restored", said)
+        state.case.facts["_restored_step"] = here
+    return said
 
 
 def _caller_says_it_works(state: Any) -> bool:
@@ -1501,6 +1534,13 @@ def _advance(state: Any, rt: Any, *, by_words: bool = False, ran: bool = True) -
     if following is not None:
         spec = catalog.module(following.module)
         state.case.awaiting_probe = bool(spec and spec.kind == "verify")
+        if spec is not None and spec.kind == "verify" and following.args.get("ask"):
+            # A new check asks anew: an earlier check's „ne" (the power fix check) is not this
+            # check's answer (the bridge) — the guard reads only what was said about THIS one.
+            state.case.facts.pop("restored", None)
+            state.case.facts.pop("_restored_step", None)
+            if "restored" in (state.case.said or []):
+                state.case.said.remove("restored")
         if spec is not None and spec.kind == "action" and spec.tool:
             state.case.act_count = state.tools.calls.get(spec.tool, 0)
     if _current(state) is None:
@@ -1795,6 +1835,33 @@ def _cause_words(state: Any) -> str:
     return f" and, in one sentence, why it happened: {cause}" if cause else ""
 
 
+def _conclusion(state: Any) -> str:
+    """The solved fault in the caller's words: what it was, what we did, that it works.
+
+    Andrius (2026-10-13): *„turime visuomet išvadą, koks gedimas čia buvo"* — before this a
+    rebooted router ended in „Džiaugiuosi, kad viskas susitvarkė", with nothing about what
+    had been wrong. Everything comes from what the engine already holds: the fix check's
+    cause or the card's own words, and the steps that actually ran.
+    """
+    from ...contract.locale import phrase, phrase_or
+
+    what = (phrase_or(state.case.cause, None) if state.case.cause else None) or phrase_or(
+        f"summary.resolved.{state.case.fault}", None
+    )
+    did = []
+    for module in state.case.worked:
+        words = phrase_or(f"summary.did.{module}", "")
+        if words and words not in did:
+            did.append(words)
+    parts = []
+    if what:
+        parts.append(f"what the fault was — {what}")
+    if did:
+        parts.append(f"what we did — {', '.join(did)}")
+    parts.append(f"that it works now — {phrase('summary.resolved.works_now')}")
+    return "; ".join(parts)
+
+
 def _resolved(state: Any, rt: Any) -> TurnPlan:
     """The solution ran and the line agrees: say it works and close warmly. The engine
     closes on ITS verdict, never on the caller's word alone (D-07)."""
@@ -1810,9 +1877,9 @@ def _resolved(state: Any, rt: Any) -> TurnPlan:
             action=Action(type="close", name="resolved", args={"complete": True}),
             say=Say(
                 kind="directive",
-                goal="say briefly that the service is back"
-                + _cause_words(state)
-                + ", thank them and say a warm goodbye — no question",
+                goal="the CONCLUSION in one or two short sentences — "
+                + _conclusion(state)
+                + " — then thank them and say a warm goodbye; no question",
                 stage="closing",
             ),
         )
@@ -1822,10 +1889,10 @@ def _resolved(state: Any, rt: Any) -> TurnPlan:
         action=Action(type="close", name="resolved"),
         say=Say(
             kind="directive",
-            goal="say briefly that the service is back"
-            + _cause_words(state)
-            + ", then ask whether you can help with anything else — the goodbye comes when "
-            "they decline",
+            goal="the CONCLUSION in one or two short sentences — "
+            + _conclusion(state)
+            + " — and only then ask whether they have any other questions; the goodbye comes "
+            "when they decline",
             stage="diagnosis",
         ),
     )
@@ -1986,6 +2053,7 @@ def _module_plan_inner(state: Any, rt: Any, call, facts: dict[str, str], *, rule
                 # from the registration (eval S4b, 2026-10-12). Settle it and decide again.
                 state.case.step_said = state.case.step
                 ledger.record_client(state, rt, "restored", "yes")
+                state.case.facts["_restored_step"] = str(state.case.step)
                 rt.tracer.emit("case", move="restored_unasked", step=state.case.step)
                 return TurnPlan(
                     owner="procedure",

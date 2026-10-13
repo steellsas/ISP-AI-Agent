@@ -112,7 +112,8 @@ class TestLiveCall1013:
         plan = _resolved(state, rt)
 
         assert plan.action.type == "close" and plan.action.args == {"complete": True}
-        assert "goodbye" in plan.say.goal and "service is back" in plan.say.goal
+        assert "goodbye" in plan.say.goal and "CONCLUSION" in plan.say.goal
+        assert "routeris buvo pakibęs" in plan.say.goal  # what the fault was (2026-10-13)
 
 
 @pytest.mark.parametrize(
