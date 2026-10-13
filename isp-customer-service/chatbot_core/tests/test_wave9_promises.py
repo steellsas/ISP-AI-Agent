@@ -152,56 +152,38 @@ class TestT2AnswerAndQuestionInOneBreath:
         assert "192.168.0.1" in line and "written knowledge" in line
 
 
-class TestT3APromiseBecomesTheProcess:
+class TestT3AWordNeverStartsARegistration:
+    """Wave 9 T3 turned a model's „užregistruosiu" INTO the contact dialogue. Since 2026-10-13
+    (Andrius: the engine decides, the model only says it) no word starts a registration: a
+    promise the engine has not decided is not spoken, a decided one is, and the registration is
+    started by the engine's own rule (the Case's summary is followed by the contact dialogue)."""
+
     CLAIM = "Dėl routerio geriausiai atsakys atsakingas žmogus — užregistruosiu jūsų klausimą."
 
-    def test_a_case_promise_starts_the_contact_dialogue(self, dead_router):
-        from agent.execute.ticket import registration_claim_guard
+    def test_the_claim_guard_is_gone(self):
+        from agent.execute import ticket
+
+        assert not hasattr(ticket, "registration_claim_guard")
+
+    def test_a_summed_up_case_registers_through_the_engine(self, dead_router):
+        from agent.decide.rules import case_rule
 
         state, rt, _ = dead_router
         state.case.summarised = True
+        state.case.step = len(case_rule._solution_steps(state))  # nothing left but the ticket
 
-        extra = registration_claim_guard(state, rt, self.CLAIM)
+        case_rule.plan(state, rt)
 
-        assert extra and state.ticket.stage == "phone"
-        assert state.ticket.request_type is None  # a technician, not a billing question
-
-    def test_a_promise_after_the_debt_news_is_a_billing_request(self, debt):
-        from agent.execute.ticket import registration_claim_guard
-
-        state, rt, _ = debt
-        extra = registration_claim_guard(
-            state, rt, "Galiu užregistruoti — užregistruosiu jūsų klausimą dėl skolos."
-        )
-
-        assert extra and state.ticket.request_type == "billing_request"
         assert state.ticket.stage == "phone"
+        assert state.ticket.reason in ("sprendimas_baigtas", "telefonu_nepataisoma")
 
-    @pytest.mark.parametrize(
-        "text",
-        [
-            "Patikrinome lemputes ir prijungėme kompiuterį.",  # no promise
-            "Užregistravau jūsų routerį prie linijos.",  # a device bind, not a ticket
-        ],
-    )
-    def test_no_promise_no_dialogue(self, dead_router, text):
-        from agent.execute.ticket import registration_claim_guard
+    def test_the_finished_reply_adds_nothing(self, dead_router):
+        from agent.speak.postprocess import finish
 
         state, rt, _ = dead_router
-        state.case.summarised = True
+        reply, extra = finish(state, rt, self.CLAIM)
 
-        assert registration_claim_guard(state, rt, text) is None
-        assert state.ticket.stage is None
-
-    def test_a_running_registration_is_left_alone(self, dead_router):
-        from agent.execute.ticket import registration_claim_guard
-
-        state, rt, _ = dead_router
-        state.case.summarised = True
-        state.ticket.stage = "hours"
-
-        assert registration_claim_guard(state, rt, self.CLAIM) is None
-        assert state.ticket.stage == "hours"
+        assert extra == "" and state.ticket.stage is None
 
 
 class TestT4OurOwnSentenceIsEcho:

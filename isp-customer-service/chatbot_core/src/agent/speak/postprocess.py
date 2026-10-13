@@ -18,9 +18,8 @@ _SENTENCE_END = re.compile(r"[.!?…]['\"“”„»)]*\s")
 def finish(state: Any, rt: Any, text: str) -> tuple[str, str]:
     """The full reply and the EXTRA words the guards appended (the caller has already
     heard everything before them, so only the extra still needs streaming)."""
-    from ..execute.ticket import registration_claim_guard
 
-    extra = registration_claim_guard(state, rt, text) or ""
+    extra = ""  # words never start a registration (2026-10-13)
     reply = trim_to_cap(state, rt, text) + extra
     state.messages.append({"role": "assistant", "content": reply})
     finalize(state, rt, reply)

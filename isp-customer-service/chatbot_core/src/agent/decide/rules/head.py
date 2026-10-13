@@ -89,7 +89,7 @@ def end_confirm_answer(state: Any, rt: Any, user_input: str) -> bool:
             state.dialog.end_ticket_offer = False
             consent = detect_ticket_consent(user_input) == "yes"
             if consent and _case_can_escalate(s):
-                request_ticket(state, rt, "caller_ended_call")
+                request_ticket(state, rt, "klientas_nenori")
                 rt.tracer.emit("decision", intent="end_ticket_offer", action="register")
             else:
                 _end_declined(state, rt)

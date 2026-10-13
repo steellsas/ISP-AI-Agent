@@ -61,7 +61,7 @@ def plan(state: Any, rt: Any) -> TurnPlan | None:
         # Klientas nebegali sekti žingsnių (kelis ėjimus iš eilės nesusikalbam) — telefoninis
         # sprendimas baigiamas SĄŽININGAI: pasakom, ką padarėm, ir registruojam meistrą. Tai
         # sprendimo kelio darbas, ne identifikacijos kopėčios (7f banga).
-        return _escalate(state, rt, state.case.fault)
+        return _escalate(state, rt, state.case.fault, why="nesusikalbame")
     if state.case.fault is not None:
         status = _absorb(state, rt, facts)
         # The caller's physical action must reach the line BEFORE anything reads it again,
@@ -137,7 +137,11 @@ def plan(state: Any, rt: Any) -> TurnPlan | None:
             return _escalate(state, rt, move.fault)
         _begin(state, rt, move.fault, facts)
         step = _current(state)
-        return _step_plan(state, rt, step, facts) if step else _escalate(state, rt, move.fault)
+        return (
+            _step_plan(state, rt, step, facts)
+            if step
+            else _escalate(state, rt, move.fault, why="telefonu_nepataisoma")
+        )
     return _escalate(state, rt, move.fault)
 
 
@@ -189,7 +193,7 @@ def _not_now_plan(state: Any, rt: Any, facts: dict[str, str]) -> TurnPlan | None
             ),
         )
     if agreed == "no":
-        return _escalate(state, rt, state.case.fault)
+        return _escalate(state, rt, state.case.fault, why="klientas_nenori")
     # N1 (Andrius, 2026-10-09): first WHEN they can get to it — once. „Nežinau" / „negalėsiu" is
     # not a refusal (U9): a technician is the honest way on.
     heard = state.dialog.last_heard or ""
@@ -200,7 +204,7 @@ def _not_now_plan(state: Any, rt: Any, facts: dict[str, str]) -> TurnPlan | None
             state.case.facts["_available_when"] = when
         elif any(m in heard.lower() for m in vocab("never_available")):
             rt.tracer.emit("case", move="cannot_say_when", fault=state.case.fault)
-            return _escalate(state, rt, state.case.fault)
+            return _escalate(state, rt, state.case.fault, why="klientas_negali")
     elif not when:
         state.case.facts["_when_asked"] = "1"
         rt.tracer.emit("case", move="ask_when", fault=state.case.fault)
@@ -1740,7 +1744,7 @@ def _repeat_guard(state: Any, rt: Any, call: Any) -> TurnPlan | None:
     if call.module not in state.case.did:
         state.case.did.append(call.module)
     rt.tracer.emit("case", move="repeat_gave_up", fault=state.case.fault, module=call.module)
-    return _escalate(state, rt, state.case.fault)
+    return _escalate(state, rt, state.case.fault, why="nesusikalbame")
 
 
 def _retry_or_give_up(state: Any, rt: Any) -> str:
@@ -2024,7 +2028,8 @@ def _module_plan_inner(state: Any, rt: Any, call, facts: dict[str, str], *, rule
             return exhausted
     state.case.delivered = state.case.step
     if step.kind == "escalate":
-        return _escalate(state, rt, state.case.fault, note=step.note)
+        # The card itself ends with a technician (a dead router): not fixable by phone.
+        return _escalate(state, rt, state.case.fault, note=step.note, why="telefonu_nepataisoma")
     if step.kind == "action":
         waits = _line_does_not_show(state, rt, call, facts)
         if waits is not None:
@@ -2139,7 +2144,13 @@ def _line_does_not_show(state: Any, rt: Any, call, facts: dict[str, str]) -> Tur
     )
 
 
-def _escalate(state: Any, rt: Any, fault: str | None, note: str | None = None) -> TurnPlan:
+def _escalate(
+    state: Any,
+    rt: Any,
+    fault: str | None,
+    note: str | None = None,
+    why: str = "sprendimas_baigtas",
+) -> TurnPlan:
     """Telephone help is over: the contact dialogue collects the details and the engine
     registers (the ticket path is unchanged — wave 1b).
 
@@ -2185,7 +2196,7 @@ def _escalate(state: Any, rt: Any, fault: str | None, note: str | None = None) -
             )
     if note:
         state.case.facts.setdefault("_ticket_note", note)
-    request_ticket(state, rt, "case_escalate")
+    request_ticket(state, rt, why)
     rt.tracer.emit("case", move="escalate", fault=fault, note=note)
     goal = "say WHY the phone cannot fix this and that a technician will be registered"
     unchecked = _unchecked_words(state)

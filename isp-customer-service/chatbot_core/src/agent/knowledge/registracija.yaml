@@ -1,0 +1,61 @@
+# KADA REGISTRUOJAMAS TIKETAS — vienintelis sąrašas (Andrius, 2026-10-13).
+#
+# „Sprendimas turi būti variklio: jis viską nusprendžia. Kalbėjimo modelis tik sako, ką
+# nusprendė variklis." Variklis registruoja TIK dėl vienos iš šių priežasčių; registracija
+# prasideda vieninteliu įėjimu `execute.ticket.request_ticket(state, rt, <priežastis>)`, o
+# testas tikrina, kad kiekviena kode naudojama priežastis yra čia.
+#
+#   kada       — sąlyga žmogaus kalba (dokumentacija)
+#   sutikimas  — ar prieš registraciją klientas KLAUSIAMAS (taip) ar tik renkami kontaktai (ne)
+#   tiketui    — kas įrašoma tikete, kad meistras ar kolega žinotų, KODĖL registruota
+#
+# Modelio žodis („užregistruosiu") registracijos NEPRADEDA — tokios priežasties čia nėra.
+priezastys:
+  sprendimas_baigtas:
+    kada: "variklis padarė viską, ką leidžia kortelė, o gedimas neišspręstas"
+    sutikimas: ne
+    tiketui: "telefonu atlikti visi galimi žingsniai, gedimas neišspręstas"
+  telefonu_nepataisoma:
+    kada: "gedimas toks, kad telefonu jo pašalinti negalima (pvz., sugedęs routeris, kortelė baigiasi meistru)"
+    sutikimas: ne
+    tiketui: "gedimo telefonu pašalinti negalima"
+  neaiskus_gedimas:
+    kada: "gedimo nustatyti nepavyksta — nėra kortelės, kuri tiktų"
+    sutikimas: ne
+    tiketui: "gedimo nustatyti telefonu nepavyko"
+  musu_tinklo_gedimas:
+    kada: "gedimas mūsų tinkle (mazgas, komutatorius) — klientui nieko daryti nereikia"
+    sutikimas: ne
+    tiketui: "gedimas tiekėjo tinkle"
+  klientas_nenori:
+    kada: "klientas nenori šalinti gedimo telefonu (atsisako tęsti, renkasi meistrą)"
+    sutikimas: taip
+    tiketui: "klientas pasirinko meistrą, telefonu nešalinta"
+  klientas_negali:
+    kada: "klientas negali atlikti veiksmų ir nežino, kada galės (nėra namie ir pan.)"
+    sutikimas: ne
+    tiketui: "klientas negali atlikti veiksmų telefonu"
+  klientas_praso:
+    kada: "klientas pats prašo meistro ar registracijos"
+    sutikimas: ne
+    tiketui: "klientas paprašė registruoti"
+  nesusikalbame:
+    kada: "negauname reikiamos informacijos, nebegalime tęsti kartu"
+    sutikimas: ne
+    tiketui: "telefonu nepavyko surinkti reikiamos informacijos"
+  vel_neveikia:
+    kada: "po „išspręsta“ klientas sako, kad neveikia"
+    sutikimas: ne
+    tiketui: "po sprendimo klientas pranešė, kad vis tiek neveikia"
+  sistemos_neatsako:
+    kada: "mūsų sistemos (patikra, CRM) nepasiekiamos"
+    sutikimas: ne
+    tiketui: "patikros sistemos skambučio metu neveikė"
+  ne_musu_klausimas:
+    kada: "klausimas ne agento srities (sąskaita, sutartis) — atsakingam žmogui"
+    sutikimas: taip
+    tiketui: "klausimas atsakingam žmogui"
+  padejo_rageli:
+    kada: "klientas padėjo ragelį po to, kai variklis jau nusprendė meistrą"
+    sutikimas: ne
+    tiketui: "klientas padėjo ragelį registruojant"

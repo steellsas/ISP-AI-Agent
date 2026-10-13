@@ -257,3 +257,29 @@ Prompto dydis +~450 simbolių; testo riba 5 300 → 5 600.
   6d (1/3). Atskiras klausimas — kada modelio žodis gali paleisti veiksmą (aptarti).
 
 Sprendimas: **paliekama**.
+
+---
+
+### Registracija tik variklio sprendimu (2026-10-13, Andrius pritarė)
+
+Kortelės ir pavyzdžių pakeitimai (prompto dalis; visa — `STRUKTURA_V3.md` §6.1):
+
+| Kur | Buvo | Dabar | Kodėl |
+|---|---|---|---|
+| STUCK (neidentifikuotas) | „…or register the problem for a call-back" | „Promise no registration — the engine decides that." | registraciją siūlė modelis, ne variklis |
+| STUCK (identifikuotas) | „…or offer to register the fault (a technician will get in touch)" | „a smaller, simpler question. Promise no registration or technician" | — „ — |
+| ONE MORE CHANCE | „…say that if it does not work you will register a technician" | „Promise nothing about a technician or a registration — the engine decides" | — „ — |
+| LONG WAIT | „…or offer to register the fault" | „Promise no registration — the engine decides that." | — „ — |
+| `skill_answer_side` pavyzdys | „…atsakingas žmogus, užregistruosiu klausimą" | „Tai ne mano sritis — šiuo klausimu geriausiai atsakys atsakingas žmogus" | pavyzdį modelis kartodavo ne vietoje |
+
+**Rezultatas (eval ×3, `logs/eval_reg.json`, palyginta su 6d):**
+
+| | 6d | Registracija tik variklio |
+|---|---|---|
+| Praėję visus 3 kartus | 39 / 42 | **40 / 42** |
+| S1 (netikra registracija identifikacijos metu) | nestabilus | **3/3** |
+| I2 („nerodu") | 2/3 | **3/3** |
+| Nestabilūs | 3 | 2 — S4b (ėjimo ilgis 298 > 280, 1/3; buvo ir prieš), X_dhcp (žargonas, 1/3) |
+| Ilgiausias atsakymas | 305 | 259 |
+
+Sprendimas: **paliekama**.

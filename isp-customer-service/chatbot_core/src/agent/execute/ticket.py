@@ -30,13 +30,17 @@ def request_ticket(state: Any, rt: Any, why: str, *, request_type: str | None = 
     """THE one way a registration starts (STRUKTURA_V3 stage 3b — eleven places used to start
     the contact dialogue each in its own way).
 
-    `why` names the moment that asked for it (case_escalate, caller_ended_call, promise,
-    no_path, reopened_at_closing, systems_down, request…) and goes to the trace. A request for
-    the responsible person carries its `request_type`; a fault gets its card's note for the
+    `why` is one of the reasons in `knowledge/registracija.yaml` — the engine registers for
+    nothing else (an unknown reason raises). It goes to the trace and onto the ticket. A request
+    for the responsible person carries its `request_type`; a fault gets its card's note for the
     technician. Nothing happens when a registration is already running or done.
     """
+    from ..contract.registration import check
+
+    check(why)
     if state.ticket.ticket_id or state.ticket.stage:
         return
+    state.ticket.reason = why
     if request_type:
         state.ticket.request_type = request_type
     elif state.case.fault:
@@ -124,90 +128,23 @@ def finish_ticket_dialogue(state: Any, rt: Any) -> str:
     return phrase(done, phone=fmt_phone(s.ticket.contact_phone), hours=val) + note
 
 
-def _debt_news_told(state: Any) -> bool:
-    """The caller has heard the debt news in this call."""
-    from ..faults import verdict_flag
-
-    reason = (state.diagnosis.verdicts.get("network") or {}).get("reason")
-    return bool(state.diagnosis.news_delivered and verdict_flag(reason, "inform") == "debt")
-
-
 def unbacked_promise(state: Any, sentence: str) -> bool:
-    """A registration promise with nothing that could make it true (wave 10, A).
+    """A registration promise the ENGINE has not decided — the sentence is not spoken.
 
-    The claim guard below turns a promise INTO the contact dialogue when the call has a
-    reason to register — a Case fault for a technician, a question about the debt. Without
-    one (live eval K1: „kaip pakeisti wifi slaptažodį?" answered from the knowledge base and
-    then „užregistruosiu jūsų klausimą"), a ticket would be junk for the colleagues and a
-    false promise for the caller, so the sentence is not spoken at all.
+    Andrius (2026-10-13): the engine decides, the speaking model only says what it decided.
+    Until then a model's „užregistruosiu" was turned INTO a registration (the claim guard,
+    wave 9) — a word became a decision: mid-identification („…kad viską teisingai
+    užregistruosiu?") a ticket was opened for nothing (eval S1). Now a promise is spoken only
+    when the engine has decided to register: a registration is running or done, or the Case has
+    summed up for a technician (the registration starts on its next turn).
     """
     low = (sentence or "").lower()
     if not any(m in low for m in vocab("registration_claim")):
         return False
     if not any(m in low for m in vocab("registration_claim_subject")):
         return False
+    from ..decide.rules.head import case_owes_ticket
+
     s = state
-    if s.ticket.ticket_id or s.ticket.stage:
-        return False  # a registration exists or is being collected — the words are true
-    backed = (
-        bool(s.identity.customer_id)
-        and not s.closing.case_closed
-        and (
-            bool(s.case.fault and (s.case.in_progress or s.case.summarised))
-            or _debt_news_told(state)
-        )
-    )
-    return not backed
-
-
-def registration_claim_guard(state: Any, rt: Any, content: str) -> str | None:
-    """The LLM narrator CLAIMED a registration that never happened (observed
-    live 2026-08-05: "Užregistravau gedimą…" at dr_recheck, ticket_id None,
-    the caller hung up trusting it). Words may not outrun the engine: when a
-    claim is detected with no ticket and no dialogue running, the contact
-    dialogue begins NOW and its phone question is APPENDED to the reply —
-    the promise becomes the process. Returns the appended text or None."""
-    s = state
-    low = (content or "").lower()
-    if not any(m in low for m in vocab("registration_claim")):
-        return None
-    # A DEVICE registration ("užregistravau jūsų naują routerį prie linijos" —
-    # the MAC bind, live eval 2026-08-21) is not a fault-ticket claim: the
-    # guard fires only when the sentence is about the ticket/technician.
-    if not any(m in low for m in vocab("registration_claim_subject")):
-        return None
-    if (
-        s.ticket.ticket_id
-        or state.ticket.stage
-        or s.closing.case_closed
-        or not s.identity.customer_id
-        # The homework turn says „jei neatsistatys — užregistruosime meistrą": a CONDITIONAL
-        # promise, the callback is what is agreed (N1, eval S4c: the phone question was
-        # appended to the homework).
-        or s.case.awaiting == "later_agreed"
-    ):
-        return None
-    from ..contract.locale import phrase
-
-    if s.case.fault and (s.case.in_progress or s.case.summarised):
-        # v1's `resolution.procedure` was empty on a Case call, so this guard was blind to every
-        # Case call: live 2026-10-07 the agent said „užregistruosiu" about the router and the
-        # caller left with no ticket (wave 9, T3).
-        request_ticket(state, rt, "promise")
-    elif _debt_news_told(state):
-        # The same promise after the debt news is a question for the responsible person.
-        from ..decide.rules.requests import start_request
-
-        state.ticket.request_note = (
-            state.ticket.request_note or (state.dialog.last_heard or "")[:200]
-        )
-        start_request(state, rt, "billing_request")
-    else:
-        return None
-    if state.ticket.stage != "phone":
-        return None  # could not start (defensive) — nothing to append
-    rt.tracer.emit("decision", intent="ticket_dialogue", action="claim_guard")
-    if state.ticket.context is not None:
-        state.ticket.context.intro_done = True  # the claim already announced it
-        state.ticket.context.phone_asked = True  # appended below — answers count
-    return " " + phrase("identification.ticket_phone")
+    decided = bool(s.ticket.ticket_id or s.ticket.stage) or case_owes_ticket(s)
+    return not decided

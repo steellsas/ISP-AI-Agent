@@ -252,6 +252,9 @@ class TicketState(BaseModel):
     context: TicketContext | None = None
     # What the dead-router bridge attempt showed — the technician reads it.
     bridge_fail_note: str | None = None
+    # WHY this call registers — a reason from knowledge/registracija.yaml (Andrius 2026-10-13:
+    # only the engine registers, and only for a reason that is written down).
+    reason: str | None = None
     # The ticket dialogue was dropped back to solving: say so next reply.
     resume_fix_note: bool = False
     # A request outside the agent's knowledge, registered for the responsible person as

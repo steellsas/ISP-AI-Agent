@@ -314,7 +314,7 @@ class TestReviewGaps:
             "diagnose_connection",
             json.dumps({"verdict": {"reason": "no_mac_observed", "side": "unclear"}}),
         )
-        request_ticket(agent.state, agent.runtime, "test")
+        request_ticket(agent.state, agent.runtime, "sprendimas_baigtas")
         agent.state.dialog.side_topic_streak = 2
         assert agent.state.diagnosis.evidence and agent.state.ticket.stage == "phone"
 

@@ -207,7 +207,7 @@ class TestTicketCallback:
         agent = _agent()
         agent.state.identity.caller_name = "Tomas"
         agent.state.case.fault = "unclear_fault"
-        request_ticket(agent.state, agent.runtime, "test")
+        request_ticket(agent.state, agent.runtime, "sprendimas_baigtas")
         ticket_stage_reply(agent.state, agent.runtime)  # numerio klausimas išėjo
         turn_head(agent.state, agent.runtime, "Gerai, aš paskambinsiu vėliau pats")
         assert agent.state.closing.case_closed and agent.state.closing.closed_reason == "callback"
@@ -223,7 +223,7 @@ class TestTicketCallback:
 
         agent = _agent()
         agent.state.case.fault = "unclear_fault"
-        request_ticket(agent.state, agent.runtime, "test")
+        request_ticket(agent.state, agent.runtime, "sprendimas_baigtas")
         ticket_stage_reply(agent.state, agent.runtime)
         turn_head(agent.state, agent.runtime, "Taip, tiks")
         ticket_stage_reply(agent.state, agent.runtime)

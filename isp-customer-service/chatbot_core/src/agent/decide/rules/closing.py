@@ -104,7 +104,7 @@ def _escalate(state: Any, rt: Any, rule: str) -> TurnPlan:
     from ...execute.ticket import request_ticket
     from .ticket import ticket_question_turn
 
-    request_ticket(state, rt, "reopened_at_closing")
+    request_ticket(state, rt, "vel_neveikia")
     _rule, words = ticket_question_turn(state, rt)
     say = (
         Say(kind="phrase", text=words, stage="ticket")
