@@ -283,3 +283,27 @@ Kortelės ir pavyzdžių pakeitimai (prompto dalis; visa — `STRUKTURA_V3.md` �
 | Ilgiausias atsakymas | 305 | 259 |
 
 Sprendimas: **paliekama**.
+
+---
+
+### D Analitiko signalai (2026-10-14, Andrius pritarė)
+
+Analitiko prompto (`prompts/sensors/analyst.md`) pakeitimas — du nauji signalų tipai:
+
+| Signalas | Ką analitikas praneša | Ką daro variklis | Kodėl |
+|---|---|---|---|
+| `dead_end` | kelis ėjimus klientas negali atlikti ar atsakyti, ko reikia žingsniui; `value` — kas neveikia | žingsnis laikomas užstrigusiu: dar vienas šansas → išvada → registracija („nesusikalbame") | aklavietę mato ir modelis, bet sprendžia variklis |
+| `wants_technician` | klientas užsiminė, kad mieliau norėtų meistro (ne klausimas apie kainą) | paklausia; „taip" → registracija („klientas prašo"); „ne" → toliau | tai spėjimas — patikslinti, ne spėti |
+
+Taisyklė „NEVER suggest a diagnosis, an action, a step or a reply" lieka — signalas yra
+pastebėjimas, ne veiksmas.
+
+**Rezultatas (eval ×3, `logs/eval_D.json`, palyginta su ankstesniu):** 40/42 — kaip ir buvo;
+nestabilūs S4b (ėjimo ilgis) ir I2 (Gemma); analitiko įeinantys tokenai 832 → 973. Nauji
+signalai eval'e nesuveikė — scenarijuose nėra aklaviečių ir užuominų; juos tikrina unit testai.
+Visų vaidmenų vėlavimas šiame paleidime ~2× (ir kalbėjimo, kuris nekeistas) — Scaleway apkrova.
+
+Naujas scenarijus D8d (aiškus prašymas vidury tyrimo) atidengė dviejų taisyklių susidūrimą —
+„klientas prašo → registruoti" ir „meistras tik po perkrovimo" (`only_after`) — laukia sprendimo.
+
+Sprendimas: **paliekama**.

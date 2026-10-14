@@ -57,6 +57,9 @@ def plan(state: Any, rt: Any) -> TurnPlan | None:
         state.case.fault, state.case.solution, state.case.step = None, None, 0
         state.case.awaiting, state.case.awaiting_probe = None, False
         state.case.guide_step, state.case.guide_said = 0, -1
+    asked_for = _technician_wanted(state, rt)
+    if asked_for is not None:
+        return asked_for
     if state.case.fault is not None and _caller_is_lost(state, rt):
         # Klientas nebegali sekti žingsnių (kelis ėjimus iš eilės nesusikalbam) — telefoninis
         # sprendimas baigiamas SĄŽININGAI: pasakom, ką padarėm, ir registruojam meistrą. Tai
@@ -1674,8 +1677,11 @@ def _no_way_forward(state: Any) -> bool:
     """
     from ...contract import limits
 
-    return state.case.stall >= limits.get("stall_before_last_chance") or (
-        state.case.silence_asks >= limits.get("silence_before_last_chance")
+    return (
+        state.case.stall >= limits.get("stall_before_last_chance")
+        or state.case.silence_asks >= limits.get("silence_before_last_chance")
+        # the analyst saw this very step going round in circles (v3 D)
+        or state.case.dead_end_step == state.case.step
     )
 
 
@@ -2160,6 +2166,8 @@ def _escalate(
     """
     from ...execute.ticket import request_ticket
 
+    if why == "sprendimas_baigtas" and state.case.facts.get("_escalate_why"):
+        why = state.case.facts["_escalate_why"]  # said on the conclusion turn, kept for this one
     pending = _phone_work_left(state, fault)
     if pending is not None:
         rt.tracer.emit("case", move="phone_work_first", fault=fault, module=pending)
@@ -2185,6 +2193,7 @@ def _escalate(
     if not state.case.summarised:
         told = _summary_words(state, card, live_facts)
         state.case.summarised = True
+        state.case.facts["_escalate_why"] = why
         if told:
             state.turn.directives.summary = told
             state.case.summary = told
@@ -2209,6 +2218,53 @@ def _escalate(
         rule="case.escalate",
         say=Say(kind="directive", goal=goal, stage="ticket"),
     )
+
+
+def _technician_wanted(state: Any, rt: Any) -> TurnPlan | None:
+    """The caller wants a technician — the engine decides, and asks when it only inferred it.
+
+    Andrius (2026-10-13): „klientas pats prašo meistro" is a reason to register. An explicit
+    request („registruokit meistrą") is the caller's own decision: the engine registers. The
+    analyst's `wants_technician` is an inference („gal geriau atvažiuotų kas nors"), so the
+    engine asks first — „patikslinti, ne spėti".
+    """
+    s = state
+    if not (s.case.fault and s.case.in_progress) or s.ticket.stage or s.ticket.ticket_id:
+        return None
+    if s.case.summarised:
+        return None  # the registration is already on its way
+    from ...perceive.detectors import detect_refuse_or_ticket, detect_ticket_consent
+
+    heard = s.dialog.last_heard
+    if detect_refuse_or_ticket(heard) == "demand":
+        s.case.technician_offer = None
+        # The same words may answer the question that is out („Aš noriu registruoti gedimą" to
+        # the bridge offer is also a no to the bridge) — the ticket says what they declined.
+        call = _current(state)
+        if call is not None and _step_was_asked(state):
+            read = modules.read_answer(call, heard, device=_device(state))
+            if read is not None:
+                ledger.record_client(state, rt, read[0], read[1])
+        rt.tracer.emit("case", move="technician_demanded", fault=s.case.fault)
+        return _escalate(state, rt, s.case.fault, why="klientas_praso")
+    if s.case.technician_offer == "asked":
+        s.case.technician_offer = "answered"
+        if detect_ticket_consent(heard) == "yes":
+            rt.tracer.emit("case", move="technician_agreed", fault=s.case.fault)
+            return _escalate(state, rt, s.case.fault, why="klientas_praso")
+        rt.tracer.emit("case", move="technician_not_wanted", fault=s.case.fault)
+        return None  # „ne, bandom toliau" — the fix goes on
+    if s.case.technician_offer == "due":
+        s.case.technician_offer = "asked"
+        rt.tracer.emit("case", move="technician_offer", fault=s.case.fault)
+        from ...contract.locale import phrase
+
+        return TurnPlan(
+            owner="procedure",
+            rule="case.technician_offer",
+            say=Say(kind="phrase", text=phrase("case.technician_offer"), stage="diagnosis"),
+        )
+    return None
 
 
 def _caller_is_lost(state: Any, rt: Any) -> bool:

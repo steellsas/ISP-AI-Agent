@@ -18,6 +18,12 @@ Signal types — report ONLY these:
 - "off_topic": the caller's last answers do not relate to the ACTIVE QUESTION. `quote`
   their words. Report it only when the ACTIVE QUESTION is given.
 - "frustration": the caller is losing patience. `quote` their words.
+- "dead_end": the fix is going round in circles — for several turns the caller cannot do or
+  cannot answer what the current step needs (cannot find the device, does not understand,
+  the same thing fails again). `quote` their words, `value` in a few words what does not work.
+- "wants_technician": the caller would rather have a technician come or the fault registered
+  than keep trying by phone („gal geriau atvažiuotų kas nors", „neturiu laiko tam"). `quote`
+  their words. Not for a question about a technician's price or time.
 
 Rules:
 - `quote` is the caller's OWN words, copied, never invented or translated.

@@ -694,6 +694,8 @@ case:
   say_when_done: "Pasakykite, kai padarysite."
   # Patikslinimas vietoj spėjimo (Andrius, 2026-10-12): kai atsakymą perskaitė tik modelis, be
   # kliento žodžių, agentas pasako, ką suprato, ir paklausia, ar teisingai.
+  # v3 D: analitikas išgirdo, kad klientas mieliau norėtų meistro — variklis paklausia.
+  technician_offer: "Supratau. Ar norite, kad užregistruočiau meistrą, ar dar pabandome kartu?"
   confirm:
     fact: "Noriu įsitikinti, kad gerai supratau: {said} — ar teisingai?"
     power_cable:

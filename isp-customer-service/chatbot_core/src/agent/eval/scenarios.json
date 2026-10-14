@@ -836,6 +836,30 @@
       }
     },
     {
+      "id": "D8d_technician_requested_mid_fix",
+      "phone": "+37060020112",
+      "desc": "v3 D (2026-10-14): vidury tyrimo klientas aiškiai paprašo meistro — variklis registruoja iš karto, priežastis „klientas prašo“ (anksčiau toks prašymas veikė tik pabaigoje ir tiketo dialoge). LAUKIA ANDRIAUS SPRENDIMO: pakibusio routerio kortelė leidžia meistrą tik po perkrovimo (`only_after: [reboot]`, 2026-09-23), todėl agentas prašo perkrauti.",
+      "turns": [
+        "Neveikia internetas visuose įrenginiuose",
+        "Taip",
+        "Paulius",
+        "Visuose",
+        "Užregistruokit meistrą, nenoriu pats krapštytis",
+        "Taip, tinka šis numeris",
+        "Bet kada",
+        "Ačiū, viso gero"
+      ],
+      "expect": {
+        "verdict_in": "router_hung",
+        "disposition": "ticket",
+        "tool_used": [
+          "create_ticket"
+        ],
+        "record_outcome": "ticket"
+      },
+      "known_bug": true
+    },
+    {
       "id": "X_dhcp_silent",
       "phone": "+37060020106",
       "desc": "dhcp_silent (CUST106): 6 banga — vedimas SIŪLOMAS, o dokumentas einamas po VIENĄ PUNKTĄ (prijungti → adresas → prisijungimas → WAN → DHCP → išsaugoti); nepavykus — meistras, o tiketas pasako, ką bandėme. Klientui be žargono (F-8)",
