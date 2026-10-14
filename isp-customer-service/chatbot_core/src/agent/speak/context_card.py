@@ -45,6 +45,7 @@ def context_card(state, rt) -> str | None:
         _recall_and_notes,
     ):
         lines += section(state, rt) or []
+    lines += _open_question(state, lines)
     if not lines:
         return None
     return HEADER + "\n" + "\n".join(f"- {line}" for line in lines)
@@ -696,14 +697,9 @@ def _case_facts(state, rt) -> list[str]:
     out: list[str] = []
     if s.identity.customer_id:
         out.append(f"Customer ID: {s.identity.customer_id}")
-    if s.identity.customer_name:
-        # Live 2026-09-30: the caller said the contract was in his wife's name, and the agent
-        # greeted him „Malonu, Rasa!" — the holder's name from the CRM. Whoever is calling is
-        # `caller_name`; this one is the contract's.
-        out.append(
-            f"Contract holder (the CUSTOMER on the contract — NOT necessarily who is calling, "
-            f"never address the caller by this name): {s.identity.customer_name}"
-        )
+    # The contract holder's name is NOT on the card (2026-10-14): a rule „never say it" did not
+    # hold — the model asked „sutartis Giedriaus Giedraičio vardu?" on its own. What the model
+    # never sees it cannot say; only the engine compares names.
     if s.identity.customer_address:
         out.append(f"Address: {s.identity.customer_address}")
     if s.intake.problem_type:
@@ -1134,6 +1130,27 @@ def _caller_pending(state) -> bool:
     )  # --- the one instruction for this reply --------------------------------------------------------
 
 
+def _open_question(state, lines: list[str]) -> list[str]:
+    """One open question, and it is the engine's (2026-10-14).
+
+    Live call 2: the card had no PLAN GOAL, the model filled the gap with „ar visame bute?",
+    and the caller's „Taip" was booked as the answer the Case awaited (reachable). When nothing
+    on the card says what to ask, the open Case question is repeated — never a new one.
+    """
+    if not getattr(state.case, "fault", None):
+        return []
+    if any(line.startswith(("PLAN GOAL", "SAY THIS STEP", "THE STEP WAITS")) for line in lines):
+        return []
+    asked = state.case.awaiting and state.case.step_said == state.case.step
+    words = _next_step_words(state) if asked else ""
+    if words:
+        return [
+            f"OPEN QUESTION — still waiting for: „{words}“. If this reply asks anything, it "
+            "asks THIS; never a question of your own."
+        ]
+    return ["NO QUESTION of your own in this reply — the engine decides what is asked next."]
+
+
 def _plan_goal(state, rt) -> list[str]:
     """The goal directives the rules composed this turn: the identification moment, the
     ticket question, the recap, the findings, the evidence question. Normally exactly one
@@ -1277,6 +1294,10 @@ def _goal_holder_clarify(state, rt) -> list[str]:
     duodamas tiksliai — sutarties vardas NIEKADA negarsinamas, todėl formuluotė nėra laisva.
     """
     s = state
+    # 2026-10-14 (Andrius): identification ends before the finding is told — the clarification
+    # is its own scripted turn (decide/rules/reply.py), never a question riding along.
+    if True:
+        return []
     if not (s.identity.holder_clarify_open and s.identity.holder_clarify_soft):
         return []
     if s.identity.holder_clarify_asked or s.closing.case_closed:

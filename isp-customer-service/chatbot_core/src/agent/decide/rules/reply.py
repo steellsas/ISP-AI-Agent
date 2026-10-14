@@ -66,10 +66,18 @@ def reply_plan(state: Any, rt: Any, user_input: str | None) -> TurnPlan | None:
     # — gal šeimos nario?" The dispute is what the caller is waiting for; the clarification
     # keeps until a turn that is not about something else.
     _turn_type = str((getattr(state.turn, "understanding", None) or {}).get("type") or "")
+    if state.identity.name_confirm_open and not state.identity.name_confirm_asked:
+        state.identity.name_confirm_asked = True
+        from ..question import register as _q_register
+
+        _q_register(state, rt, "ident", "name_confirm")
+        return _words(
+            "identification.name_confirm",
+            phrase("identification.name_confirm", name=s.identity.caller_name or ""),
+        )
     if (
         state.identity.holder_clarify_open
         and not state.identity.holder_clarify_asked
-        and not state.identity.holder_clarify_soft
         and _turn_type not in ("contradiction", "question")
     ):
         state.identity.holder_clarify_asked = True

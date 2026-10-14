@@ -307,3 +307,16 @@ Naujas scenarijus D8d (aiškus prašymas vidury tyrimo) atidengė dviejų taisyk
 „klientas prašo → registruoti" ir „meistras tik po perkrovimo" (`only_after`) — laukia sprendimo.
 
 Sprendimas: **paliekama**.
+
+### Identifikacija pirma; vienas atviras klausimas (2026-10-14, Andrius pritarė)
+
+Kalbėjimo kortelės (`speak/context_card.py`) pakeitimai po dviejų gyvų skambučių:
+
+| Kas | Buvo | Dabar | Kodėl |
+|---|---|---|---|
+| Sutarties savininko vardas | eilutė „Contract holder: …" su taisykle „niekada nesakyk" | eilutės nėra | modelis pats paklausė „sutartis Giedriaus Giedraičio vardu?" — privatumas; ko nemato, to nepasakys |
+| Švelnus sutarties patikslinimas | prisidėdavo prie radinio ėjimo | išjungtas; patikslinimas — atskiras variklio sakinys | identifikacija baigiama prieš radinį |
+| Nėra PLAN GOAL | modelis pats sugalvodavo klausimą („ar visame bute?") | „OPEN QUESTION — still waiting for: „…“" arba „NO QUESTION of your own" | kliento „taip" buvo įrašytas kaip atsakymas į variklio klausimą, kurio niekas neuždavė |
+
+Nauja variklio frazė: `identification.name_confirm` — „Atsiprašau, noriu įsitikinti — ar teisingai
+išgirdau, jūsų vardas {name}?" (vardas — tas, kurį pasakė klientas).

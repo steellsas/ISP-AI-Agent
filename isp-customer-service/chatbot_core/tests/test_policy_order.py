@@ -15,6 +15,9 @@ SECTION_5 = [
     (5, "identification.reopen_confirm_answer"),
     (6, "dialog.cannot_now"),
     (7, "dialog.farewell_mid_process"),
+    # Not in §5: born 2026-10-14. „Ar teisingai išgirdau — jūsų vardas X?" is read before the
+    # name ladder, like the address confirmation.
+    (7.5, "identification.name_confirm"),
     (8, "identification.caller_intro"),
     (9, "identification"),
     (10, "identification.address_correction"),
@@ -41,4 +44,4 @@ def test_rules_follow_section_5_order():
     assert rows == sorted(rows)
     # Every row of the head (1-10) is ported, in order, with 2c's family in its place.
     # Row 6 (the cannot-now shield) went with v1's `resolution.procedure`, which gated it.
-    assert [row for row, _f in ported if row <= 10] == [1, 2, 2.5, 3, 4, 5, 7, 8, 9, 10]
+    assert [row for row, _f in ported if row <= 10] == [1, 2, 2.5, 3, 4, 5, 7, 7.5, 8, 9, 10]

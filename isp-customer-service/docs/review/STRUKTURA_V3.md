@@ -246,6 +246,33 @@ kliento žodžiai ── modulio skaitytuvas („įkištas" / „ištrauktas", �
   žingsnio neduoda (pokalbio veiksmas LAUKTI nuima žingsnio sakinį).
 - Nauji skaitytuvai: `detect_power_cable`, `detect_reach`; frazės `case.confirm.*`.
 
+### 4.3 Pirma identifikacija, tada radinys; vienas atviras klausimas (Andrius, 2026-10-14)
+
+*„Identifikacija turi būti baigta ir išsiaiškinta… ir tik po identifikacijos pasako, kas matosi,
+ir prasideda analizė."* Linija tikrinama jau patvirtinus adresą (tyliai), rezultatas **laukia**,
+kol baigsis vardo ir sutarties patikslinimas — papildomo laukimo nėra.
+
+```
+adresas ✓ ─► linijos patikra (tyliai, rezultatas laikomas)
+vardas ─┬ sutampa su sutartimi (ir ASR iškraipytas: „Gedrus" → Giedrius) ─► malonu, Giedriau
+        └ nesutampa ─► „Ar teisingai išgirdau — jūsų vardas Darius?"          (eilė 7.5)
+              ├ „Ne, Giedrius" ─► pataisytas vardas ─► sutampa ─► baigta
+              ├ „Žmonos vardu sutartis" ─► ryšys žinomas ─► baigta
+              ├ „Taip" ─► „Sutartis registruota kitu vardu — gal šeimos nario?" (atskiras ėjimas)
+              └ „Ne" ─► vardo klausimas iš naujo
+identifikacija baigta ─► radinys ─► analizė
+```
+
+- Sutarties savininko vardo kortelėje **nėra**: ko modelis nemato, to ir nepasakys.
+- Vienas atviras klausimas — variklio: kai kortelė neturi PLAN GOAL, modeliui kartojamas
+  atviras Case klausimas („OPEN QUESTION"), savo klausimo jis neužduoda.
+- ASR šiukšlės — ne atsakymas: „ne," / „ne " — tik atskiras žodis („Gekine matone" ≠ „ne");
+  kai suvokimas sako *confusion*, raktiniai faktai neįrašomi — klausiama iš naujo.
+- Išvadoje „kodėl meistras" sąžininga: kol pataisymas nebandytas — „įtariama…, patikrinti
+  kartu telefonu nepavyko", ne „perkrovėme, bet neatsistatė".
+- Reikalavimas su klausimu („Kur tas routeris? Registruokite gedimą") — reikalavimą tvarko
+  Case, klausimui trumpas atsakymas tame pačiame ėjime.
+
 ---
 
 ## 5. Pokalbio užbaigimas (Andriaus principai, 2026-10-08)

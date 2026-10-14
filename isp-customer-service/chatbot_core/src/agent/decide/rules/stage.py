@@ -91,13 +91,15 @@ def _stage_plan(state: Any, rt: Any) -> TurnPlan:
     from ...execute.diagnosis import ensure_diagnosed
 
     ensure_diagnosed(state, rt)
-    if _side_topic(s) and _carries_a_fix_answer(s):
+    if _side_topic(s) and (_carries_a_fix_answer(s) or _demands_a_ticket(s)):
         # „Gerai, ačiū, veikia. Alio, kada dėl routerio paskambinsit?" — the result of the fix
         # AND a question in one breath. Freezing the Case lost the result: the fault stayed
         # unregistered and the model filled the turn with a step of its own (eval S4b under 6a,
         # 2026-10-12). The Case takes the turn; the question gets one short answer in it.
         s.turn.side_topic_active = False
         s.turn.also_asked = True
+        # Same for a demand („Kur tas routeris… Registruokite gedimą", live 2026-10-14): the
+        # demand is the Case's, the question gets its short answer alongside.
         rt.tracer.emit("decision", intent="side_topic", action="answer_with_the_fix")
     if _side_topic(s):
         return TurnPlan(
@@ -132,6 +134,15 @@ def _carries_a_fix_answer(state: Any) -> bool:
     from ...perceive.detectors import statements_only as _statements
 
     return says_it_works(heard) or says_it_fails(heard) or says_done_action(_statements(heard))
+
+
+def _demands_a_ticket(state: Any) -> bool:
+    """The caller asks for the registration in the same breath as a side question."""
+    if not state.case.fault:
+        return False
+    from ...perceive.detectors import detect_refuse_or_ticket
+
+    return detect_refuse_or_ticket(state.dialog.last_heard) == "demand"
 
 
 def statements_only(text: str | None) -> str:

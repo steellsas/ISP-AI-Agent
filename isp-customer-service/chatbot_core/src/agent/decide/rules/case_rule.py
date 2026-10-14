@@ -598,8 +598,8 @@ def _identification_owns_the_turn(state: Any) -> bool:
     s = state
     if not s.identity.customer_id:
         return True
-    if s.identity.holder_clarify_open and not s.identity.holder_clarify_asked:
-        return True
+    if s.identity.holder_clarify_open or s.identity.name_confirm_open:
+        return True  # the name / the contract is still being clarified (2026-10-14)
     return bool(s.identity.result_pending and not s.identity.caller_name)
 
 
@@ -2494,16 +2494,28 @@ def _summary_words(state: Any, card: Any, facts: dict[str, str]) -> dict[str, st
         ),
         "dabar": (phrase_or("summary.bridge_live", "") if _bridge_live(state, facts) else ""),
         "nepavyko": "; ".join(part for part in missed if part),
-        "kodel": (
-            maybe_phrase(card.escalate.need)
-            if card and card.escalate and card.escalate.need
-            else ""
-        )
-        or "",
+        "kodel": _technician_why(state, card),
     }
     if not (told["padaryta"] or told["dabar"] or told["nepavyko"]):
         return None  # nieko nebuvo padaryta — nėra ko ir sumuoti
     return told
+
+
+def _technician_why(state: Any, card: Any) -> str:
+    """Why a technician is needed — honest about what was tried (live 2026-10-14: the
+    conclusion said „Išbandėme perkrauti, bet neatsistatė" to a caller who never rebooted).
+    The card's `escalate.need` describes the state AFTER its fix; until the fix ran, the
+    words are what we suspect — the same rule as the ticket's own `ticket_need`."""
+    from ...contract.locale import phrase_or
+    from .ticket import _fix_was_tried
+
+    if not (card and card.escalate and card.escalate.need):
+        return ""
+    if _fix_was_tried(state, state.case.fault or ""):
+        return maybe_phrase(card.escalate.need) or ""
+    gloss = phrase_or(f"verdict.{state.case.fault}.gloss", None)
+    prefix = phrase("ticket.need_suspected", gloss=gloss) if gloss else ""
+    return prefix + phrase("ticket.need_not_checked")
 
 
 def _bridge_live(state: Any, facts: dict[str, str]) -> bool:
