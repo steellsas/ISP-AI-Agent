@@ -30,6 +30,7 @@ RULES: list[tuple[float, str, Rule]] = [
     (4, "dialog.end_confirm_answer", head.head_rule(head.end_confirm_answer)),
     (5, "identification.reopen_confirm_answer", head.head_rule(head.reopen_confirm_answer)),
     (7, "dialog.farewell_mid_process", head.head_rule(head.farewell_mid_process)),
+    (7.5, "identification.name_confirm", head.head_rule(head.name_confirm_answer)),
     (8, "identification.caller_intro", head.head_rule(head.caller_intro)),
     (9, "identification", head.head_rule(head.unidentified_address)),
     (10, "identification.address_correction", head.head_rule(head.address_correction)),

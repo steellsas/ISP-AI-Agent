@@ -45,7 +45,12 @@ def phase_of(state: Any) -> str:
         return GREETING
     if not s.intake.problem_type:
         return INTAKE
-    if not s.identity.customer_id or s.identity.result_pending or s.identity.holder_clarify_open:
+    if (
+        not s.identity.customer_id
+        or s.identity.result_pending
+        or s.identity.holder_clarify_open
+        or s.identity.name_confirm_open
+    ):
         return IDENTIFY
     # News (a debt, an outage, an open ticket) once told IS the ending — v3 merges the outcome
     # into the closing phase. A Case fault is never news (wave 10, S1).

@@ -222,9 +222,13 @@ def ingest_client_evidence(state, rt, user_input: str | None) -> None:
     # deterministic vocabulary hit was thrown away with it. The pack's
     # `answers` marks are the conservative floor: a hit on the PENDING key
     # is a hit, whatever the LLM called the sentence.
+    # Not when the turn did not make sense (2026-10-14): ASR garbage the perception read as
+    # confusion („Gekine matone") is re-asked, not mined for a keyword.
+    confused = (state.turn.understanding or {}).get("type") == "confusion"
     if (
         pending
         and pending not in facts
+        and not confused
         and (pending_entry is None or pending_entry.get("value") == "unknown")
     ):
         from ..evidence import read_pending_answer, spec_for

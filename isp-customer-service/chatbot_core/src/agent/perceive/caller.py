@@ -10,20 +10,54 @@ def holder_name_matches(state, rt, caller_name: str) -> bool:
     """Does the caller's stated first name plausibly match the CRM account
     holder's name? Fuzzy by 4-letter prefix (STT garbles endings). True also
     when the holder name is unknown — no basis to challenge."""
-    from ..evidence import _fold
 
     holder = state.identity.customer_name or (state.identity.phone_candidate or {}).get("name")
     if not holder:
         return True
-    caller_tokens = [t for t in _fold(caller_name).split() if len(t) >= 3]
-    holder_tokens = [t for t in _fold(str(holder)).split() if len(t) >= 3]
-    if not caller_tokens or not holder_tokens:
-        return True
-    for c in caller_tokens:
-        for h in holder_tokens:
-            if c[:4] == h[:4]:
-                return True
-    return False
+    return holder_spelling(state, caller_name) is not None or not _tokens(caller_name, holder)
+
+
+def _tokens(caller_name: str, holder: str | None) -> bool:
+    from ..evidence import _fold
+
+    return bool(
+        [t for t in _fold(caller_name).split() if len(t) >= 3]
+        and [t for t in _fold(str(holder or "")).split() if len(t) >= 3]
+    )
+
+
+def holder_spelling(state, caller_name: str) -> str | None:
+    """The holder's own spelling of the name the caller said, when what we heard is that name
+    garbled by speech recognition („Gedrus" → „Giedrius", „Paulus" → „Paulius"); None when it
+    is a different name. Saying it back reveals nothing — it is the name the caller gave.
+
+    2026-10-14: a 4-letter prefix was too strict („gedr" ≠ „gied") and opened the „contract in
+    another name" question for the holder himself.
+    """
+    from ..evidence import _fold
+
+    holder = state.identity.customer_name or (state.identity.phone_candidate or {}).get("name")
+    if not holder:
+        return None
+    for c in [t for t in _fold(caller_name).split() if len(t) >= 3]:
+        for raw in str(holder).split():
+            h = _fold(raw)
+            if len(h) < 3:
+                continue
+            if c[:4] == h[:4] or (min(len(c), len(h)) >= 4 and _distance(c, h) <= 2):
+                return raw.capitalize()
+    return None
+
+
+def _distance(a: str, b: str) -> int:
+    """Edit distance — how many letters differ (insert, drop, swap one)."""
+    prev = list(range(len(b) + 1))
+    for i, ca in enumerate(a, 1):
+        cur = [i]
+        for j, cb in enumerate(b, 1):
+            cur.append(min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (ca != cb)))
+        prev = cur
+    return prev[-1]
 
 
 def detect_caller_relation(text: str | None) -> str:

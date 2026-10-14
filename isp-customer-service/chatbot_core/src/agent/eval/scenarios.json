@@ -606,11 +606,12 @@
     {
       "id": "I6_holder_name_mismatch",
       "phone": "+37060012353",
-      "desc": "Sakosi savininkas kitu vardu -> mandagus patikslinimas BE DB vardo garsinimo (privatumo taisyklė)",
+      "desc": "Sakosi savininkas kitu vardu -> mandagus patikslinimas BE DB vardo garsinimo (privatumo taisyklė) 2026-10-14: pirma „ar teisingai išgirdau — Petras?“, tik tada sutarties klausimas.",
       "turns": [
         "Neveikia internetas",
         "Taip",
         "Petras, aš sutarties savininkas",
+        "Taip, Petras",
         "Žmonos vardu sudaryta sutartis",
         "Ne, ačiū, tiek žinot"
       ],
@@ -618,10 +619,56 @@
         "identified": true,
         "disposition": "any",
         "reply_any": [
+          "teisingai išgirdau",
           "kitu vardu"
         ],
         "reply_none": [
           "Giedri"
+        ]
+      }
+    },
+    {
+      "id": "I7_name_garbled_takes_holder_spelling",
+      "phone": "+37060012353",
+      "desc": "Andrius 2026-10-14: ASR „Gedrus“ vietoj „Giedrius“ — tai tas pats vardas, joks sutarties klausimas; radinys pasakomas tik po identifikacijos.",
+      "turns": [
+        "Labas, neveikia internetas",
+        "Šįryt dingo, po audros",
+        "Taip",
+        "Gedrus",
+        "Taip, jau stoviu prie routerio",
+        "Ne, ačiū, tiek žinot"
+      ],
+      "expect": {
+        "identified": true,
+        "disposition": "any",
+        "reply_none": [
+          "kitu vardu",
+          "teisingai išgirdau"
+        ]
+      }
+    },
+    {
+      "id": "I8_name_misheard_corrected",
+      "phone": "+37060012353",
+      "desc": "Andrius 2026-10-14: „išgirdau Darius — Giedrius sakiau“ — vardas patikslinamas kaip adresas, sutarties klausimo nebėra, radinys tik po to.",
+      "turns": [
+        "Labas, neveikia internetas",
+        "Šįryt dingo, po audros",
+        "Taip",
+        "Darius",
+        "Ne, Giedrius",
+        "Taip, jau stoviu prie routerio",
+        "Ne, ačiū, tiek žinot"
+      ],
+      "expect": {
+        "identified": true,
+        "disposition": "any",
+        "reply_any": [
+          "teisingai išgirdau"
+        ],
+        "reply_none": [
+          "kitu vardu"
         ]
       }
     },
@@ -994,7 +1041,7 @@
       "turns": [
         "Laba diena, televizorius nerodo nė vieno kanalo",
         "Taip",
-        "Andrius",
+        "Giedrius",
         "Aišku, ačiū, viso gero"
       ],
       "expect": {
@@ -1123,7 +1170,7 @@
       "turns": [
         "Laba diena, vis dar neveikia internetas, niekas neatvažiavo",
         "Taip",
-        "Tomas",
+        "Petras",
         "Aišku, ačiū, viso gero"
       ],
       "expect": {

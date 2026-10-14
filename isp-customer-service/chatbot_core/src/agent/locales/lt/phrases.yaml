@@ -144,6 +144,8 @@ identification:
   callback_goodbye: "Gerai — paskambinkite, kai galėsite patikrinti, padėsime iš karto. Geros dienos!"
   # Savininko vardo patikra (taisyklė №4): DB vardo NIEKADA negarsiname.
   holder_mismatch_clarify: "Sistemoje sutartis šiuo adresu registruota kitu vardu — gal ji sudaryta šeimos nario ar kito asmens vardu?"
+  # Andrius (2026-10-14): vardas tikrinamas kaip adresas — pirma, ar gerai išgirdom.
+  name_confirm: "Atsiprašau, noriu įsitikinti — ar teisingai išgirdau, jūsų vardas {name}?"
   repeat_ack: "Atsiprašau, kad kartojuosi — noriu būti visiškai tikras. "
   escalate_clarify: "Norėjau patikslinti — ar bandome išspręsti kartu dabar, ar registruoju meistrą?"
   ticket_cancel_confirm: "Tik patikslinsiu — telefonu šio gedimo išspręsti nepavyks, todėl siūliau registruoti meistrą. Registruoti, ar tikrai nereikia?"

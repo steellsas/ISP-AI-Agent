@@ -105,7 +105,11 @@ class IdentityState(BaseModel):
     # (avarijos žinia, „televizijos paslaugos sutartyje nėra", atviras tiketas), o ne jį
     # pakeičia. Eval 2026-10-01: scenarijai S8, S10 ir R2 liko be savo žinios būtent todėl,
     # kad patikslinimas atėmė visą atsakymą (wave 6).
-    holder_clarify_soft: bool = False
+    holder_clarify_soft: bool = False  # no longer used (2026-10-14: always its own turn)
+    # „Ar teisingai išgirdau — jūsų vardas X?" (Andrius, 2026-10-14): a name that does not
+    # match the contract is first checked as a mishearing, like the address.
+    name_confirm_open: bool = False
+    name_confirm_asked: bool = False
     # The caller just introduced themselves — accept warmly, once.
     caller_name_heard: bool = False
     # The name answer was unreadable once and asked again (A4, 2026-10-12): the second

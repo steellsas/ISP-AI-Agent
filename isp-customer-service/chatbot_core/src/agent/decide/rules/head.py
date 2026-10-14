@@ -220,6 +220,68 @@ def _says_it_works(user_input: str | None) -> bool:
     return says_it_works(user_input)
 
 
+def name_confirm_answer(state: Any, rt: Any, user_input: str) -> bool:
+    """The answer to „Ar teisingai išgirdau — jūsų vardas X?" (Andrius, 2026-10-14:
+    „išgirdau Giedris — Giedrius sakiau — malonu, Giedriau")."""
+    s = state
+    if not (s.identity.name_confirm_open and s.identity.name_confirm_asked):
+        return False
+    from ...perceive.caller import extract_caller_name, holder_spelling
+    from ...perceive.detectors import detect_yes_no
+    from ...resolution import Outcome
+
+    s.identity.name_confirm_open = False
+    s.identity.name_confirm_asked = False
+    state.turn.ident_answer = True  # not an answer to the Case
+    from ...perceive.caller import detect_caller_relation
+
+    relation = detect_caller_relation(user_input)
+    if relation in ("family", "tenant", "helper", "other"):
+        # „Žmonos vardu sutartis" — the name stands, and the contract question is answered
+        # before it was asked.
+        s.identity.caller_relation = relation
+        rt.tracer.emit("decision", intent="caller_name", action="confirmed", relation=relation)
+        return True
+    from ...perceive.detectors import is_real_question
+
+    asking = is_real_question(user_input)
+    corrected = None if asking else extract_caller_name(user_input)
+    answer = detect_yes_no(user_input)
+    if corrected and corrected.lower() != (s.identity.caller_name or "").lower():
+        s.identity.caller_name = holder_spelling(state, corrected) or corrected
+        s.identity.caller_name_heard = True
+    elif answer is Outcome.NO and not asking:
+        # „Ne" and no name in it — ask the name again (the ladder does).
+        s.identity.caller_name = None
+        s.identity.caller_name_reasked = True
+        rt.tracer.emit("decision", intent="caller_name", action="confirm_denied")
+        return True
+    elif answer is not Outcome.YES:
+        # Not an answer to it („O ar šitas skambutis kainuos?", eval S1v): nobody objected to
+        # the name — it stands, and the turn goes on to what they did say.
+        state.turn.ident_answer = False
+        rt.tracer.emit("decision", intent="caller_name", action="confirm_passed")
+        _clarify_if_not_holder(state, rt)
+        return False
+    rt.tracer.emit(
+        "decision", intent="caller_name", action="confirmed", value=s.identity.caller_name
+    )
+    _clarify_if_not_holder(state, rt)
+    return True
+
+
+def _clarify_if_not_holder(state: Any, rt: Any) -> None:
+    """The name stands and is not the contract's — whose name it is in, as its own turn."""
+    from ...perceive.caller import holder_name_matches
+
+    if holder_name_matches(state, rt, state.identity.caller_name):
+        return
+    state.identity.holder_clarify_open = True
+    state.identity.holder_clarify_asked = False
+    state.identity.holder_clarify_soft = False
+    rt.tracer.emit("decision", intent="holder_name", action="mismatch_clarify", soft=False)
+
+
 def caller_intro(state: Any, rt: Any, user_input: str) -> bool:
     """The caller's answer to who is calling; the holder-name check (§5 row 8). True when it owns the rest of the turn head."""
     s = state
@@ -303,12 +365,25 @@ def caller_intro(state: Any, rt: Any, user_input: str) -> bool:
                 None,
                 "nenurodyta",
             ):
+                from ...perceive.caller import holder_spelling
+
+                spelled = holder_spelling(state, s.identity.caller_name)
+                if spelled and spelled != s.identity.caller_name:
+                    # „Gedrus" was „Giedrius" — the caller said it, speech garbled it.
+                    rt.tracer.emit("caller_intro", name=spelled, heard=s.identity.caller_name)
+                    s.identity.caller_name = spelled
                 if not holder_name_matches(state, rt, s.identity.caller_name):
+                    # First as a mishearing — „Ar teisingai išgirdau — jūsų vardas X?" —
+                    # and only then whose name the contract is in (2026-10-14).
+                    state.identity.name_confirm_open = True
+                    state.identity.name_confirm_asked = False
+                    rt.tracer.emit("decision", intent="caller_name", action="confirm_ask")
+                    return True
                     state.identity.holder_clarify_open = True
                     state.identity.holder_clarify_asked = False
                     # Pasakė, kad sutartis jo → patikslinimas yra atsakymas (scenarijus).
                     # Nieko nesakė → klausimas tik prisideda prie šio ėjimo atsakymo.
-                    state.identity.holder_clarify_soft = s.identity.caller_relation != "holder"
+                    state.identity.holder_clarify_soft = False  # its own turn (2026-10-14)
                     rt.tracer.emit(
                         "decision",
                         intent="holder_name",

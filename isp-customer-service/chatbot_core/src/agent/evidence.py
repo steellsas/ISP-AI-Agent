@@ -19,6 +19,7 @@ STT-garble tolerant); the LLM extractor upgrade rides on the same keys later.
 
 from __future__ import annotations
 
+import re
 from typing import Any, Literal
 
 from pydantic import BaseModel
@@ -138,6 +139,16 @@ def _fold(text: str) -> str:
     return lang().fold(text)
 
 
+def _whole_word_mark(m: str) -> bool:
+    """„ne," / „ne " — a word with its boundary written out: it is the WORD „ne", never the end
+    of another („Gekine matone" — ASR garbage — read as „ne " = lights off, live 2026-10-14)."""
+    return m[-1:] in (" ", ",") and m.strip(" ,").isalpha()
+
+
+def _word_hit(low_folded: str, m: str) -> bool:
+    return re.search(r"(?<!\w)" + re.escape(m), low_folded) is not None
+
+
 def _mark_hit(low_folded: str, mark: str) -> bool:
     """Folded substring match with a NEGATION-PREFIX guard: a positive mark
     found only inside a word that itself starts with "ne" is a NO, not a yes
@@ -146,6 +157,8 @@ def _mark_hit(low_folded: str, mark: str) -> bool:
     negations ("netur") and multi-word marks skip the guard."""
     m = _fold(mark)
     if m not in low_folded:
+        return False
+    if _whole_word_mark(m) and not _word_hit(low_folded, m):
         return False
     negation = vocab("negation_prefixes")
     if m.startswith(negation) or " " in m:
@@ -325,7 +338,7 @@ def polarity(text: str | None) -> str | None:
     if not text:
         return None
     low = _fold(text)
-    if any(m in low for m in vocab("polarity_no")):
+    if any((_word_hit(low, m) if _whole_word_mark(m) else m in low) for m in vocab("polarity_no")):
         return "no"
     if any(_mark_hit(low, m) for m in vocab("polarity_yes")):
         return "yes"
