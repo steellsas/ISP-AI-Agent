@@ -584,6 +584,12 @@ class CaseState(BaseModel):
     # confirms it: {step, fact, value, turn, asks}; fact None = „did you do it?" (Andrius,
     # 2026-10-12: patikslinti visada geriau nei spėti).
     confirming: dict[str, Any] | None = None
+    # The analyst saw the fix going round in circles on this step (v3 D): the engine's ladder
+    # (one more chance, then the conclusion and a registration) treats the step as stuck.
+    dead_end_step: int = -1
+    # The analyst heard the caller would rather have a technician: None | "due" | "asked" —
+    # the engine asks before it registers.
+    technician_offer: str | None = None
     # Pati išvada. Ji NEIŠTRINAMA ją pasakius, nes turi antrą adresatą: tą patį sąrašą gauna ir
     # tiketas — meistras turi matyti, kas buvo ir kas padaryta (Andrius, 2026-10-02: *„tuomet
     # tiketai bus informatyvūs ir meistrams bus aiškiau, kas ten įvyko"*).

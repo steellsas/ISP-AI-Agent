@@ -9,6 +9,10 @@ decides what to do with:
   secondary_problem another complaint was mentioned in passing
   off_topic         the last answers do not relate to the active question
   frustration       the caller is losing patience (tone only)
+  dead_end          the fix is going round in circles: the caller cannot do or answer what the
+                    step needs, turn after turn (v3, 2026-10-13)
+  wants_technician  the caller would rather have a technician / a registration — said in
+                    passing, not as a plain request the engine's own reader already catches
 """
 
 from __future__ import annotations
@@ -24,6 +28,8 @@ SignalType = Literal[
     "secondary_problem",
     "off_topic",
     "frustration",
+    "dead_end",
+    "wants_technician",
 ]
 
 

@@ -150,6 +150,10 @@ def apply(state: Any, rt: Any, signals: list[Signal]) -> None:
             _already_answered(state, rt, signal)
         elif signal.type == "secondary_problem":
             _secondary_problem(state, rt, signal)
+        elif signal.type == "dead_end":
+            _dead_end(state, rt, signal)
+        elif signal.type == "wants_technician":
+            _wants_technician(state, rt, signal)
         else:
             tone.append(signal)
     # off_topic / frustration change no decision — they reach the speaker's card only.
@@ -186,6 +190,28 @@ def _already_answered(state: Any, rt: Any, signal: Signal) -> None:
         return
     if hypothesis.doubt(state, rt, "flip", key, None, value, source="analyst"):
         rt.tracer.emit("analyst_applied", signal="already_answered", key=key)
+
+
+def _dead_end(state: Any, rt: Any, signal: Signal) -> None:
+    """„We are going round in circles" — the engine's own ladder decides what follows (one more
+    chance, then the conclusion and a registration for „nesusikalbame"). The analyst only
+    tells the engine that the step it is on is stuck; it decides nothing."""
+    if not state.case.in_progress or state.ticket.stage or state.ticket.ticket_id:
+        return
+    state.case.dead_end_step = state.case.step
+    rt.tracer.emit("analyst_applied", signal="dead_end", step=state.case.step, why=signal.value)
+
+
+def _wants_technician(state: Any, rt: Any, signal: Signal) -> None:
+    """„Gal geriau atvažiuotų kas nors" — an inference, so the engine ASKS before it registers
+    (patikslinti, ne spėti)."""
+    if not state.case.in_progress or state.ticket.stage or state.ticket.ticket_id:
+        return
+    if state.case.facts.get("_phone_work_offer"):
+        return  # the engine already asked and heard the answer
+    if state.case.technician_offer is None:
+        state.case.technician_offer = "due"
+        rt.tracer.emit("analyst_applied", signal="wants_technician", quote=signal.quote)
 
 
 def _secondary_problem(state: Any, rt: Any, signal: Signal) -> None:
