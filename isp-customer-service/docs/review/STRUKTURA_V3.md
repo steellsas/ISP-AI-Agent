@@ -345,6 +345,28 @@ tai bus mokama."*
 - Pasakius išvadą meistrui, variklis iš karto pradeda registraciją — nebegrįžta prie kortelės
   žingsnių.
 
+### 6.3 Kai klientas kažko nepadaro ar nepasako (Andrius, 2026-10-14)
+
+*„Su pirmu atsisakymu neturi nutraukti pokalbio — turime paaiškinti… Agentas turi pažiūrėti į
+sprendimą, ar galima be to kažką išsiaiškinti. Nenoriu, kad klientas nenori pasakyti apie
+lemputes, bet gali patikrinti maitinimą — neturi nustoti analizė."*
+
+```
+ne atsisakymas:  „perkroviau, bet nieko" (padaryta, rezultato nėra) · „dar darau" · „nesuprantu"
+                 · „nesu namuose" (vėliau / perskambinti) · pasiūlymo atmetimas („nenoriu laikino interneto")
+atsisakymas („nenoriu / nedarysiu / nesakysiu" · „negaliu / nepasiekiu"):
+   1-as  → paaiškinama, KODĖL to reikia, ir paprašoma dar kartą (be meistro, be pasidavimo)
+   2-as  → klausimas: praleidžiamas, tęsiama tuo, kas dar įmanoma (lempučių nesako → maitinimas)
+           veiksmas, nuo kurio priklauso likusieji (perkrovimas): išvada + registracija
+           („klientas nenori" / „klientas negali")
+išvada ir tiketas: „padarėme …; nepatikrinta: routerio lemputės (nenorėjote)"
+```
+
+- Atsisakymo žodžiai laimi prieš nuogą „ne": „Ne, nesakysiu" nėra „nedega" — iš tokio sakinio
+  užrašytas faktas ištrinamas.
+- Pakeliui pataisyta: „Nedarysiu" nebėra „dar darau" (paneigtas žodis), „Nereikia registruoti"
+  nebėra prašymas.
+
 ## 7. Promptai pagal fazę
 
 | Dalis | Dabar | v3 |
