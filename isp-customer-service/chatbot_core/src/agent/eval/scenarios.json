@@ -370,6 +370,42 @@
       }
     },
     {
+      "id": "S4f_dead_router_offer_heard_no_computer",
+      "phone": "+37060012353",
+      "desc": "Gyvas skambutis 2026-10-14: „Tuoje palaukite, tvirtai įkištas“ yra atsakymas — išvada ir pasiūlymas (meistras + laikinas internetas) PASAKOMI; „Mhm“ nėra sutikimas; „neturiu kompiuterio“ — jokio laido kišimo, tikete nėra „prijungėme kompiuterį“.",
+      "turns": [
+        "Labą dieną, neveikia internetas, kaip galit padėt?",
+        "Taip",
+        "Giedrius",
+        "Taip, jau prie routerio",
+        "Nė viena lemputė nedega",
+        "Tuoje palaukite, tvirtai įkištas",
+        "Mhm.",
+        "Neturiu kompiuterio, tik telefoną",
+        "Gerai",
+        "Taip, tinka šis numeris",
+        "Bet kada",
+        "Ačiū, viso gero"
+      ],
+      "expect": {
+        "verdict_in": "no_mac_observed",
+        "disposition": "ticket",
+        "tool_used": [
+          "create_ticket"
+        ],
+        "reply_any": [
+          "meistr"
+        ],
+        "reply_none": [
+          "kitą rozetę",
+          "tiesiai į kompiuterio",
+          "Ar jau įkišote",
+          "nesu tikras"
+        ],
+        "record_outcome": "ticket"
+      }
+    },
+    {
       "id": "S3_switch_unreachable_inform",
       "phone": "+37060020103",
       "desc": "Switch nepasiekiamas (avarija neregistruota) — informuoti (nieko daryti nereikia, informuosime), variklis PATS sukuria tiketą (Andrius 2026-09-11)",

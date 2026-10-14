@@ -723,6 +723,14 @@ def _absorb(state: Any, rt: Any, facts: dict[str, str]) -> str:
             rt.tracer.emit("case", move="fix_check_negative", fault=state.case.fault)
             return _advance(state, rt)
         return _retry_or_give_up(state, rt)
+    if _skip_now(call, facts):
+        # It stopped applying while it was out („Neturiu kompiuterio" to „įkiškite laidą į
+        # kompiuterį", live 2026-10-14: the same step was confirmed twice, then booked as done).
+        state.case.confirming = None
+        rt.tracer.emit("case", move="no_longer_applies", module=call.module)
+        moved = _advance(state, rt, ran=False)
+        state.case.reflect = None  # it did not happen — the demo line must not show it either
+        return moved
     if state.case.confirming and state.case.confirming.get("step") == state.case.step:
         return _read_confirmation(state, rt, call)
     state.case.confirming = None  # the step it was about is behind us
@@ -914,7 +922,11 @@ def _read_confirmation(state: Any, rt: Any, call: Any) -> str:
     fact, value = held.get("fact"), held.get("value")
     heard = state.dialog.last_heard or ""
     answer = detect_yes_no(heard)
-    if answer is Outcome.YES or (fact is None and _reported_done(state)):
+    # „Ne, ne įkišau, nes neturiu" holds „įkišau" — a no is never a done-report (live
+    # 2026-10-14: the ticket said „prijungėme kompiuterį" for a caller with no computer).
+    if answer is Outcome.YES or (
+        fact is None and answer is not Outcome.NO and _reported_done(state)
+    ):
         state.case.confirming = None
         rt.tracer.emit("case", move="confirmed", fact=fact, value=value)
         if fact:

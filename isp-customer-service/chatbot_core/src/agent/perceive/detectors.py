@@ -543,6 +543,11 @@ def detect_bridge_consent(text: str | None) -> str | None:
     """
     if not text:
         return None
+    # „Mhm" yra „klausausi", ne sutikimas (gyvai 2026-10-14: „Mhm." tapo bridge_agreed=yes, ir
+    # klientas, pasiūlymo negirdėjęs, gavo nurodymą kišti laidą į kompiuterį). Patikslinti, ne
+    # spėti — pasiūlymas pakartojamas.
+    if is_backchannel(text):
+        return None
     # Prašymas registruoti gedimą yra atsisakymas, kad ir kokie žodžiai aplink jį.
     if detect_refuse_or_ticket(text) == "demand":
         return "no"
