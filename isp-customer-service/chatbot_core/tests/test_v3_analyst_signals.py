@@ -165,3 +165,75 @@ def test_the_reason_survives_the_conclusion_turn(fixing):
     assert state.ticket.stage is None
     _escalate(state, rt, state.case.fault)  # the registration, no reason passed
     assert state.ticket.reason == "nesusikalbame"
+
+
+class TestPhoneWorkFirstOfferedOnce:
+    """Andrius (2026-10-14): the agent's aim is to fix it by phone; the only motivation is „we
+    can fix it now". Phone work the card needs before a technician is OFFERED once; the caller's
+    answer decides; the ticket says what was not done; nothing about a price."""
+
+    @pytest.fixture
+    def hung(self, make_state, make_runtime):
+        from agent.ledger import record_client, record_telemetry
+
+        tracer = _Tracer()
+        state, rt = make_state("+37060020112"), make_runtime(tracer=tracer)
+        state.identity.customer_id = "CUST112"
+        record_telemetry(state, rt, {**BASE, "traffic": "none"})
+        record_client(state, rt, "fail_scope", "all")
+        state.case.fault, state.case.solution, state.case.step = "router_hung", 0, 0
+        return state, rt, tracer
+
+    def _demand(self, hung):
+        from agent.decide.rules import case_rule
+
+        state, rt, _ = hung
+        state.dialog.turn_count += 1
+        state.dialog.last_heard = "Užregistruokit meistrą, nenoriu pats krapštytis"
+        return case_rule.plan(state, rt)
+
+    def test_the_offer_says_fix_it_now_and_no_price(self, hung):
+        plan = self._demand(hung)
+
+        assert plan.rule == "case.phone_work_offer"
+        assert "per minutę" in plan.say.text and "perkrovimas" in plan.say.text
+        assert "kain" not in plan.say.text and "mokam" not in plan.say.text
+
+    def test_declined_registers_and_says_what_was_not_done(self, hung):
+        from agent.decide.rules import case_rule
+
+        state, rt, tracer = hung
+        self._demand(hung)
+        state.dialog.turn_count += 1
+        state.dialog.last_heard = "Ne, tiesiog registruokit"
+        case_rule.plan(state, rt)  # the conclusion
+        case_rule.plan(state, rt)  # the registration starts
+
+        assert "phone_work_declined" in tracer.moves()
+        assert state.ticket.reason == "klientas_nenori"
+        assert "perkrauti dabar nenorėjote" in (state.case.summary or {}).get("nepavyko", "")
+        assert "_ticket_note" not in state.case.facts  # no „perkrauta, neatsistatė"
+
+    def test_accepted_goes_back_to_the_fix(self, hung):
+        from agent.decide.rules import case_rule
+
+        state, rt, tracer = hung
+        self._demand(hung)
+        state.dialog.turn_count += 1
+        state.dialog.last_heard = "Gerai, pabandom"
+        case_rule.plan(state, rt)
+
+        assert "phone_work_accepted" in tracer.moves()
+        assert state.ticket.stage is None and not state.case.summarised
+
+    def test_offered_only_once(self, hung):
+        from agent.decide.rules import case_rule
+
+        state, rt, _ = hung
+        self._demand(hung)
+        state.dialog.turn_count += 1
+        state.dialog.last_heard = "Gerai, pabandom"
+        case_rule.plan(state, rt)
+        plan = self._demand(hung)  # asks again later
+
+        assert plan.rule != "case.phone_work_offer"

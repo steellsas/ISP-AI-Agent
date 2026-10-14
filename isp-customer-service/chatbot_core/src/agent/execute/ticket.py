@@ -47,7 +47,11 @@ def request_ticket(state: Any, rt: Any, why: str, *, request_type: str | None = 
         from ..contract import cards
 
         card = cards.card(state.case.fault)
-        if card is not None and card.escalate and card.escalate.note:
+        declined = state.case.facts.get("_phone_work_declined")
+        if card is not None and card.escalate and card.escalate.note and not declined:
+            # The card's note describes the state AFTER its phone work (a rebooted router); when
+            # the caller declined that work, it would tell the technician something untrue
+            # (eval D8d, 2026-10-14: „Perkrauta, neatsistatė" for a router nobody rebooted).
             state.case.facts.setdefault("_ticket_note", card.escalate.note)
     rt.tracer.emit(
         "decision",

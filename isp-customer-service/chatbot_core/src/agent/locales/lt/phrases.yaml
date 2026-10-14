@@ -696,6 +696,10 @@ case:
   # kliento žodžių, agentas pasako, ką suprato, ir paklausia, ar teisingai.
   # v3 D: analitikas išgirdo, kad klientas mieliau norėtų meistro — variklis paklausia.
   technician_offer: "Supratau. Ar norite, kad užregistruočiau meistrą, ar dar pabandome kartu?"
+  # Andrius (2026-10-14): vienintelis motyvas — išspręsti dabar telefonu; vieną kartą per
+  # skambutį, be spaudimo ir be kainos (kainą, jei reikia, praneša meistrai).
+  phone_work_offer: "Dažniausiai tai išsprendžia {work} — padarytume kartu per minutę, ir internetas veiktų jau dabar. Gal pabandome?"
+  phone_work_offer_plain: "Dažniausiai tai pavyksta išspręsti telefonu — padarytume kartu per minutę, ir internetas veiktų jau dabar. Gal pabandome?"
   confirm:
     fact: "Noriu įsitikinti, kad gerai supratau: {said} — ar teisingai?"
     power_cable:
@@ -946,6 +950,22 @@ summary:
     device_check: "patikrinome įrenginį"
     homework: "susitarėme, ką patikrinsite, kai būsite namuose"
   bridge_live: "internetas dabar laikinai veikia tik tame kompiuteryje — kol pakeisim routerį"
+  # Darbas telefonu, kurį kortelė laiko būtinu prieš meistrą (`escalate.only_after`).
+  work_noun:
+    reboot: "routerio perkrovimas"
+    cable: "laido perkišimas"
+    check_power: "maitinimo patikrinimas"
+    plug_power: "maitinimo laido įkišimas"
+    connect_direct: "kompiuterio prijungimas tiesiai prie linijos"
+    guide: "routerio nustatymų peržiūra kartu"
+  work_declined:
+    reboot: "routerį perkrauti dabar nenorėjote"
+    cable: "laidą perkišti dabar nenorėjote"
+    check_power: "maitinimą patikrinti dabar nenorėjote"
+    plug_power: "maitinimo laidą įkišti dabar nenorėjote"
+    connect_direct: "kompiuterį prijungti dabar nenorėjote"
+    guide: "routerio nustatymų kartu peržiūrėti nenorėjote"
+  work_declined_plain: "telefonu siūlomų veiksmų dabar atlikti nenorėjote"
   # Išspręsto gedimo išvada (Andrius, 2026-10-13: „visuomet išvada, koks gedimas čia buvo"):
   # KAS buvo — kliento kalba; KĄ padarėm — `did`; ir kad veikia. Priežastis iš `fixes:`
   # patikros (pvz., ištrauktas maitinimo laidas) yra tikslesnė ir eina vietoj šios.

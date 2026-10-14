@@ -329,6 +329,22 @@ nusprendė variklis. Bet koks veiksmas turi praeiti per variklį, jis turi žino
   iš karto (anksčiau tai veikė tik pabaigoje ir tiketo dialoge). „Nereikia registruoti" — ne
   prašymas.
 
+### 6.2 Darbas telefonu prieš meistrą — pasiūlyti vieną kartą (Andrius, 2026-10-14)
+
+*„Agento tikslas — padėti spręsti telefonu… Viršesnė taisyklė: jei gedimas neišspręstas,
+tiketas turi būti registruojamas, bet su parašymu kodėl. Meistrams paliekama informuoti, jei
+tai bus mokama."*
+
+- Kortelės `escalate.only_after` (pvz., perkrovimas) nebedraudžia meistro. Kai klientas pats
+  prašo meistro, o toks darbas liko, agentas **vieną kartą per skambutį** pasiūlo: *„Dažniausiai
+  tai išsprendžia routerio perkrovimas — padarytume kartu per minutę, ir internetas veiktų jau
+  dabar. Gal pabandome?"* Vienintelis motyvas — išspręsti dabar; apie kainą nekalbama.
+- „Pabandom" → taisom toliau. „Ne" / „registruokit" → išvada („…routerį perkrauti dabar
+  nenorėjote") ir registracija dėl „klientas nenori"; tikete — „Nepavyko / nebuvo daryta: …",
+  o kortelės pastaba „perkrauta, neatsistatė" nerašoma (perkrovimo nebuvo).
+- Pasakius išvadą meistrui, variklis iš karto pradeda registraciją — nebegrįžta prie kortelės
+  žingsnių.
+
 ## 7. Promptai pagal fazę
 
 | Dalis | Dabar | v3 |

@@ -207,6 +207,8 @@ def _wants_technician(state: Any, rt: Any, signal: Signal) -> None:
     (patikslinti, ne spėti)."""
     if not state.case.in_progress or state.ticket.stage or state.ticket.ticket_id:
         return
+    if state.case.facts.get("_phone_work_offer"):
+        return  # the engine already asked and heard the answer
     if state.case.technician_offer is None:
         state.case.technician_offer = "due"
         rt.tracer.emit("analyst_applied", signal="wants_technician", quote=signal.quote)

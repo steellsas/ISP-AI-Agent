@@ -838,13 +838,14 @@
     {
       "id": "D8d_technician_requested_mid_fix",
       "phone": "+37060020112",
-      "desc": "v3 D (2026-10-14): vidury tyrimo klientas aiškiai paprašo meistro — variklis registruoja iš karto, priežastis „klientas prašo“ (anksčiau toks prašymas veikė tik pabaigoje ir tiketo dialoge). LAUKIA ANDRIAUS SPRENDIMO: pakibusio routerio kortelė leidžia meistrą tik po perkrovimo (`only_after: [reboot]`, 2026-09-23), todėl agentas prašo perkrauti.",
+      "desc": "v3 D + Andrius 2026-10-14: vidury tyrimo klientas prašo meistro, liko darbas telefonu (perkrovimas) — agentas VIENĄ kartą pasiūlo išspręsti dabar; klientas atsisako → registruojama („klientas nenori“), tikete ir išvadoje — ko nenorėjo daryti; apie kainą nekalbama.",
       "turns": [
         "Neveikia internetas visuose įrenginiuose",
         "Taip",
         "Paulius",
         "Visuose",
         "Užregistruokit meistrą, nenoriu pats krapštytis",
+        "Ne, tiesiog registruokit",
         "Taip, tinka šis numeris",
         "Bet kada",
         "Ačiū, viso gero"
@@ -855,9 +856,45 @@
         "tool_used": [
           "create_ticket"
         ],
-        "record_outcome": "ticket"
-      },
-      "known_bug": true
+        "record_outcome": "ticket",
+        "reply_any": [
+          "per minutę"
+        ],
+        "reply_none": [
+          "kainuo",
+          "mokam",
+          "susimokė",
+          "palaukite penkias sekundes"
+        ]
+      }
+    },
+    {
+      "id": "D8e_technician_requested_then_tries",
+      "phone": "+37060020112",
+      "desc": "Andrius 2026-10-14: prašo meistro, bet po pasiūlymo „padarytume kartu per minutę“ sutinka pabandyti — perkrauna, veikia, išspręsta be tiketo.",
+      "turns": [
+        "Neveikia internetas visuose įrenginiuose",
+        "Taip",
+        "Paulius",
+        "Visuose",
+        "Užregistruokit meistrą, nenoriu pats krapštytis",
+        "Gerai, pabandom",
+        "Taip, esu prie routerio",
+        "Perkroviau, ką tik padariau",
+        "Taip, jau veikia",
+        "Ne, ačiū, viso gero"
+      ],
+      "expect": {
+        "verdict_in": "router_hung",
+        "disposition": "resolved",
+        "reply_any": [
+          "per minutę",
+          "perkrov"
+        ],
+        "reply_none": [
+          "užregistravau"
+        ]
+      }
     },
     {
       "id": "X_dhcp_silent",

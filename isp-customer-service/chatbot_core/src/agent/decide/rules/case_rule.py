@@ -60,6 +60,13 @@ def plan(state: Any, rt: Any) -> TurnPlan | None:
     asked_for = _technician_wanted(state, rt)
     if asked_for is not None:
         return asked_for
+    from .head import case_owes_ticket
+
+    if case_owes_ticket(state):
+        # The conclusion for a technician was said: the engine's decision stands, the
+        # registration starts now — not the card's next step (eval D8d, 2026-10-14: after the
+        # caller declined the reboot and heard the conclusion, they were told to reboot again).
+        return _escalate(state, rt, state.case.fault)
     if state.case.fault is not None and _caller_is_lost(state, rt):
         # Klientas nebegali sekti žingsnių (kelis ėjimus iš eilės nesusikalbam) — telefoninis
         # sprendimas baigiamas SĄŽININGAI: pasakom, ką padarėm, ir registruojam meistrą. Tai
@@ -2169,13 +2176,35 @@ def _escalate(
     if why == "sprendimas_baigtas" and state.case.facts.get("_escalate_why"):
         why = state.case.facts["_escalate_why"]  # said on the conclusion turn, kept for this one
     pending = _phone_work_left(state, fault)
+    if pending is not None and why in ("klientas_praso", "klientas_nenori"):
+        # The CALLER asked for a technician while phone work is left (Andrius, 2026-10-14):
+        # one honest offer — „we can fix it now, together" — and their answer decides. Not
+        # insisting: the second time it is their call, and the ticket says what was not done.
+        if "_phone_work_offer" not in state.case.facts:
+            state.case.facts["_phone_work_offer"] = pending
+            rt.tracer.emit("case", move="phone_work_offer", fault=fault, module=pending)
+            from ...contract.locale import phrase, phrase_or
+
+            work = phrase_or(f"summary.work_noun.{pending}", None)
+            text = (
+                phrase("case.phone_work_offer", work=work)
+                if work
+                else phrase("case.phone_work_offer_plain")
+            )
+            return TurnPlan(
+                owner="procedure",
+                rule="case.phone_work_offer",
+                say=Say(kind="phrase", text=text, stage="diagnosis"),
+            )
+        pending = None  # offered once already — their choice stands
     if pending is not None:
         rt.tracer.emit("case", move="phone_work_first", fault=fault, module=pending)
         started = _start_branch_with(state, rt, fault, pending)
         if started is not None:
             return started
     card = catalog.card(fault) if fault else None
-    if card is not None and card.escalate:
+    if card is not None and card.escalate and not state.case.facts.get("_phone_work_declined"):
+        # (the card's note assumes its phone work ran — not when the caller declined it)
         note = note or card.escalate.note
     state.case.fault = state.case.fault or fault
     # IŠVADA prieš registraciją — savo ėjimu. Andrius (2026-10-02): *„pasakyti, ką padarėme ir
@@ -2236,8 +2265,13 @@ def _technician_wanted(state: Any, rt: Any) -> TurnPlan | None:
     from ...perceive.detectors import detect_refuse_or_ticket, detect_ticket_consent
 
     heard = s.dialog.last_heard
+    offered = s.case.facts.get("_phone_work_offer")
+    if offered and offered not in ("accepted", "declined"):
+        return _answer_to_the_phone_work_offer(state, rt, offered, heard)
     if detect_refuse_or_ticket(heard) == "demand":
-        s.case.technician_offer = None
+        # The caller said it themselves: the engine handles it now, and the analyst's later
+        # inference of the same wish must not ask it again (eval D8e).
+        s.case.technician_offer = "answered"
         # The same words may answer the question that is out („Aš noriu registruoti gedimą" to
         # the bridge offer is also a no to the bridge) — the ticket says what they declined.
         call = _current(state)
@@ -2265,6 +2299,29 @@ def _technician_wanted(state: Any, rt: Any) -> TurnPlan | None:
             say=Say(kind="phrase", text=phrase("case.technician_offer"), stage="diagnosis"),
         )
     return None
+
+
+def _answer_to_the_phone_work_offer(
+    state: Any, rt: Any, module: str, heard: str | None
+) -> TurnPlan | None:
+    """„Gal pabandome?" — yes: the fix goes on with that work; anything else: registered,
+    and the ticket and the conclusion say what they did not want to do now."""
+    from ...perceive.detectors import detect_refuse_or_ticket, detect_yes_no
+    from ...resolution import Outcome
+
+    s = state
+    s.case.confirming = None  # an older „ar teisingai?" is not what they are answering now
+    wants_to_try = detect_refuse_or_ticket(heard) != "demand" and (
+        detect_yes_no(heard) is Outcome.YES or _heard_any(heard, vocab("phone_work_try"))
+    )
+    if wants_to_try:
+        s.case.facts["_phone_work_offer"] = "accepted"
+        rt.tracer.emit("case", move="phone_work_accepted", fault=s.case.fault, module=module)
+        return _start_branch_with(state, rt, s.case.fault, module)
+    s.case.facts["_phone_work_offer"] = "declined"
+    s.case.facts["_phone_work_declined"] = module
+    rt.tracer.emit("case", move="phone_work_declined", fault=s.case.fault, module=module)
+    return _escalate(state, rt, s.case.fault, why="klientas_nenori")
 
 
 def _caller_is_lost(state: Any, rt: Any) -> bool:
@@ -2316,6 +2373,12 @@ def _summary_words(state: Any, card: Any, facts: dict[str, str]) -> dict[str, st
         missed.append(phrase_or("summary.declined_guide", ""))
     if facts.get("_lost_the_thread") == "yes":
         missed.append(phrase_or("summary.lost_the_thread", ""))
+    declined = facts.get("_phone_work_declined") or state.case.facts.get("_phone_work_declined")
+    if declined:
+        missed.append(
+            phrase_or(f"summary.work_declined.{declined}", None)
+            or phrase_or("summary.work_declined_plain", "")
+        )
     unchecked = _unchecked_words(state)
     if unchecked:
         missed.append(unchecked)
@@ -2367,6 +2430,8 @@ def _phone_work_left(state: Any, fault: str | None) -> str | None:
         # Not at the device, asked for a technician, or declined to be walked through the
         # settings: there is nothing left to insist on, and insisting is not help.
         return None
+    if state.case.facts.get("_phone_work_declined"):
+        return None  # offered and declined — the ticket says so (2026-10-14)
     for name in card.escalate.only_after:
         if name not in state.case.did:
             return name
