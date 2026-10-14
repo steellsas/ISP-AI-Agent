@@ -321,6 +321,20 @@ INTENT_SILENCE = "silence"  # nothing usable -> wait, do not scold
 INTENT_UNKNOWN = "unknown"  # safe default: hold and ask, never advance
 
 
+def _said_unnegated(low: str, marks) -> bool:
+    """A mark inside a word that is not itself negated: „nedarysiu" holds „darysiu" but says
+    the opposite (2026-10-14: a refusal was read as „still doing it")."""
+    negation = vocab("negation_prefixes")
+    for token in low.split():
+        word = token.strip(".,!?…")
+        if any(m in word for m in marks):
+            hit = next(m for m in marks if m in word)
+            if word.startswith(negation) and not hit.startswith(negation):
+                continue
+            return True
+    return any(" " in m and m in low for m in marks)
+
+
 def detect_turn_intent(text: str | None) -> str:
     """Classify the caller's turn before the walker routes it.
 
@@ -335,7 +349,7 @@ def detect_turn_intent(text: str | None) -> str:
         return INTENT_CONFUSED
     if "?" in low or any(m in low for m in vocab("question_marks")):
         return INTENT_QUESTION
-    if any(m in low for m in vocab("in_progress")):
+    if _said_unnegated(low, vocab("in_progress")):
         return INTENT_IN_PROGRESS
     if any(m in low for m in vocab("done")):
         return INTENT_DONE
@@ -412,6 +426,27 @@ def detect_address_correction(text: str | None) -> bool:
         return False
     low = text.lower()
     return any(m in low for m in vocab("addr_no"))
+
+
+def detect_step_refusal(text: str | None) -> str | None:
+    """„wont" / „cant" / None — the caller declines THIS step (Andrius, 2026-10-14).
+
+    Not a refusal: „nesu namuose / neturiu laiko" (cannot NOW — the Case's later/callback path,
+    N1), „dar darau", „nesuprantu" (they are working with us), a done-report („perkroviau, bet
+    nieko" is done, without a result).
+    """
+    if not text or detect_cannot_now(text):
+        return None
+    if detect_turn_intent(text) in (INTENT_IN_PROGRESS, INTENT_CONFUSED, "done"):
+        return None
+    if says_done_action(text):
+        return None
+    low = text.lower()
+    if any(m in low for m in vocab("step_wont")):
+        return "wont"
+    if any(m in low for m in vocab("step_cant")):
+        return "cant"
+    return None
 
 
 def detect_refuse_or_ticket(text: str | None) -> str | None:

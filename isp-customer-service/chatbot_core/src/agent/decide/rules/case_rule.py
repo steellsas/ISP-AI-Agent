@@ -98,6 +98,12 @@ def plan(state: Any, rt: Any) -> TurnPlan | None:
             return _resolved(state, rt)
         if status == "confirm":
             return _confirm_plan(state, rt)
+        if status == "explain_refusal":
+            return _refusal_explained(state, rt)
+        if status == "declined_action":
+            how = (state.case.declined[-1] if state.case.declined else {}).get("how")
+            why = "klientas_negali" if how == "cant" else "klientas_nenori"
+            return _escalate(state, rt, state.case.fault, why=why)
         step = _current(state)
         if step is not None:
             # The facts this turn's words established belong to THIS turn's decision. Live
@@ -401,9 +407,10 @@ def _unchecked_words(state: Any) -> str:
         said = gloss(fact, value)
         if said:
             bits.append(said)
+    left_out = {d.get("fact") for d in state.case.declined}
     for fact in state.case.unavailable or []:
-        if fact in (state.case.assumed or {}):
-            continue
+        if fact in (state.case.assumed or {}) or fact in left_out:
+            continue  # a step they declined is said as such („nepatikrinta: …")
         card = catalog.card(state.case.fault)
         need = card.needs.get(fact) if card else None
         label = maybe_phrase(need.ask) if need else None
@@ -730,6 +737,12 @@ def _absorb(state: Any, rt: Any, facts: dict[str, str]) -> str:
     # different question: live 2026-09-30 „Ne, tai mano vardu, Giedriaus vardu" was read as
     # `lights=no`, the lights question counted as answered, and the agent jumped to the power
     # lead without ever asking what the caller saw.
+    if _step_was_asked(state) and call.module not in _CANNOT_IS_THE_ANSWER:
+        # A refusal word wins over a bare „ne": „Ne, nesakysiu" to the lights question is not
+        # „not lit" (2026-10-14).
+        refused = _step_refused(state, rt, call)
+        if refused is not None:
+            return refused
     if _step_was_asked(state) and not _model_says_not_an_answer(state):
         # Kontekstą turintis skaitymas viršesnis už bekontekstį: jei jis sako, kad klientas dar
         # daro arba klausia atgal, tai nei žodynas, nei euristikos žingsnio nejudina. „Einu
@@ -2324,6 +2337,86 @@ def _answer_to_the_phone_work_offer(
     return _escalate(state, rt, s.case.fault, why="klientas_nenori")
 
 
+# Steps where „no" IS the answer, not a refusal: being able to get to the device („negaliu" →
+# the later/callback path) and OFFERS — „nenoriu laikino interneto" declines the bridge, it
+# does not refuse a step (eval S4e, 2026-10-14).
+_CANNOT_IS_THE_ANSWER = ("reach", "offer_bridge", "offer_guide", "homework")
+
+
+def _step_refused(state: Any, rt: Any, call: Any) -> str | None:
+    """The caller declines this step (Andrius, 2026-10-14).
+
+    The first time is never the end: they hear WHY it matters and are asked once more. The
+    second time the engine decides — a question can be left out and the fix goes on with what
+    is still possible (no lights, but the power can still be checked); an action the rest of
+    the card stands on cannot, so the call ends in the conclusion („we did X, you could not /
+    did not want to do Y") and a registration.
+    """
+    from ...perceive.detectors import detect_step_refusal
+
+    how = detect_step_refusal(state.dialog.last_heard)
+    if how is None:
+        return None
+    _unsay(state, call, state.case.awaiting)
+    key = f"{state.case.fault}.{state.case.step}"
+    count = state.case.refused.get(key, 0) + 1
+    state.case.refused[key] = count
+    spec = catalog.module(call.module)
+    fact = state.case.awaiting
+    if count == 1:
+        rt.tracer.emit("case", move="refusal_explain", module=call.module, how=how)
+        return "explain_refusal"
+    state.case.declined.append({"module": call.module, "fact": fact, "how": how})
+    rt.tracer.emit("case", move="step_declined", module=call.module, how=how)
+    if spec is not None and spec.kind == "ask":
+        if fact:
+            ledger.record_unavailable(state, rt, fact)
+        return _advance(state, rt, ran=False)  # left out — the fix goes on without it
+    # Declined twice already — the phone-work offer would be a third time (pressure).
+    state.case.facts["_phone_work_offer"] = "declined"
+    state.case.facts["_phone_work_declined"] = call.module
+    return "declined_action"
+
+
+def _unsay(state: Any, call: Any, fact: str | None) -> None:
+    """A refusal is not an answer: what the readers wrote from „Ne, nesakysiu" for THIS step
+    goes (eval S4e, 2026-10-14: the ticket said „routerio lemputės: nedega" for a caller who
+    would not look)."""
+    spec = catalog.module(call.module)
+    for name in {fact, *(spec.produces if spec else [])} - {None}:
+        if name in (state.case.said or []):
+            state.case.said.remove(name)
+            state.case.facts.pop(name, None)
+        state.diagnosis.evidence.pop(name, None)
+    if fact:
+        state.case.facts.pop(fact, None)
+
+
+def _refusal_explained(state: Any, rt: Any) -> TurnPlan:
+    """Why this step matters, then the same step once more — no technician, no giving up."""
+    call = _current(state)
+    step = modules.plan_step(call, model=_device_model(state)) if call is not None else None
+    card = catalog.card(state.case.fault)
+    need = card.needs.get(state.case.awaiting) if card and state.case.awaiting else None
+    why = (maybe_phrase(need.why) if need and need.why else None) or (step.goal if step else "")
+    return TurnPlan(
+        owner="procedure",
+        rule="case.refusal_explained",
+        say=Say(
+            kind="directive",
+            text=step.text if step else None,
+            goal=(
+                "they do not want to or cannot do this. Do NOT give up and do NOT mention a "
+                "technician: say plainly, in one sentence, why this step matters"
+                + (f" ({why})" if why else "")
+                + " — then ask the same thing once more, warmly"
+            ),
+            stage="diagnosis",
+        ),
+        awaiting=state.case.awaiting,
+    )
+
+
 def _caller_is_lost(state: Any, rt: Any) -> bool:
     """Ar klientas nebegali sekti žingsnių?
 
@@ -2373,7 +2466,14 @@ def _summary_words(state: Any, card: Any, facts: dict[str, str]) -> dict[str, st
         missed.append(phrase_or("summary.declined_guide", ""))
     if facts.get("_lost_the_thread") == "yes":
         missed.append(phrase_or("summary.lost_the_thread", ""))
+    for left_out in state.case.declined:
+        what = phrase_or(f"summary.step_name.{left_out.get('module')}", None)
+        if what:
+            how = "nenorėjote" if left_out.get("how") == "wont" else "negalėjote"
+            missed.append(phrase("summary.step_declined", what=what, how=how))
     declined = facts.get("_phone_work_declined") or state.case.facts.get("_phone_work_declined")
+    if declined and any(d.get("module") == declined for d in state.case.declined):
+        declined = None  # already said as a left-out step above
     if declined:
         missed.append(
             phrase_or(f"summary.work_declined.{declined}", None)

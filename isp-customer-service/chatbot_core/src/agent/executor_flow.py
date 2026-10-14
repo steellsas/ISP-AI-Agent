@@ -224,7 +224,10 @@ def _unanswered_and_assumed(s: Any) -> str:
 
     bits: list[str] = []
     assumed = dict(getattr(s.case, "assumed", None) or {})
+    left_out = {d.get("fact") for d in getattr(s.case, "declined", None) or []}
     for fact in getattr(s.case, "unavailable", None) or []:
+        if fact in left_out and fact not in assumed:
+            continue  # already in „nepatikrinta: … (nenorėjote)"
         said = gloss(fact, assumed[fact]) if fact in assumed else None
         if said:
             bits.append(phrase("ticket.details.assumed_item", fact=gloss_label(fact), value=said))

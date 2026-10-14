@@ -340,6 +340,36 @@
       }
     },
     {
+      "id": "S4e_lights_declined_power_checked",
+      "phone": "+37060012353",
+      "desc": "Andrius 2026-10-14: klientas nenori sakyti apie lemputes — pirmą kartą paaiškinama kodėl, antrą kartą žingsnis praleidžiamas ir tikrinamas maitinimas (analizė nesustoja); išvadoje ir tikete — „nepatikrinta: routerio lemputės (nenorėjote)“.",
+      "turns": [
+        "Labas, neveikia internetas",
+        "Šįryt dingo, po audros",
+        "Taip",
+        "Giedrius, taip, mano sutartis",
+        "Taip, jau stoviu prie routerio",
+        "Nenoriu tikrinti lempučių",
+        "Ne, nesakysiu",
+        "Laidas įkištas, tvirtai",
+        "Ne, nenoriu laikino interneto",
+        "Taip, tinka šis numeris",
+        "Bet kada",
+        "Ačiū, viso gero"
+      ],
+      "expect": {
+        "verdict_in": "no_mac_observed",
+        "disposition": "ticket",
+        "tool_used": [
+          "create_ticket"
+        ],
+        "reply_any": [
+          "maitin"
+        ],
+        "record_outcome": "ticket"
+      }
+    },
+    {
       "id": "S3_switch_unreachable_inform",
       "phone": "+37060020103",
       "desc": "Switch nepasiekiamas (avarija neregistruota) — informuoti (nieko daryti nereikia, informuosime), variklis PATS sukuria tiketą (Andrius 2026-09-11)",

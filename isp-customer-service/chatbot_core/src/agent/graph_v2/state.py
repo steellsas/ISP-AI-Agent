@@ -590,6 +590,10 @@ class CaseState(BaseModel):
     # The analyst heard the caller would rather have a technician: None | "due" | "asked" —
     # the engine asks before it registers.
     technician_offer: str | None = None
+    # Step refusals (2026-10-14): how often each step was declined, and the steps given up on —
+    # {module, fact, how: wont|cant} — for the conclusion and the ticket.
+    refused: dict[str, int] = Field(default_factory=dict)
+    declined: list[dict[str, Any]] = Field(default_factory=list)
     # Pati išvada. Ji NEIŠTRINAMA ją pasakius, nes turi antrą adresatą: tą patį sąrašą gauna ir
     # tiketas — meistras turi matyti, kas buvo ir kas padaryta (Andrius, 2026-10-02: *„tuomet
     # tiketai bus informatyvūs ir meistrams bus aiškiau, kas ten įvyko"*).

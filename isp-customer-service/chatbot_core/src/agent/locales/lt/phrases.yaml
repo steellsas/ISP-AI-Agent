@@ -966,6 +966,21 @@ summary:
     connect_direct: "kompiuterį prijungti dabar nenorėjote"
     guide: "routerio nustatymų kartu peržiūrėti nenorėjote"
   work_declined_plain: "telefonu siūlomų veiksmų dabar atlikti nenorėjote"
+  # Praleistas žingsnis (Andrius, 2026-10-14): išvadoje ir tikete — ko klientas negalėjo ar
+  # nenorėjo atlikti.
+  step_declined: "nepatikrinta: {what} ({how})"
+  step_name:
+    reach: "priėjimas prie routerio"
+    check_lights: "routerio lemputės"
+    check_power: "routerio maitinimas"
+    plug_power: "maitinimo laido įkišimas"
+    reboot: "routerio perkrovimas"
+    cable: "laido perkišimas"
+    connect_direct: "kompiuterio prijungimas tiesiai prie linijos"
+    device_check: "įrenginio patikrinimas"
+    lan_check: "kompiuterio jungtis"
+    panel_device: "įrenginys nustatymams"
+    guide: "routerio nustatymai"
   # Išspręsto gedimo išvada (Andrius, 2026-10-13: „visuomet išvada, koks gedimas čia buvo"):
   # KAS buvo — kliento kalba; KĄ padarėm — `did`; ir kad veikia. Priežastis iš `fixes:`
   # patikros (pvz., ištrauktas maitinimo laidas) yra tikslesnė ir eina vietoj šios.

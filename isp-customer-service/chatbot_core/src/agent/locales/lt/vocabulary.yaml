@@ -413,6 +413,11 @@ done_actions:
 power_cable_out: ["ištrauk", "istrauk", "neįkišt", "neikist", "iškrit", "iskrit", "atjungt", "neprijungt", "nebuvo įkišt", "nebuvo ikist", "išsitrauk", "issitrauk", "laisvai kabo", "ne iki galo", "neįjungt", "neijungt"]
 power_cable_in: ["įkišt", "ikist", "prijungt", "įjungtas į", "ijungtas i", "tvirtai", "laikosi", "viskas įkišta", "viskas ikista"]
 # „Ar galite dabar prieiti prie routerio?" — jau ten (taip), ne „einu" (dar ne atsakymas).
+# Žingsnio atsisakymas (Andrius, 2026-10-14): NENORI — „nenoriu, nedarysiu, nesakysiu";
+# NEGALI — „negaliu, nepasiekiu, neturiu kaip". Ne atsisakymas: „dar darau", „nesuprantu",
+# „perkroviau, bet nieko" (padaryta, rezultato nėra), „nesu namuose" (N1 — vėliau).
+step_wont: ["nenoriu", "nebandysiu", "nebandysim", "nenorėčiau", "nenoreciau", "nedarysiu", "nedarysim", "nesakysiu", "atsisakau", "nebenoriu", "nebe noriu", "nežiūrėsiu", "neziuresiu", "netikrinsiu"]
+step_cant: ["negaliu", "nepasiekiu", "neturiu kaip", "nėra kaip", "nera kaip", "neįmanoma", "neimanoma", "nepavyks man", "neišeina pasiekti", "neiseina pasiekti"]
 # „Gal pabandome?" (darbas telefonu prieš meistrą) — sutikimas pabandyti.
 phone_work_try: ["pabandom", "pabandykim", "bandom", "bandykim", "gerai", "galim", "darom", "darykim"]
 reach_there: ["stoviu prie", "esu prie", "prie routerio", "prie jo", "jau čia", "jau cia", "šalia jo", "salia jo", "šalia routerio", "salia routerio", "priėjau", "priejau", "jau priėj", "jau priej"]
