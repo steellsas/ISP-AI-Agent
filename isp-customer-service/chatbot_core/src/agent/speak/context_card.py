@@ -355,7 +355,9 @@ def _case_step(state, rt) -> list[str]:
     goal, words = say.get("goal"), say.get("text")
     from .. import dialogue
 
-    if dialogue.choose(state).move == dialogue.WAIT:
+    # A step not said yet is never swallowed by the wait (live 2026-10-14: the conclusion and
+    # the offer were planned, the card said „the step waits", and neither was ever spoken).
+    if dialogue.choose(state).move == dialogue.WAIT and state.case.step_said == state.case.step:
         # They are on their way / still doing it: the step waits, and saying it again under
         # „palauksiu" was the live 2026-10-12 mix-up („palauksiu… pažiūrėkite į panelę").
         return ["THE STEP WAITS for them — do not say it again and give no new step."]

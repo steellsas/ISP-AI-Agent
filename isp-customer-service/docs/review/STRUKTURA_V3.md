@@ -273,6 +273,21 @@ identifikacija baigta ─► radinys ─► analizė
 - Reikalavimas su klausimu („Kur tas routeris? Registruokite gedimą") — reikalavimą tvarko
   Case, klausimui trumpas atsakymas tame pačiame ėjime.
 
+**Gyvas skambutis 2026-10-14 (b) — pasiūlymas, kurio klientas negirdėjo:**
+
+```
+„Tuoje palaukite, tvirtai įkištas" ─► atsakymas įrašytas ─► tai ATSAKYMAS, ne „dar daro"
+   ─► išvada + abu keliai: „Routeris greičiausiai sugedęs — perduosime meistrui. Kol jis
+      atvyks, galiu laikinai paleisti internetą į kompiuterį. Ar turite kompiuterį?"
+„Mhm" ─► ne sutikimas ─► pasiūlymas pakartojamas
+„Neturiu kompiuterio" (ir vidury žingsnio) ─► tilto žingsniai praleidžiami ─► išvada ─► registracija
+„Ne, neįkišau, nes neturiu" ─► niekada ne „padaryta" (tikete nebus „prijungėme kompiuterį")
+```
+
+- Naujas, dar nepasakytas žingsnis niekada nepaslepiamas po „palauksiu".
+- „Kaip galit padėt?" prie įvardytos problemos — pradedama identifikacija, ne „nesupratau".
+- „tėtas", „senelis", „močiutė" — šeimos narys.
+
 ---
 
 ## 5. Pokalbio užbaigimas (Andriaus principai, 2026-10-08)

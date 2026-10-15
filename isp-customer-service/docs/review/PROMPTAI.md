@@ -320,3 +320,14 @@ Kalbėjimo kortelės (`speak/context_card.py`) pakeitimai po dviejų gyvų skamb
 
 Nauja variklio frazė: `identification.name_confirm` — „Atsiprašau, noriu įsitikinti — ar teisingai
 išgirdau, jūsų vardas {name}?" (vardas — tas, kurį pasakė klientas).
+
+### Laikino interneto pasiūlymas — abu keliai (2026-10-14, Andrius pritarė)
+
+Frazė `modules.offer_bridge.question` (variklio žodžiai, modelis gali tik sutrumpinti):
+
+| Buvo | Dabar | Kodėl |
+|---|---|---|
+| „Routeris tikėtinai sugedęs — jį reikės pakeisti. Kol kas galiu laikinai paleisti internetą į vieną įrenginį: ar turite kompiuterį, kurį galėtume pajungti?" | „Routeris greičiausiai sugedęs — jį reikės pakeisti, gedimą perduosime meistrui. Kol jis atvyks, galiu laikinai paleisti internetą į kompiuterį. Ar turite kompiuterį?" | Andrius: išvada iš karto ir abu keliai — meistras bus bet kuriuo atveju, laikinas internetas tik pasiūlymas. Be „užregistruosiu" — pažadą sako variklis |
+
+Kortelė: „THE STEP WAITS" nebeslepia naujo, dar nepasakyto žingsnio (gyvai pasiūlymas nebuvo
+pasakytas, modelis sugalvojo „patikrinkite kitą rozetę").

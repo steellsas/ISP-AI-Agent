@@ -79,6 +79,23 @@ def apply_background_signals(state: Any, rt: Any) -> None:
     state.turn.analyst_signals = None
 
 
+def _answer_beats_wait(state: Any, rt: Any, awaited: str | None, known_before: bool) -> None:
+    """„Tuoje palaukite, tvirtai įkištas" — a filler „palaukite" around a real answer.
+
+    Live 2026-10-14: the answer was recorded and the Case moved on to its conclusion and the
+    offer, but „palaukite" made the turn „still doing it" — the card said „the step waits,
+    say nothing new", the offer was never spoken, and the model invented „kitą rozetę". When
+    the awaited fact was answered THIS turn, the turn is an answer.
+    """
+    from .detectors import INTENT_ANSWER, INTENT_IN_PROGRESS
+
+    if state.dialog.last_intent != INTENT_IN_PROGRESS or not awaited or known_before:
+        return
+    if awaited in state.case.facts:
+        state.dialog.last_intent = INTENT_ANSWER
+        rt.tracer.emit("dialogue", move="answer_beats_wait", fact=awaited)
+
+
 def perceive(state: Any, rt: Any, user_input: str | None) -> None:
     """Read one caller turn into the state (no-op for the greeting turn)."""
     from ..dialog_utils import progress_key
@@ -99,12 +116,15 @@ def perceive(state: Any, rt: Any, user_input: str | None) -> None:
         prefill_slots_from_text(state, rt, user_input)
     # THE reading of this turn (facts, the step answer, the ticket answer, the problem
     # label) — everything below consumes it.
+    awaited = state.case.awaiting
+    known_before = bool(awaited) and awaited in state.case.facts
     read_turn(state, rt, user_input)
     ingest_client_evidence(state, rt, user_input)
     # Wave 3: the facts the reader settled are the Case's facts.
     from ..ledger import mirror_evidence
 
     mirror_evidence(state, rt)
+    _answer_beats_wait(state, rt, awaited, known_before)
     state.turn.side_topic_active = bool(classify_side_topic(state, rt, user_input))
 
 

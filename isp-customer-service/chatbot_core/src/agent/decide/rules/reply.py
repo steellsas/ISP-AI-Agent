@@ -256,6 +256,12 @@ def reply_plan(state: Any, rt: Any, user_input: str | None) -> TurnPlan | None:
         # pairs are spelling-shaped even without the mode (client-initiated).
         and not state.identity.spell_mode
         and user_input.lower().count(" kaip ") < 2
+        # „Neveikia internetas, kaip galit padėt?" is the problem, not a question to answer —
+        # live 2026-10-14 the agent replied „nesu tikras, ar supratau" instead of starting.
+        and not (
+            not s.identity.customer_id
+            and any(m in user_input.lower() for m in vocab("help_request"))
+        )
     ):
         return _plan(
             "dialog.question_passthrough", None, directive=True

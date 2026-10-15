@@ -985,6 +985,8 @@ continue_solving_marks:
 
 # --- agent/identification.py -----------------------------------------------------
 
+# „Kaip galit padėt?" prie įvardytos problemos — prašymas pradėti, ne klausimas (2026-10-14).
+help_request: ["kaip galit pad", "kaip galite pad", "kaip galėtumėt pad", "kaip galetumet pad", "gal galit pad", "gal galite pad", "ką daryti", "ka daryti", "ką man daryti", "ka man daryti", "ką reikia daryti", "ka reikia daryti", "reikia daryti ką", "reikia daryti ka"]
 caller_relation_marks:
   holder: ["sutart", "savinink", "mano vardu", "aš sudariau", "as sudariau"]
   family:
@@ -1002,6 +1004,15 @@ caller_relation_marks:
     - "mama"
     - "tėv"
     - "tev"
+    # „Gedras vardu, tėtas mano" (gyvai 2026-10-14) — tikete liko „holder".
+    - "tėt"
+    - "tetis"
+    - "tetuk"
+    - "senel"
+    - "močiut"
+    - "mociut"
+    - "anūk"
+    - "anuk"
     - "brolis"
     - "sesuo"
     - "šeim"
