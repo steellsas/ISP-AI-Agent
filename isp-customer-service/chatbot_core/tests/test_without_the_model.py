@@ -120,15 +120,18 @@ class TestL1TheDictionaryAnswerNeedsNoModel:
             )
         assert llm.call_count == 1
 
-    def test_the_contact_dialogue_is_the_models_own(self, call):
+    @pytest.mark.parametrize(("said", "calls"), [("Bet kada", 0), ("Velma", 1)])
+    def test_the_contact_dialogue_reads_what_its_readers_read(self, call, said, calls):
+        """6b (2026-10-15): „Bet kada" is read by the hours reader — the model was even worse
+        on it („other"); what the reader cannot read still goes to the model."""
         state, rt = _at_module(call, "no_mac_observed", "check_lights")
         state.ticket.stage = "hours"
         with (
             patch("agent.perceive.understand.enabled", return_value=True),
             patch("agent.perceive.understand.understand", return_value=None) as llm,
         ):
-            _read(state, rt, "Bet kada")
-        assert llm.call_count == 1
+            _read(state, rt, said)
+        assert llm.call_count == calls
 
 
 class TestL2WrittenWordsGoOutAsWritten:
