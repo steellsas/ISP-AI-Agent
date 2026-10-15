@@ -2,7 +2,7 @@
 
 Branch `refactor/single-engine` (from `develop` @ `f541144`), M0 → M7, 2026-09-14 … 2026-09-17.
 Plan and per-milestone log: [REFACTORING_PLAN.md](REFACTORING_PLAN.md) · decisions:
-[DECISIONS.md](DECISIONS.md) · what is left: [ROADMAP.md](ROADMAP.md).
+[DECISIONS.md](../../DECISIONS.md) · what is left: [ROADMAP.md](ROADMAP.md).
 
 ## What changed
 

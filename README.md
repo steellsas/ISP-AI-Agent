@@ -46,7 +46,7 @@ locales/lt/       (phrases · vocabulary · examples)   — validated at startup
 ```
 
 The architecture, decisions and the refactor that produced it:
-[`isp-customer-service/docs/refactoring/RESULT.md`](isp-customer-service/docs/refactoring/RESULT.md).
+[`isp-customer-service/docs/archive/refactoring/RESULT.md`](isp-customer-service/docs/archive/refactoring/RESULT.md).
 
 ## Repository
 
@@ -98,9 +98,9 @@ uv run python scripts/refactor_acceptance.py               # architecture accept
 | Document | For |
 |---|---|
 | [docs/README.md](isp-customer-service/docs/README.md) | Index of all documents |
-| [docs/DEMO_SCENARIJAI.md](isp-customer-service/docs/DEMO_SCENARIJAI.md) | Demo calls (Lithuanian) |
-| [docs/FAULT_PACKS.md](isp-customer-service/docs/FAULT_PACKS.md) | Writing fault packs and knowledge files (Lithuanian) |
-| [docs/refactoring/RESULT.md](isp-customer-service/docs/refactoring/RESULT.md) | Architecture after the refactor, verification, latency |
+| [docs/demo/DEMO_SCENARIJAI.md](isp-customer-service/docs/demo/DEMO_SCENARIJAI.md) | Demo calls (Lithuanian) |
+| [docs/instructor/FAULT_PACKS.md](isp-customer-service/docs/instructor/FAULT_PACKS.md) | Writing fault packs and knowledge files (Lithuanian) |
+| [docs/archive/refactoring/RESULT.md](isp-customer-service/docs/archive/refactoring/RESULT.md) | Architecture after the refactor, verification, latency |
 | [docs/refactoring/ROADMAP.md](isp-customer-service/docs/refactoring/ROADMAP.md) | What is left to fix and build |
 
 ## License

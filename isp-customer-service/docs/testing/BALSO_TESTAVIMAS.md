@@ -5,8 +5,8 @@ Gyvas variantas (pakeitė `archive/TESTAVIMO_SCENARIJUS.md`, kuris aprašė sen�
 balsu, **„Agentas turi"** = ko tikimės (ne pažodžiui), **„Tikrinu"** = ką pažymi po skambučio.
 
 Pristatymo eiga (ką rodyti klientui ar vadovui ir kokia tvarka) —
-[DEMO_PRISTATYMAS.md](DEMO_PRISTATYMAS.md).
-Scenarijų katalogas (numeriai, adresai, laukiamos baigtys) — [DEMO_SCENARIJAI.md](DEMO_SCENARIJAI.md);
+[DEMO_PRISTATYMAS.md](../demo/DEMO_PRISTATYMAS.md).
+Scenarijų katalogas (numeriai, adresai, laukiamos baigtys) — [DEMO_SCENARIJAI.md](../demo/DEMO_SCENARIJAI.md);
 tie patys duomenys dashboard'o skirtuke „Scenarijai" (`chatbot_core/src/app/scenarios.yaml`).
 Šis failas — **kaip** juos prakalbėti ir ką tuo įrodom.
 
@@ -542,10 +542,10 @@ uv run python chatbot_core/src/rag/scripts/index_qdrant.py --check
 Rodo atsisakymus pagal priežastį, nusileidimų dalį ir p95. **Atsisakymų sąrašas yra vertingiausias
 dalykas po gyvų testų**: iš jo matosi, ko klientai tikrai klausia už ribos — ir ar riba nubrėžta
 teisingai. Jei ten kaupiasi `topic`, o klausimai buvo teisėti, reikia ne kodo, o **raktų dokumentuose**
-(žr. [ZINIU_BAZE.md](ZINIU_BAZE.md)).
+(žr. [ZINIU_BAZE.md](../instructor/ZINIU_BAZE.md)).
 
 ## Jei kas nors neatitinka
 
 Užrašyk: telefonas, ką pasakei, ką atsakė agentas, ir trace failo pavadinimą. Tokie radiniai
-guli į `docs/review/FIX_PLAN.md` atitinkamos bangos skyrių — taip 4a bangoje ir atsirado
+guli į `docs/archive/review/FIX_PLAN.md` atitinkamos bangos skyrių — taip 4a bangoje ir atsirado
 trys taisymai, kurių vienetų testai nebūtų pagavę.

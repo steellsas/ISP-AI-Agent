@@ -74,7 +74,7 @@ fast_read_max_words: 6
 # L2 (2026-10-05): ar žingsnio sakinys sakomas taip, kaip PARAŠYTAS kataloge. Kol kas 0 —
 # įjungus matuota, kad kitos replikos modelio skaitymas pasikeičia (S6: bazė 5/5, su šiuo 0/5),
 # nes kartu su žodžiais iškrinta ir patvirtinimas, ant kurio laikosi tolesnis skaitymas.
-# Žr. docs/review/FIX_PLAN.md „Banga 9". Įjungti: SCRIPTED_STEP_WORDS=1.
+# Žr. docs/archive/review/FIX_PLAN.md „Banga 9". Įjungti: SCRIPTED_STEP_WORDS=1.
 scripted_step_words: {value: 0, env: SCRIPTED_STEP_WORDS}
 short_utterance_max_words: 3        # a farewell / bare negation / bare "done" is at most this long
 case_fact_asks_max: 2               # asks of the same fact before it counts as unavailable

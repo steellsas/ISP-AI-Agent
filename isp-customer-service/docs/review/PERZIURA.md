@@ -481,7 +481,7 @@ veiktų esamoje sistemoje; TTS pusėje dabar — tik iš anksto sugeneruotos fra
 ### 9 etapas — Kokybė: eval ir testai (2026-09-18)
 
 Palikti (gera, stiprus pagrindas): 65 testų failai / 1242 testai; testų
-žemėlapis su sluoksnių nuosavybe (`docs/TESTU_ZEMELAPIS.md`); eval 33
+žemėlapis su sluoksnių nuosavybe (`docs/testing/TESTU_ZEMELAPIS.md`); eval 33
 scenarijai / ~178 čekiai su tikru LLM, vertina BŪSENĄ (verdiktas, baigtis,
 identifikacija, kontakto įrašas) + frazių sargus; `known_bug` mechanizmas
 (klaida užfiksuojama scenarijumi, pataisius tampa privaloma); fuzz su LLM

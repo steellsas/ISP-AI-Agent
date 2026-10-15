@@ -18,7 +18,7 @@
 #                         į žinių bazę, techniškai neturi kuo
 #
 # Gamyboje dar reikia: TLS (be jo api-key keliauja atviru tekstu), bind į privatų interfeisą ir
-# portas 6334 (vidinis gRPC) neprieinamas iš išorės. Žr. docs/review/RAG_PLANAS.md 8.1.
+# portas 6334 (vidinis gRPC) neprieinamas iš išorės. Žr. docs/archive/review/RAG_PLANAS.md 8.1.
 
 services:
   qdrant:

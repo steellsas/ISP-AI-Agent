@@ -100,3 +100,8 @@ chatbot_core/.api_config.json
 
 # Local Piper voices + their GPL phonemizer (scripts/get_piper_voices.py)
 /models/
+
+# local voice samples
+/leonas.mp3
+/ona.mp3
+/eval_ident.txt

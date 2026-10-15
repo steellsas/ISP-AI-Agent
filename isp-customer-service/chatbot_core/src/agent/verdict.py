@@ -5,7 +5,7 @@ port, the neighbours) in ONE call, and returns them. What they MEAN is not decid
 signals become facts (knowledge/signals.yaml) and the fault cards declare which fault those
 facts allow (wave 3), including the news cards for a debt, an outage or a node down (wave 4).
 
-Until then this module held the decision tree from docs/scenarijus_neveikia_internetas.md
+Until then this module held the decision tree from docs/archive/chatbot_core/scenarijus_neveikia_internetas.md
 §3.2 — twelve verdicts, and a new situation meant a new branch in Python.
 
 The sources (CRM billing, network outage/port/neighbours) are supplied by the tool provider;

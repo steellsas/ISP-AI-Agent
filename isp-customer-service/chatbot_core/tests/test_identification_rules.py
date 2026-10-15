@@ -1,5 +1,5 @@
 """
-Identifikacijos etalono taisyklės (Andrius 2026-09-03, docs/IDENT_TESTAI.md):
+Identifikacijos etalono taisyklės (Andrius 2026-09-03, docs/testing/IDENT_TESTAI.md):
 №1 butas pagal DB (resolveris jau moka — regresijos sargas), №2/№5 abonento
 kodo pakopa + „pagalba tik abonentams", №3 adreso keitimas tik su
 patvirtinimu, №4 savininko vardo patikra be DB vardo garsinimo.

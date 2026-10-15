@@ -1,5 +1,5 @@
 """
-Deterministic address extraction (NLU Track A) — docs/pokalbio_variklis.md §4.
+Deterministic address extraction (NLU Track A) — docs/archive/chatbot_core/pokalbio_variklis.md §4.
 
 Pulls city / street / house / apartment out of a (number-normalized) STT
 utterance WITHOUT the LLM, by fuzzy-matching word n-grams against the streets

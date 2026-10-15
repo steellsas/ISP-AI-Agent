@@ -2,7 +2,7 @@
 
 The safety net **required before any reasoning change** (introduced in Phase 3.8 step 0;
 the original spec is archived at `docs/archive/MASTANTIS_AGENTAS_SPEC.md`; the refactor
-that keeps it green is `docs/refactoring/REFACTORING_PLAN.md`). Drives `AgentSession`
+that keeps it green is `docs/archive/refactoring/REFACTORING_PLAN.md`). Drives `AgentSession`
 text-to-text through scripted CLIENT turns and hard-scores the resulting conversation
 **state + replies + contact record**.
 

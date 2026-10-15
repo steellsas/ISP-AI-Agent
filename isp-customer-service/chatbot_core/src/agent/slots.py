@@ -1,7 +1,7 @@
 """
 Structured dialog slots — durable, typed memory for the identification phase.
 
-Phase 3.5 (docs/pokalbio_variklis.md §3). The free ReAct loop kept the address
+Phase 3.5 (docs/archive/chatbot_core/pokalbio_variklis.md §3). The free ReAct loop kept the address
 only in the LLM's context, so a single garbled turn could overwrite a resolved
 address (observed: "Tilžės 60-7" -> "TILŽĖ 610"). These slots make the address
 DURABLE memory with a confidence + status per level, so a low-confidence

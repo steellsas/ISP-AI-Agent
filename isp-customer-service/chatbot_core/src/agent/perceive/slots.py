@@ -45,7 +45,7 @@ def mentions_other_street(state, rt, text: str | None) -> bool:
 
 def prefill_slots_from_text(state: Any, rt: Any, text: str) -> None:
     """Deterministic NLU Track A: extract the address from the caller's turn and
-    propose it into the slots BEFORE the LLM runs (docs/pokalbio_variklis.md §4).
+    propose it into the slots BEFORE the LLM runs (docs/archive/chatbot_core/pokalbio_variklis.md §4).
 
     The reading is the high-confidence floor — registry-validated street +
     normalized numbers — so the slots get a reliable source independent of the

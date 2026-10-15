@@ -4,7 +4,7 @@
 toliau etapas 6 (promptai pagal fazę).
 **Iš kur:** 2026-10-08 struktūrinė peržiūra (4 tyrimai: LLM kvietimai, fazių savininkai, mazgų
 vidus, seni radiniai) ir Andriaus pokalbis tą pačią dieną. Ankstesnis kontekstas —
-[PERZIURA.md](PERZIURA.md) (radiniai A–AU, principai P-1…P-9), [AGENTO_VEIKIMAS.md](../AGENTO_VEIKIMAS.md).
+[PERZIURA.md](PERZIURA.md) (radiniai A–AU, principai P-1…P-9), [AGENTO_VEIKIMAS.md](../archive/AGENTO_VEIKIMAS.md).
 
 ---
 

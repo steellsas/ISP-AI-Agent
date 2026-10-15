@@ -16,7 +16,7 @@
 
 Šis dokumentas — **archyvas**: M0–M7 sujungti į `develop` 2026-09-17 (PR #85), o tolesnis
 darbas vyksta [refactoring/ROADMAP.md](../refactoring/ROADMAP.md) (R-1…R-21) ir
-[review/FIX_PLAN.md](../review/FIX_PLAN.md) bangomis.
+[review/FIX_PLAN.md](review/FIX_PLAN.md) bangomis.
 
 Nepažymėtų liko dešimt eilučių; jos patikrintos kodu 2026-09-28: **penkios padarytos** (tik
 nepažymėtos), **dvi išspręstos kitaip** (subgrafo atsisakyta), **trys atviros** (balso delsa,

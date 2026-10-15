@@ -12,7 +12,7 @@
 ## Būsena 2026-09-28 (5 banga — žymių suvedimas)
 
 Šis dokumentas yra **archyvas**: gyvas darbas vyksta
-[review/FIX_PLAN.md](../review/FIX_PLAN.md) bangomis ir
+[review/FIX_PLAN.md](review/FIX_PLAN.md) bangomis ir
 [refactoring/ROADMAP.md](../refactoring/ROADMAP.md) R-eilutėmis. Nepažymėtų čia buvo **49**,
 ir jos klaidino (49-oji — tik antraštė poskyriui): dauguma jau padaryta, tik niekas nepažymėjo. Kiekviena patikrinta kodu
 2026-09-28 ir gavo prierašą:

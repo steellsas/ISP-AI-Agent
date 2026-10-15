@@ -1,7 +1,7 @@
 # Architecture Decisions — single-engine refactor
 
 > Agreed 2026-09-14 by the project owner (Andrius) in a design discussion.
-> This file is the **"why"** behind [REFACTORING_PLAN.md](REFACTORING_PLAN.md).
+> This file is the **"why"** behind [REFACTORING_PLAN.md](archive/refactoring/REFACTORING_PLAN.md).
 > Every milestone file references decisions by id (`D-xx`). If a milestone
 > seems to contradict a decision here, the decision wins — stop and ask the owner.
 
