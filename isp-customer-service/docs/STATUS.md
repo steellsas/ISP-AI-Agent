@@ -166,7 +166,12 @@ diagnoses silently; its diagnosis is compared with the operator's and the techni
 
 ## 10. Latency plan
 
-Turn pipeline today (serial, medians from 2026-10-05, before Piper and 6b — **measure again first**):
+Working document with the measurements and the decisions: [review/DELSA.md](review/DELSA.md)
+(`scripts/latency_report.py`). **Update 2026-10-15** from 3 calls of 2026-10-14 (before 6b): first
+audio median 1.7 s after the cut, ~2.7 s with the endpoint wait; the LLM read (~0.7 s) and the
+endpoint window (~0.9 s) are now the biggest layers, the speak TTFT is only ~0.26 s.
+
+Older picture (2026-10-05, before Piper and 6b):
 
 ```
 caller stops ─► endpoint wait ─► ASR ─► LLM read ─► engine ─► LLM speak ─► 1st sentence ─► TTS ─► audio

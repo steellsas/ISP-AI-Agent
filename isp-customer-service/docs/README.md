@@ -18,7 +18,7 @@
 | [demo/](demo/) | `DEMO_PRISTATYMAS.md` — the demo run · `DEMO_SCENARIJAI.md` — the demo calls (also in the dashboard's Scenarijai tab) |
 | [instructor/](instructor/) | Drafts for the instructor guide: `ZINIU_BAZE.md` (knowledge-base documents, v2), `AGENT_ONBOARDING.md` (customer questionnaire), `FAULT_PACKS.md` (**outdated: v1 packs**, see STATUS §7) |
 | [testing/](testing/) | Live test scripts: `BALSO_TESTAVIMAS.md` (voice), `IDENT_TESTAI.md`, `BARGE_IN_TESTAI.md`; `TESTU_ZEMELAPIS.md` (test map) · eval harness: [../chatbot_core/src/agent/eval/README.md](../chatbot_core/src/agent/eval/README.md) |
-| [review/](review/) | The live review: `PERZIURA.md` (findings and principles), `STRUKTURA_V3.md` (phases design), `PROMPTAI.md` (prompt and LLM-parameter change log) |
+| [review/](review/) | The live review: `PERZIURA.md` (findings and principles), `STRUKTURA_V3.md` (phases design), `PROMPTAI.md` (prompt and LLM-parameter change log), `DELSA.md` (latency measurements and levers) |
 | [archive/](archive/) | History only: pre-refactor engine docs, the M0–M7 refactor (`archive/refactoring/`), fix waves and RAG planning (`archive/review/`), `AGENTO_VEIKIMAS.md` and `MODELIAI.md` (folded into ARCHITECTURE/STATUS) |
 
 ## Planned
@@ -38,5 +38,6 @@
 | `uv run pytest` | Unit and integration tests |
 | `uv run python chatbot_core/src/agent/eval/run_eval.py [--only ID] [--runs N] [--voice] [--json out.json]` | Scripted calls with the real LLM, scored |
 | `uv run python chatbot_core/src/agent/eval/metrics.py base.json --compare new.json` | LLM calls, tokens, latency and stability between two eval runs |
+| `uv run python scripts/latency_report.py [--last N] [--days N] [--turns]` | Where each voice turn's time went, by layer (endpoint, ASR, read, engine, speak, TTS) |
 | `uv run python scripts/reader_silent.py [--days N] [--module M]` | What no reader understood, from call traces |
 | `uv run python scripts/prune_logs.py [--days N] [--keep N] [--apply]` | Delete old traces and audio past retention (dry run without `--apply`) |
