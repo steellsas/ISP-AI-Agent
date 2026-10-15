@@ -450,12 +450,12 @@ struktūra (sąrašas su vienu nariu), elgsena — vėliau.
 | Etapas | Kas | Priėmimas |
 |---|---|---|
 | **0** ✅ | Greiti taisymai: S1–S7, V1, V4, V5, V7, solver kodas ištrintas, 6 prompto prieštaravimai, TTS gijos (10 banga) | testai + eval |
-| **1** | Šis dokumentas → Andriaus patvirtinimas | — |
+| **1** ✅ | Šis dokumentas → Andriaus patvirtinimas | — |
 | **2** ✅ | `state.phase` šešėlyje: skaičiuojama iš esamų žymių, trace + dashboard (fazių juosta, dabartinė užsidega spalva, neleistinas perėjimas — raudonai), nieko nevaldo | eval: fazių seka kiekvienam scenarijui atitinka lūkestį |
 | **3** ✅ | 3a: pabaigos taisyklės U3/U6/U8/U10; 3c: v1 vedlys ištrintas (`resolution.procedure`, strategijos, 7 v1 paketai; `unclear_fault` → Case kortelė); 3b: vienas tiketo įėjimas `request_ticket(why)`, pabaigos būsena tik `agent/closing.py` (sargas-testas) | testai + eval 207–208/208; laukia Andriaus gyvo testo |
 | **4** ✅ | Tyrimo ciklas: `run_when:` + `fixes:` patikra bet kurioje kortelės vietoje, `case.cause` → pabaigoje pasakoma priežastis; `plug_power` modulis + demo „⚡ Maitinimas" | eval S4d „įkišo laidą — veikia"; pytest 1590, eval 219/221 (I2, K1 — Gemma flaky, pakartotinai praeina) |
 | **5** ✅ | Pokalbio sluoksnis (§4.1): `agent/dialogue.py` — patvirtinimas + VIENAS veiksmas (grąžinti / atsakyti / laukti / paaiškinti / persiklausti / pasiteirauti), vienas kortelės skyrius vietoj ~10, trace + dashboard | pytest 1619; eval 215/221 → pakartotinai praeina; S4/S4b kartais krenta dėl 4 etapo spragos (Gemma „Vis tiek nedega"→unplugged) |
-| **6** | Promptai pagal fazę (§7) | A/B + vėlavimas |
+| **6** ✅ | Promptai pagal fazę (§7): 6a fazės promptas (−22 % tokenų), 6c parametrai, 6d kalba (`kalba.yaml`), 6b suvokimas tik kur reikia (−65 % kvietimų) | eval 46–47/48; žurnalas `PROMPTAI.md` |
 | **7** | Kelios problemos (§8), LLM siūlymai šešėlyje (§3.5 C) | šešėlio žurnalas |
 
 Kiekvienas etapas — atskira šaka, baigiamas pilnai, tada Andriaus gyvas testas.

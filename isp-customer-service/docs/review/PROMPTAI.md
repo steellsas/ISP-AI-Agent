@@ -29,7 +29,7 @@ Terminai (Andrius, 2026-10-12): „maršrutizatorius" yra taisyklingas lietuviš
 | 6.0 | Matavimo pagrindas (`metrics.py`, eval ×3 dabartiniu kodu) | ✅ |
 | 6c | Parametrai pagal vaidmenį | ✅ paliekama; stabilumo pagerėjimas nepasitvirtino |
 | 6a | Kalbėjimo promptas pagal fazę | ✅ −22 % tokenų; 39/40, 0 nestabilių |
-| 6b | Suvokimo LLM nekviesti, kai atsakymą perskaitė skaitytuvas | bus aptarta |
+| 6b | Suvokimo LLM nekviesti, kai atsakymą perskaitė skaitytuvas | ✅ suvokimo kvietimai −65 %; 46/48 |
 | 6d | Lietuvių kalbos taisyklės ir terminai | ✅ nežinomi žodžiai −31 %; `kalba.yaml` |
 
 ---
@@ -331,3 +331,33 @@ Frazė `modules.offer_bridge.question` (variklio žodžiai, modelis gali tik sut
 
 Kortelė: „THE STEP WAITS" nebeslepia naujo, dar nepasakyto žingsnio (gyvai pasiūlymas nebuvo
 pasakytas, modelis sugalvojo „patikrinkite kitą rozetę").
+
+### 6b Suvokimo LLM tik ten, kur jo reikia (2026-10-15, Andrius pritarė)
+
+**Kodėl:** suvokimo LLM buvo kviečiamas 221 ėjime iš 255 (eval), 123 iš jų — 1–3 žodžių
+sakiniai, kuriuos fazės skaitytuvas jau perskaito („Bet kada" modelis net perskaitė blogiau —
+„other").
+
+**Kas pakeista** (`perceive/perception.py` `_engine_read`; `limits.fast_read_max_words` 8 → 6):
+
+| Fazė | Variklio skaitytuvas | Pavyzdžiai |
+|---|---|---|
+| Tiketas | telefono / valandų skaitytuvai | „Tiks", „860012345", „Bet kada" |
+| Pasisveikinimas | problemos raktiniai žodžiai | „Labas, neveikia internetas" |
+| Identifikacija | identifikacijos žingsniai | „Petras, nuomininkas" |
+| Pabaiga | tik padėka / atsisveikinimas | „Aišku, ačiū" |
+| Tyrimas | žingsnio skaitytuvas (riba 3 → 6) | „Vis tiek nedega" |
+
+LLM lieka: klausimui, „nesupratau", >6 žodžių, neperskaitytam sakiniui, „Ne, ne šis" kontaktų
+klausime.
+
+**Rezultatas (eval ×3, `logs/eval_6b.json` prieš `logs/eval_call1014b.json`):**
+
+| | Prieš | Po |
+|---|---|---|
+| Suvokimo kvietimai | 690 | **240 (−65 %)** |
+| Suvokimo vėlavimas med / p90 | 550 / 815 ms | 514 / 657 ms |
+| Stabilūs scenarijai | 47/48 | 46/48 |
+| Nestabilūs | X_dhcp_silent | X_dhcp_silent, I2 (adreso ėjimas, suvokimas ten nekviečiamas — ne 6b) |
+
+Kiekvienas praleistas kvietimas — ~0,5 s greičiau iki pirmo garso tame ėjime.

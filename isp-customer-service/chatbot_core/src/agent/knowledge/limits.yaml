@@ -69,7 +69,8 @@ classifier_max_tokens: 150
 # L1 (2026-10-05): kiek žodžių dar skaitom ŽODYNU, kai klausimas uždaras. Žodynas variklyje
 # vis tiek yra pirmas (`modules.read_answer`), tad ilgesniam sakiniui modelis šaukiamas ne dėl
 # atsakymo, o dėl to, kas pasakyta PAKELIUI („ne, bet kompiuterį turiu") — todėl riba vidurinė.
-fast_read_max_words: 8
+# 6b (2026-10-15, Andrius): 6 žodžiai — ta pati riba ir variklio skaitymui kitose fazėse.
+fast_read_max_words: 6
 # L2 (2026-10-05): ar žingsnio sakinys sakomas taip, kaip PARAŠYTAS kataloge. Kol kas 0 —
 # įjungus matuota, kad kitos replikos modelio skaitymas pasikeičia (S6: bazė 5/5, su šiuo 0/5),
 # nes kartu su žodžiais iškrinta ir patvirtinimas, ant kurio laikosi tolesnis skaitymas.

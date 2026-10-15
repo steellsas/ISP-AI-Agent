@@ -1178,6 +1178,10 @@ negation_prefixes: ["ne", "nebe"]
 # "Ačiū, nereikia" / "nebereikia" = polite done-signal (live 2026-08-13).
 no_longer_needed: ["nebereikia"]
 not_needed: ["nereikia"]
+# 6b (2026-10-15): pabaigos padėka be jokio turinio — modelio skaityti nereikia.
+closing_ack_words: ["ačiū", "aciu", "labai", "aišku", "aisku", "gerai", "supratau", "lauksiu", "laukiu", "ok", "okey", "viso", "gero", "geros", "dienos", "jau", "tai", "nu", "na", "taip", "puiku", "super"]
+# 6b: „tas pats numeris" kontaktų klausimui.
+same_number_words: ["tiks", "tinka", "šis", "sis", "tas pats", "iš kurio skambinu", "is kurio skambinu"]
 thanks_words: ["ačiū", "aciu"]
 # "iki"/"ate" are goodbyes only as the LAST word or leading a farewell phrase
 # ("iki pasimatymo") — as a preposition "iki" is content ("iki galo", "iki 17 valandos").

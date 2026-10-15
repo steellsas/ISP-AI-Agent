@@ -22,8 +22,10 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
+from ..contract.locale import vocab
+
 # How the reading was taken.
-Source = Literal["fast_path", "llm", "keywords"]
+Source = Literal["fast_path", "engine", "llm", "keywords"]
 
 
 class Fact(BaseModel):
@@ -89,10 +91,21 @@ def fast_read(
     from .detectors import detect_yes_no, is_backchannel, is_real_question
 
     text = (utterance or "").strip()
-    if not text or is_real_question(text):
+    if not text:
         return None
+    # „Bet kada" holds „kada" — a question word, not a question: in the contact dialogue the
+    # content wins when no „?" was heard (the ticket rule reads it the same way, W0-C).
+    if state.ticket.stage in ("phone", "hours") and "?" not in text:
+        engine = _engine_read(state, text)
+        if engine is not None:
+            return engine
+    if is_real_question(text):
+        return None
+    engine = _engine_read(state, text)
+    if engine is not None:
+        return engine
     if len(text.split()) > limits.get("short_utterance_max_words"):
-        return None
+        return _closed_answer(state, text, options, step)
     if is_backchannel(text):
         # "mhm", "gerai" — heard, nothing claimed.
         return Perception(source="fast_path", turn_type="answer", confidence=1.0)
@@ -111,6 +124,82 @@ def fast_read(
             confidence=1.0,
         )
     return _closed_answer(state, text, options, step)
+
+
+def _engine_read(state: Any, text: str) -> Perception | None:
+    """6b (2026-10-15, Andrius pritarė): the turn the engine's own reader has already read.
+
+    Measured on the eval: the model was called on 221 of 255 turns, 123 of them 1–3 words —
+    a name, „Bet kada", „Labas, neveikia internetas", „Aišku, ačiū" — which a deterministic
+    reader of THIS phase reads anyway, and on „Bet kada" the model was even worse („other").
+    Short (≤ `fast_read_max_words`), no question, no confusion, and the reader read it — then
+    the model adds nothing but ~0,5 s. Everything else is read by the model as before.
+    """
+    from ..contract import limits
+    from .detectors import detect_confusion
+
+    if len(text.split()) > limits.get("fast_read_max_words") or detect_confusion(text):
+        return None
+    if state.ticket.stage in ("phone", "hours"):
+        ticket = _ticket_read(state, text)
+        if ticket is None:
+            return None
+        return Perception(source="engine", turn_type="answer", ticket=ticket, confidence=1.0)
+    if not state.intake.problem_type:
+        from .nlu import classify_problem
+
+        label = classify_problem(text)
+        if not label:
+            return None
+        return Perception(
+            source="engine",
+            turn_type="answer",
+            problem={"label": label, "confidence": 1.0},
+            confidence=1.0,
+        )
+    from ..phase import CLOSING, IDENTIFY, phase_of
+
+    phase = phase_of(state)
+    if phase == IDENTIFY and state.identity.customer_id:
+        # The name, the relation, the address answer — the identification ladder reads them
+        # itself; the model's reading of „Petras, nuomininkas" was never used.
+        return Perception(source="engine", turn_type="answer", confidence=1.0)
+    if phase == CLOSING and _closing_ack(text):
+        return Perception(source="engine", turn_type="answer", confidence=1.0)
+    return None
+
+
+def _ticket_read(state: Any, text: str) -> dict[str, Any] | None:
+    """The contact answer read by the ticket dialogue's own readers, or None."""
+    import re
+
+    from .detectors import detect_ticket_consent
+
+    if state.ticket.stage == "phone":
+        digits = re.sub(r"\D", "", text)
+        if len(digits) >= 6:
+            return {"type": "answer", "value": digits}
+        if any(w.startswith("ne") for w in text.lower().split()):
+            return None  # „Ne, ne šis" / „netinka" — the model reads what they want instead
+        if detect_ticket_consent(text) == "yes" or any(
+            w in text.lower() for w in vocab("same_number_words")
+        ):
+            return {"type": "answer", "value": "same_number"}
+        return None
+    from ..decide.rules.ticket import hours_words
+
+    clean = re.sub(r"[?!]", " ", text).strip(" .,")
+    return {"type": "answer", "value": clean} if hours_words(clean) else None
+
+
+def _closing_ack(text: str) -> bool:
+    """„Aišku, ačiū", „Ačiū, viso gero", „Gerai, lauksiu" — nothing but thanks and goodbye."""
+    from .detectors import detect_farewell
+
+    if detect_farewell(text):
+        return True
+    words = [w.strip(".,!…") for w in text.lower().split()]
+    return bool(words) and all(w in vocab("closing_ack_words") for w in words if w)
 
 
 def _closed_answer(
