@@ -113,10 +113,86 @@ network, in the browser, with cloud LLM and ASR.
   (`crm_service/test_phone_lookup.py`, `scripts/test_shared.py`); `scripts/refactor_acceptance.py`
   checks rules from the old refactor.
 
-## 8. Proposed order
+## 8. Framework and platform decisions (proposals, 2026-10-15)
+
+The engine/LLM split matches what regulated customer-service agents converged on in 2025–26
+(Rasa CALM, Parlant, Pipecat Flows, Agentforce topics): the engine decides, the model reads and
+speaks. Rated against that practice:
+
+| Practice | Here | Rating |
+|---|---|---|
+| Model calls no tools; code decides | yes | ★★★ |
+| Facts grounded by a verified quote | yes | ★★★ rare in the market |
+| Telemetry over the caller's words | yes | ★★★ |
+| Knowledge as validated data | yes | ★★★ |
+| Explainability (one plan per turn, traces) | yes | ★★★ |
+| Tests without LLM + eval with LLM | 1 390 + 48 | ★★☆ no voice/noise eval |
+| Latency | ~3 s | ★☆☆ industry < 1 s |
+| Turn-taking, barge-in | own code | ★★☆ works, but reinvented |
+| Production infrastructure | almost none | ☆☆☆ |
+
+| Layer | Today | Proposal | Why |
+|---|---|---|---|
+| **Voice transport** | own WebSocket, VAD, endpointing, barge-in (`app/main.py`, `audio_front.py`, `endpoint.py`) | **Pipecat** (cloud telephony: Twilio/Telnyx) or **LiveKit Agents** (customer's own PBX / on-prem SIP); the engine becomes one processor in the pipeline | telephony, streaming STT, turn-detection model, interruption handling, per-service TTFB metrics, maintained by others. Does **not** reduce LLM latency by itself |
+| **Engine** | LangGraph (4 nodes + checkpoints) + plain Python | **keep**, do not deepen the dependency; Case and decide stay plain Python | little of LangGraph is used; a plain state machine would do the same, so switching gains nothing |
+| **LangChain** | not used (litellm) | **do not add** | its strengths (chains, tool agents) are what the design deliberately avoids |
+| **Model serving (on-prem)** | Scaleway API | **vLLM or SGLang** with prefix caching | many concurrent calls; the speak prompt is already cache-shaped |
+| **Structured output** | JSON mode + one retry | **guided decoding** (vLLM / Outlines / XGrammar) for perception | valid JSON every time, fewer small-model errors, no retries |
+| **Production observability** | JSONL traces + dashboard | **Langfuse** (self-hosted) | cost/latency per call, datasets from real calls, LLM-as-judge |
+| **Prompt tuning** | by hand, logged in `review/PROMPTAI.md` | **DSPy** against the eval, for the perception prompt on a local model | small models are sensitive to wording and examples |
+| Rasa CALM, Parlant, Pipecat Flows | — | **no** | same idea as the engine, weaker domain fit |
+
+**First step:** a Pipecat spike on a separate branch — `AgentSession` inside a pipeline with Piper
+TTS. Measure: Lithuanian turn detection (Smart Turn language support is unverified), latency, how
+much of `app/` falls away. Ask the customer which telephony they have (add to
+[instructor/AGENT_ONBOARDING.md](instructor/AGENT_ONBOARDING.md)).
+
+## 9. Production questions not yet designed
+
+| Area | Gap |
+|---|---|
+| **Scale** | the LLM limiter allows 30 calls/min per process — about 3–4 concurrent calls; one process, SQLite; no load test; no fallback path when the service itself is down (route to a human queue) |
+| **Privacy (EU)** | recording consent at call start; retention only defined for unidentified calls; caller voice goes to Groq (US) — DPA/DPIA or local ASR |
+| **Identity strength** | address + name is weak: the debt amount is told to anyone who knows the address; disconnection requests are registered without a stronger check |
+| **Human handover** | a human is reached only through a ticket; production ISPs usually need a live (warm) transfer for urgent or angry callers |
+| **Knowledge governance** | cards reload live but have no versions, review, staging or rollback; the call record does not store which knowledge version served it; no multi-tenant setup |
+| **Quality loop** | no business metrics (containment, repeat call within 48 h, escalation rate, handle time, CSAT); **no feedback from technicians' ticket closure codes to measure diagnosis accuracy**; no post-call review sampling |
+| **Real callers** | narrowband phone audio, noise, elderly callers, dialects; **Russian** speakers are a real share of Lithuanian ISP customers; eval is text-only (no ASR-error or synthetic voice caller) |
+| **Promises** | “we will call you back” — nothing schedules or performs the callback |
+| **Slow telemetry** | real probes may take 3–10 s; the `tool_slow` filler is untested against real delays |
+
+**Safest road to production:** a **shadow run** — the agent listens to real operator calls and
+diagnoses silently; its diagnosis is compared with the operator's and the technician's.
+
+## 10. Latency plan
+
+Turn pipeline today (serial, medians from 2026-10-05, before Piper and 6b — **measure again first**):
 
 ```
- now ─► 7a several problems ─► TV cards ─► latency pass ─► v3 phase owners ─► DEMO
+caller stops ─► endpoint wait ─► ASR ─► LLM read ─► engine ─► LLM speak ─► 1st sentence ─► TTS ─► audio
+                 350–1 800 ms    ~550    0 / ~550    ~2 ms     TTFT ~1 150   complete        ~270
+```
+
+| # | Lever | Layer | Gain | Cost |
+|---|---|---|---|---|
+| L1 | **Measure** the current pipeline per layer on 3–5 live calls (incl. endpoint wait) | all | the right target | S |
+| L2 | **Short first sentence** — the speaker opens with a brief reaction; the guard releases it immediately | speak | 300–600 ms | S |
+| L3 | **More written phrases** instead of directives where the wording is fixed | speak | whole LLM call (~1.1 s) on those turns | S–M |
+| L4 | **Status phrase before a known wait** (pre-rendered, about the real action: “tikrinu liniją”) — not a generic “mhm” (rejected 2026-08-31) | masking | perceived 1–2 s | S |
+| L5 | **Endpoint tuning** — shorter waits when the answer is complete; turn-detection model (Pipecat/LiveKit) | endpoint | 200–1 000 ms | S–M |
+| L6 | **Smaller speak input** (prompt ~4k tokens) and a provider with prompt caching | speak | 100–400 ms | M |
+| L7 | **Start reading on a stable partial transcript** while the caller finishes | read | ~500 ms on read turns | M |
+| L8 | **Streaming ASR** (local on GPU) | ASR | 300–400 ms | M, needs GPU |
+| L9 | **Local GPU models** — small model for reading, larger for speaking, vLLM prefix cache | read + speak | TTFT ~1.1 s → 0.2–0.3 s | L, the main step |
+
+Target budget: endpoint 300 + ASR 200 + read 0–300 + speak TTFT 300 + first sentence 200 +
+TTS 150 ≈ **1.2–1.5 s**, perceived lower with L4.
+
+## 11. Proposed order
+
+```
+ now ─► latency L1–L4 ─► 7a several problems ─► TV cards ─► v3 phase owners ─► DEMO
+         └─► Pipecat / LiveKit spike (parallel, own branch)
                                                                               │
        instructor guide + maintenance guide (after v3 settles) ◄──────────────┤
                                                                               ▼
