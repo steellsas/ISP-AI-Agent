@@ -280,3 +280,46 @@ Skola · miręs routeris + tiltas + tiketas · linija nutrūkusi + tiketas · ne
 
 Gerai veikė: skolos pranešimas, avarija tik po identifikacijos, miręs routeris → tiltas → MAC
 pririšimas → patikra → tiketas (sk. 2 — visas kelias be klaidų), tiketo kontaktai.
+
+### 5.3 Pipecat bandymas — pirmas gyvas skambutis (2026-10-16)
+
+Šaka `feature/pipecat-voice`, `chatbot_core/src/app/pipecat_bot.py`; skolos skambutis, 7 ėjimai.
+Pipecat matuoja **nuo kliento tylos (VAD) iki agento garso** — tai mūsų pagrindinis matas.
+
+| Ėjimas | Iš viso | endpoint | ASR | variklis + LLM | TTS (1-as sakinys) |
+|---|---|---|---|---|---|
+| „Taip, dėl šio…" (scripted) | 1 627 | 200 | 917 | ~0 | 452 |
+| „Mano vardas Petras…" (scripted) | 2 186 | 200 | 1 007 | ~0 | 936 (73 simb.) |
+| „…girdot" (scripted) | 2 152 | 200 | 537 | ~0 | 1 376 (106 simb.) |
+| „Taip, kita." (scripted) | **863** | 200 | 485 | ~0 | 139 |
+| „Tietos man." (LLM) | 2 260 | 200 | 495 | 1 175 | 345 |
+| „Koks jūsų vardas?" (LLM) | 2 497 | 200 | 591 | 1 283 | 380 |
+| „Kodėl neveikia?" (LLM) | 2 922 | 200 | 658 | 968 | 1 050 (79 simb.) |
+| **mediana** | **2 186** | **200** | **591** | | |
+
+**Ką rodo:**
+
+1. **Endpoint 900 → 200 ms** — Smart Turn sprendžia per 3–5 ms; per visą skambutį tik vieną
+   kartą nukirpo per anksti („Ne, negaliu." | „…Sėgaujau" → du ėjimai, agentas atsakė abiem).
+2. **Visa mediana nepagerėjo** (2,19 s; senas balsas ~2,15 s su įvertintu endpoint), nes atsirado
+   kiti: **ilgas pirmas sakinys** (Piper ~12 ms/simb.: 106 simb. = 1,4 s) ir LLM ėjimai (~1–1,3 s:
+   suvokimas ~0,6 + kalbėjimas ~0,4–0,7).
+3. **Trumpas parašytas ėjimas — 0,86 s.** Tai rodo, kur galima nueiti be GPU.
+4. Pipecat suskaido laiką pats (`pipecat_latency` trace'e) — matavimas be savo kodo.
+
+**Svertai, kuriuos parodė šis skambutis (tinka ir senam balsui):**
+
+| # | Kas | Laimėtų |
+|---|---|---|
+| P1 | **Piper srautu**: recepto `gabalai()` jau duoda frazes po vieną — siųsti kiekvieną iškart, ne laukti viso sakinio | 0,3–1 s ilguose sakiniuose |
+| P2 | Ilgą sakinį TTS'ui skaidyti ties „—" / kableliu (L2) | tas pats, paprasčiau |
+| P3 | ASR ilgiems sakiniams ~0,9–1 s — Groq; srautinis ASR tik su GPU (L8) | vėliau |
+
+**Elgesio radiniai (ne Pipecat kaltė):**
+
+| # | Kas |
+|---|---|
+| G11 | **Gemma įterpė kiniškus rašmenis**: „paslauga la暂时iškai sustabdyta" — sargas taiso tik kirilicą |
+| G12 | Vardas iš ASR šiukšlių: „Čestink ir girdot" → „Malonu susipažinti, Čestink!" |
+| G13 | „Koks jūsų vardas?" (klausimas agentui) → „šis klausimas nėra mano kompetencija" |
+| G14 | Pirmo ėjimo („neveikia internetas") `pipecat_latency` neįrašytas; paskutinio — klaidingas (151 s) |
