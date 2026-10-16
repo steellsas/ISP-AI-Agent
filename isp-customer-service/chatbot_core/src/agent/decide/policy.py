@@ -4,7 +4,7 @@ Each rule reads the state the perceive node left and returns a TurnPlan or None.
 may write the dialogue bookkeeping it owns (counters, stages, flags on the state copy);
 tools, ticket registration and speech are the plan's action and say, run after it.
 
-The order ports today's precedence (docs/refactoring/M4_decide.md §5). Families not
+The order ports today's precedence (docs/archive/refactoring/M4_decide.md §5). Families not
 ported yet still run in the stage nodes after the chain returns None — porting goes
 top-down, so every ported family keeps its place ahead of the unported ones.
 """

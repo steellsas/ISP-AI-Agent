@@ -11,7 +11,7 @@ This module replaces that reading with an LLM that understands MEANING, for ANY 
 step (yes/no, lights, scope, restored, …), in ONE call that also decides whether the
 caller actually ANSWERED (vs. still doing it / asking back / confused). It is a SENSOR:
 it returns a CandidateObservation and never touches state or the walker — the engine
-still decides and routes (single decision-maker; docs/MASTANTIS_AGENTAS_SPEC.md §①).
+still decides and routes (single decision-maker; docs/archive/MASTANTIS_AGENTAS_SPEC.md §①).
 
 Returns None on ANY failure so the caller falls back to the keyword detector — the
 conversation must never stall on a classifier hiccup.

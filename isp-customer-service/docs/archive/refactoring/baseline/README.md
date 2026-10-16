@@ -1,7 +1,7 @@
 # Eval baseline — before the single-engine refactor
 
 Recorded in M0 (plan §2, D-20). This is the behaviour M1…M7 must keep, unless a decision
-in [DECISIONS.md](../DECISIONS.md) changes it.
+in [DECISIONS.md](../../../DECISIONS.md) changes it.
 
 | Field | Value |
 |---|---|

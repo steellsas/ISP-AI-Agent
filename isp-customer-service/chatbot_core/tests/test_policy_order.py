@@ -1,4 +1,4 @@
-"""The policy chain keeps today's precedence (docs/refactoring/M4_decide.md §5): the
+"""The policy chain keeps today's precedence (docs/archive/refactoring/M4_decide.md §5): the
 families are ported top-down, so the chain is always a prefix of the §5 order."""
 
 from agent.decide.policy import RULES

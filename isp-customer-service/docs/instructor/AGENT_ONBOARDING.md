@@ -98,7 +98,7 @@ kuris šiuos gedimus sprendžia telefonu šiandien).
     — iš jų darome auksinius testų scenarijus.
 
 **KUR SUSIVEDA:** vienas gedimas = `knowledge/faults/<vardas>.yaml` (schema —
-`docs/FAULT_PACKS.md`): 1→`problem` + `intents.yaml` (`triggers_vocab`,
+`docs/instructor/FAULT_PACKS.md`): 1→`problem` + `intents.yaml` (`triggers_vocab`,
 `examples_key`); 2→`evidence.confirmed_when`/`refuted_when`/`on_refuted`;
 3→`evidence.client` (ko klausti kliento), telemetrijos verdiktas —
 `agent/verdict.py` + `knowledge/verdicts.yaml`; 4→`steps` (`role`, `kind`,

@@ -1,7 +1,7 @@
 # Refactoring plan — single LangGraph engine
 
 > Status: **ready to execute** · Written 2026-09-14 · Owner: Andrius
-> Why: [DECISIONS.md](DECISIONS.md) (D-01 … D-22). This file is the short overview;
+> Why: [DECISIONS.md](../../DECISIONS.md) (D-01 … D-22). This file is the short overview;
 > every milestone has its own instruction file (links below).
 
 ## 1. Goal (one paragraph)
@@ -56,7 +56,7 @@ policies, then the demo surface.
 
 ## 3. Rules for the executor (another agent / another session)
 
-1. **Read first:** this file → [DECISIONS.md](DECISIONS.md) → the milestone file you work on.
+1. **Read first:** this file → [DECISIONS.md](../../DECISIONS.md) → the milestone file you work on.
    Do not rely on older docs; they are in `docs/archive/` and describe the pre-refactor code.
 2. **Branch:** all work happens on `refactor/single-engine` (created from `develop` after
    the docs PR is merged). One PR to `develop` at the end, or one PR per milestone if the

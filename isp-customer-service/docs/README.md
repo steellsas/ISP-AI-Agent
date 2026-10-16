@@ -1,36 +1,35 @@
 # Documentation index
 
-> Updated 2026-09-17, after the single-engine refactor (M0–M7). New documents are written in
-> English; the Lithuanian working documents below stay Lithuanian.
+> Reorganised 2026-10-15. Documentation is written in English; Lithuanian working documents
+> (demo, tests, instructor drafts, live review) stay Lithuanian until they are rewritten.
 
 ## Start here
 
-| Document | Purpose |
-|---|---|
-| [refactoring/RESULT.md](refactoring/RESULT.md) | **The system as it is now**: architecture diagram, what each milestone changed, verification, latency, known limitations |
-| [AGENTO_VEIKIMAS.md](AGENTO_VEIKIMAS.md) | **How the agent works** (Lithuanian): the LangGraph turn, who decides what, how a fault card is chosen, where knowledge comes from, how much is data vs code, and measured latency |
-| [refactoring/ROADMAP.md](refactoring/ROADMAP.md) | What is left to fix and build after the refactor, with evidence and where to start |
-| [refactoring/DECISIONS.md](refactoring/DECISIONS.md) | Architecture decisions D-01…D-22 (the "why") |
-| [refactoring/REFACTORING_PLAN.md](refactoring/REFACTORING_PLAN.md) | The refactor itself: milestones, status log with every deviation, findings F-1…F-31, owner questions |
-| `refactoring/M0_…` … `M7_…` | Step-by-step instructions per milestone (historical: line numbers refer to `develop` @ `c7be3ba`) |
-| [refactoring/OWNER_NOTES_dialogue.md](refactoring/OWNER_NOTES_dialogue.md) | How the owner wants the dialogue to behave — input for ROADMAP R-6…R-10 |
-| [refactoring/baseline/](refactoring/baseline/) | Eval and latency baseline before the refactor (M0) and the final runs (`final/`) |
+| Document | For | What |
+|---|---|---|
+| [STATUS.md](STATUS.md) | everyone | **What the agent can do, how far from demo and production, risks, proposed order** |
+| [ARCHITECTURE.md](ARCHITECTURE.md) | programmers | **How it works**: call, turn graph, decide and the Case, perceive, speak, every LLM call, models, knowledge files, tools, voice, latency, technical debt |
+| [DECISIONS.md](DECISIONS.md) | programmers | Architecture decisions D-01…D-22 — the *why* |
+| [ROADMAP.md](ROADMAP.md) | everyone | **What we do next**: demo track (latency, turn detection, engine quality) and production track |
 
-## Working documents (Lithuanian)
+## By folder
 
-| Document | Purpose |
+| Folder | Documents |
 |---|---|
-| [DEMO_PRISTATYMAS.md](DEMO_PRISTATYMAS.md) | **The demo run**: the order of the seven calls, what to say, what to point at on the dashboard, and what not to show |
-| [DEMO_SCENARIJAI.md](DEMO_SCENARIJAI.md) | The demo calls: numbers, what to say, what to expect — also in the dashboard's **Scenarijai** tab (`chatbot_core/src/app/scenarios.yaml`) |
-| [FAULT_PACKS.md](FAULT_PACKS.md) | Writing fault packs and the knowledge files (English schema, step roles, locale keys, intents, ticket types, services) |
-| [ZINIU_BAZE.md](ZINIU_BAZE.md) | The knowledge base: how to write a document the agent will actually find (tags, kinds, equipment scoping) |
-| [AGENT_ONBOARDING.md](AGENT_ONBOARDING.md) | Customer onboarding questionnaire for a deployment — what goes into which knowledge file |
-| [DIALOGO_ETALONAS.md](DIALOGO_ETALONAS.md) | Reference dialogue quality rules |
-| [BALSO_TESTAVIMAS.md](BALSO_TESTAVIMAS.md) | Voice test scripts: what to say, what to check (replaces archive/TESTAVIMO_SCENARIJUS.md) |
-| [IDENT_TESTAI.md](IDENT_TESTAI.md) | Identification live test scripts |
-| [BARGE_IN_TESTAI.md](BARGE_IN_TESTAI.md) | Barge-in live test scripts |
-| [TESTU_ZEMELAPIS.md](TESTU_ZEMELAPIS.md) | Map of the test suite by layer |
-| [../chatbot_core/src/agent/eval/README.md](../chatbot_core/src/agent/eval/README.md) | The eval harness: scenarios, checks, how to run |
+| [demo/](demo/) | `DEMO_PRISTATYMAS.md` — the demo run · `DEMO_SCENARIJAI.md` — the demo calls (also in the dashboard's Scenarijai tab) |
+| [instructor/](instructor/) | Drafts for the instructor guide: `ZINIU_BAZE.md` (knowledge-base documents, v2), `AGENT_ONBOARDING.md` (customer questionnaire), `FAULT_PACKS.md` (**outdated: v1 packs**, see STATUS §7) |
+| [testing/](testing/) | Live test scripts: `BALSO_TESTAVIMAS.md` (voice), `IDENT_TESTAI.md`, `BARGE_IN_TESTAI.md`; `TESTU_ZEMELAPIS.md` (test map) · eval harness: [../chatbot_core/src/agent/eval/README.md](../chatbot_core/src/agent/eval/README.md) |
+| [review/](review/) | The live review: `PERZIURA.md` (findings and principles), `STRUKTURA_V3.md` (phases design), `PROMPTAI.md` (prompt and LLM-parameter change log), `DELSA.md` (latency measurements and levers) |
+| [archive/](archive/) | History only: pre-refactor engine docs, the M0–M7 refactor (`archive/refactoring/`), fix waves and RAG planning (`archive/review/`), `AGENTO_VEIKIMAS.md` and `MODELIAI.md` (folded into ARCHITECTURE/STATUS) |
+
+## Planned
+
+1. **Presentation** (Lithuanian) — built from STATUS §2–3.
+2. **Instructor guide** — adding a new fault: card → modules → equipment → phrases → tests → eval
+   (replaces `instructor/FAULT_PACKS.md`; after the v3 phases settle).
+3. **Maintenance guide** — running, tests, eval, logs, knowledge reload, live test rounds
+   (merges `testing/`).
+4. **Integration and production guide** — adapters, telephony, on-prem models, security, operations.
 
 ## Tools
 
@@ -38,21 +37,8 @@
 |---|---|
 | `uv run uvicorn --app-dir chatbot_core src.app.main:app --port 8080` | The service and the dashboard |
 | `uv run pytest` | Unit and integration tests |
-| `uv run python chatbot_core/src/agent/eval/run_eval.py [--only ID] [--json out.json]` | Scripted calls, scored |
-| `uv run python scripts/reader_silent.py [--days N] [--module M]` | What no reader understood: the `reader_silent` summary from call traces (feeds the vocabulary and `tests/test_answer_reading.py`) |
-| `uv run python scripts/prune_logs.py [--days N] [--keep N] [--apply]` | Logs janitor: old call traces and audio past its retention date (dry run without `--apply`) |
-
-## Planned
-
-Presentation (Lithuanian) · instructor guide (knowledge files, phrases, policies — start from
-FAULT_PACKS.md) · integration and production guide (ticket types → departments, MCP, admin
-login, audio retention).
-
-## Archive
-
-[archive/](archive/) — superseded documents describing the pre-refactor engine
-(`ReactAgent`, legacy graph, walker/solver, Streamlit UI, old roadmaps, Dec 2025
-installation/RAG/tools docs), the old voice plan (`VOICE_PLAN.md`, whose V1/L3a labels
-still appear in code comments), the pre-dashboard voice test script
-(`TESTAVIMO_SCENARIJUS.md`) and the early prototype demo scenarios
-(`archive/chatbot_core/demo_scenarios.md`). Kept for history only.
+| `uv run python chatbot_core/src/agent/eval/run_eval.py [--only ID] [--runs N] [--voice] [--json out.json]` | Scripted calls with the real LLM, scored |
+| `uv run python chatbot_core/src/agent/eval/metrics.py base.json --compare new.json` | LLM calls, tokens, latency and stability between two eval runs |
+| `uv run python scripts/latency_report.py [--last N] [--days N] [--turns]` | Where each voice turn's time went, by layer (endpoint, ASR, read, engine, speak, TTS) |
+| `uv run python scripts/reader_silent.py [--days N] [--module M]` | What no reader understood, from call traces |
+| `uv run python scripts/prune_logs.py [--days N] [--keep N] [--apply]` | Delete old traces and audio past retention (dry run without `--apply`) |

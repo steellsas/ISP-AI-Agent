@@ -42,7 +42,7 @@ jobs:
         # is forced so the skip is instant instead of a retry storm against the Hub (429).
         #
         # If the hybrid should be covered here too, the model has to be cached on the runner
-        # (actions/cache on ~/.cache/huggingface) and this env removed — see docs/TESTU_ZEMELAPIS.md.
+        # (actions/cache on ~/.cache/huggingface) and this env removed — see docs/testing/TESTU_ZEMELAPIS.md.
         env:
           HF_HUB_OFFLINE: "1"
           TRANSFORMERS_OFFLINE: "1"

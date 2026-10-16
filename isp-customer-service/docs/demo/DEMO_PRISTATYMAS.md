@@ -7,7 +7,7 @@ dalyką. Šis failas yra scenarijus TAU, ne agentui.
 |---|---|
 | **šis** | pristatymo EIGA: kas po ko, ką sakai, ką rodai ekrane, kiek trunka |
 | [DEMO_SCENARIJAI.md](DEMO_SCENARIJAI.md) | visų 19 skambučių KATALOGAS: numeriai, klientai, verdiktai, baigtys |
-| [BALSO_TESTAVIMAS.md](BALSO_TESTAVIMAS.md) | DIALOGAI eilutė po eilutės + „ką tikrinu" (K1–K7 žinių testai, A–H regresija) |
+| [BALSO_TESTAVIMAS.md](../testing/BALSO_TESTAVIMAS.md) | DIALOGAI eilutė po eilutės + „ką tikrinu" (K1–K7 žinių testai, A–H regresija) |
 
 Eiga sudaryta 2026-09-28 ir **prakalbėta tekstu** prieš rašant: žemiau cituojami atsakymai yra
 tikri, ne sugalvoti. Balsu jie skambės kitais žodžiais — variklis tas pats, formuluotė LLM.
@@ -210,7 +210,7 @@ ekranų keliai. Tai kitas darbas — žinių pildymas, ne variklio.
 | Avarijos ETA praeityje | ♻ DB (skaičiuojama +4 h nuo reset) |
 | „Perkroviau", o agentas netiki | nepaspaustas **🔄 Routeris** — taip ir turi būti |
 | Atsakymas be konkretybių | tam klausimui dokumento nėra; **taip ir pasakyk** — tai sąžiningas elgesys, ne klaida |
-| Agentas atsisakė teisėto klausimo | žiūrėk `žinios · neieškojo (topic)` — trūksta raktažodžio dokumente ([ZINIU_BAZE.md](ZINIU_BAZE.md)) |
+| Agentas atsisakė teisėto klausimo | žiūrėk `žinios · neieškojo (topic)` — trūksta raktažodžio dokumente ([ZINIU_BAZE.md](../instructor/ZINIU_BAZE.md)) |
 | Naršyklė rodo seną vaizdą | Ctrl+F5 |
 
 ---

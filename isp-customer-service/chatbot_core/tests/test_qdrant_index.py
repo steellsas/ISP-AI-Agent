@@ -3,7 +3,7 @@
 Testai eina per Qdrant kliento VIETINĮ režimą (`:memory:`), tad CI tikrina tą patį kelią be serverio
 ir be konteinerio. Ko vietinis režimas neparodo — payload indeksai iš tikrųjų sukuriami, aliaso
 perjungimas gyvame serveryje, skaitymo raktas negali rašyti — tikrinta rankomis prieš tikrą serverį
-ir surašyta `docs/review/RAG_PLANAS.md` 9 skyriuje.
+ir surašyta `docs/archive/review/RAG_PLANAS.md` 9 skyriuje.
 
 Svarbiausias šio failo testas yra pirmasis: *sparse* sandauga LYGI leksiniam balui. Iš to seka, kad
 Qdrant negali atsakyti kitaip nei failai — o jei atsako, klaida yra indekse, ne „modelyje" (jo dar

@@ -1,7 +1,7 @@
 # Identifikacijos etapo gyvi testai T-1…T-12 (2026-09-03)
 
 Pagal identifikacijos etaloną
-([kliento_identifikacijos_dizainas.md](archive/chatbot_core/kliento_identifikacijos_dizainas.md),
+([kliento_identifikacijos_dizainas.md](../archive/chatbot_core/kliento_identifikacijos_dizainas.md),
 archyvuotas + Andriaus taisyklės 2026-09-03). Testuojama PO identifikacijos
 bangos įdiegimo — T-7…T-12 tikrina NAUJAS taisykles.
 

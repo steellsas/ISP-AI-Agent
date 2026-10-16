@@ -1,6 +1,6 @@
 # Taisymų planas (po peržiūros 2026-09-17/18)
 
-Šaltinis: [PERZIURA.md](PERZIURA.md) — radiniai A–AU, principai P-1…P-9,
+Šaltinis: [PERZIURA.md](../../review/PERZIURA.md) — radiniai A–AU, principai P-1…P-9,
 tikslinė architektūra (§3) ir bangų santrauka (§4). Šis dokumentas — darbo
 planas: kas, kur, kaip tikrinama, ir eigos žurnalas.
 
@@ -1093,7 +1093,7 @@ Roadmap'e jos stovėjo be žymės, ir vietoj spėjimo kiekviena patikrinta kode:
 | R-6 | analitiko tikslinimo ciklas | **padaryta.** Prieštaros ciklas yra `decide/hypothesis.py` (`doubt` → `due` → `ask` → `answered`, vienu metu tik VIENA prieštara) + `analyst/node.py` signalai `contradiction` / `already_answered` / `secondary_problem`. Antra pusė („tikslinti tik kai žingsnio rezultato nėra") — 4a bangos trečias kąsnis (`17cbeab`) |
 | R-8 | F-13 patvirtinti eval scenarijumi | **padaryta.** `R1b_billing_request_farewell_midway` — scenarijaus apraše įrašytas tas pats 2026-09-17 gyvas skambutis |
 | R-19 | `/admin/knowledge/reload` atmeta ką tik pridėtą frazę | **atvira ir blogiau, nei buvo rašyta** — žr. 5-5 |
-| — | `request_cancel` (barge-in) gyvu balso skambučiu | **tavo rankose.** Kodu to nepatikrinsiu; scenarijai — [BARGE_IN_TESTAI.md](../BARGE_IN_TESTAI.md) |
+| — | `request_cancel` (barge-in) gyvu balso skambučiu | **tavo rankose.** Kodu to nepatikrinsiu; scenarijai — [BARGE_IN_TESTAI.md](../../testing/BARGE_IN_TESTAI.md) |
 
 ### 5-5 · Trys smulkūs, iš kurių vienas buvo rimtas
 
