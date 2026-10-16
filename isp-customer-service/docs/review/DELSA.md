@@ -241,3 +241,42 @@ sutrumpinti galima tik žinant **turinį** — ar klientas jau atsakė į tai, k
 
 T1 sutampa su A1.7 (išankstinis atsakymas į uždarą klausimą): abu remiasi tuo, kad variklis žino,
 ko laukia.
+
+### 5.2 Gyvi skambučiai po 6b (2026-10-16, 4 skambučiai, 52 ėjimai)
+
+Skola · miręs routeris + tiltas + tiketas · linija nutrūkusi + tiketas · nežinomas numeris + avarija.
+
+| Sluoksnis (mediana / p90, ms) | 10-14 (prieš 6b) | **10-16 (po 6b)** |
+|---|---|---|
+| endpoint* | 900 / 900 | 900 / 900 |
+| asr | 543 / 894 | 514 / 720 |
+| read | 673 / 997 | **0 / 862** |
+| suvokimo LLM ėjimų dalis | 80 % (36/45) | **27 % (14/52)** |
+| speak (TTFT) | 257 / 393 | 367 / 491 |
+| tts | 142 / 489 | 176 / 436 |
+| **first** | 1 730 / 2 469 | **1 236 / 2 021** |
+| **first + endpoint*** | 2 702 / 3 395 | **2 150 / 2 999** |
+
+- 6b veikia: suvokimo LLM kviečiamas 3 kartus rečiau, pirmas garsas −0,5 s.
+- Ėjimas be suvokimo LLM: first 1,14 s, first + ep* 2,10 s. **Endpoint (900 ms) dabar — didžiausias
+  sluoksnis**, toliau speak (~0,4 s) ir ASR (~0,5 s).
+- Iki demo tikslo 1,5 s trūksta ~0,6 s — beveik tiek, kiek duotų endpoint sutrumpinimas (T1).
+- Ilgas pirmas sakinys vis dar brangus: 88 simb. → TTS 0,9 s, 72–75 simb. → 0,7–0,8 s.
+
+**Ne delsos radiniai iš tų pačių skambučių** (aptarti, netaisyta):
+
+| # | Kas | Kur matyti | Priežastis |
+|---|---|---|---|
+| G1 | **Kliento atsakymas atmestas kaip „echo"** — 3 kartus („Lemputė nedega su interneto simboliu", „Ne. Dainų gatvė 5, butas 5", „Ne dega") | sk. 3, 4: `barge_in` / `overlay` echo | echo = žodžių sutapimas ≥ 0,8 su agento sakiniu; LT atsakymai kartoja klausimo žodžius (`agent/barge_in.py`, `app/voice.py`, `echo_overlap_threshold`) |
+| G2 | „5. 5 butaski" → namas 55; adreso ciklas 8 ėjimai; butas klausiamas dar kartą po patvirtinimo; „Ar mane girdite?" | sk. 4 | adreso skaitytuvas sujungia skaičius; G1 prarado pataisymą |
+| G3 | „Keno adresas" (= „Kieno adresas?") → „Keno gatvė, taip?" | sk. 4 | klausimas palaikytas gatvės pavadinimu |
+| G4 | „Manau, vardas — Vilma" → vardas „Manau" | sk. 3 | ASR „Mano" → „Manau"; vardo skaitytuvas ima pirmą žodį |
+| G5 | „einu susimokyti" → „sėkmės mokslams!"; „Ar dar kuo galiu padėti?" 3 kartus; „Ne, viskas" neuždaro | sk. 1 | kalbėtojas klaidingai suprato; pabaigos skaitytuvas nepriima „ne, viskas" |
+| G6 | „Malonu, Tomai!" / „Malonu, Alojizos!" pokalbio gale | sk. 1, 4 | pasenęs „Malonu" (F-30 vėl) |
+| G7 | Kabelio žingsnis: „Ne." → iškart išvada ir meistras, be pasitikslinimo | sk. 3 | neaiškus „ne" turėjo būti pasitikslintas („Ar pavyko įkišti?") |
+| G8 | Valandos „13.18" → „Skambinsime …, 13.18" | sk. 3 | ASR „13–18" kaip laikas; skaitytuvas priėmė |
+| G9 | „Gerai, palauksiu — pasakykite, kai būsite pasiruošęs" + tame pačiame sakinyje klausimas apie lemputes | sk. 2 | prieštaringa: žada laukti, bet iškart klausia |
+| G10 | ASR kartojimas „Taip, dėl… ×4"; „Tai ypil šio adresu" neperskaitytas → 2 pakartotiniai klausimai | sk. 3 | ASR kokybė; adreso patvirtinimo skaitytuvas |
+
+Gerai veikė: skolos pranešimas, avarija tik po identifikacijos, miręs routeris → tiltas → MAC
+pririšimas → patikra → tiketas (sk. 2 — visas kelias be klaidų), tiketo kontaktai.
