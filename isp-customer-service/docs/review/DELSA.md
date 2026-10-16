@@ -136,6 +136,41 @@ kitą vienu metu):
 Pipecat / LiveKit agento „protingumo" nekeičia; jie duoda turn detection, pertraukimus,
 telefoniją ir 2 punkto mechaniką. 1 punktą galima daryti ir dabar, be jų — tai variklio darbas.
 
+## 3b. Turn detection — Smart Turn (sutarta 2026-10-16)
+
+**Kodėl:** endpoint langas (~900 ms) yra didžiausias fiksuotas laukimas kiekviename ėjime.
+Modelis, kuris iš intonacijos pasako „žmogus baigė", leistų nukirpti po ~200–300 ms.
+
+**Pasirinkimas:** Pipecat **Smart Turn v3** — tik modelis, be Pipecat karkaso.
+
+| | Smart Turn v3 | LiveKit turn detector |
+|---|---|---|
+| Ką analizuoja | garsą (intonacija, pauzės) | garsą (naujas) / tekstą (senas, pasenęs) |
+| Kalbos | 23 (yra PL, RU, UK), **LT nėra** | 14, **LT nėra** |
+| Dydis / greitis | 8 MB, CPU ~10–65 ms | v1-mini ~400 MB; pilnas v1 — LiveKit debesyje |
+| Licencija | BSD-2, atviras mokymo kodas ir duomenys | LiveKit Model License |
+| Be karkaso | ✓ (ONNX) | ✗ |
+
+LT nėra nei viename, bet garso modelis vertina intonaciją, ne žodžius, o artimos kalbos (PL, RU, UK)
+yra mokyme — tikėtina, kad veiks; **matuojam, ne spėjam**.
+
+**Eiga:**
+
+```
+A1.1 bandymas ant įrašų ─► gerai? ─taip─► A1.2 endpoint trace ─► A1.3 Smart Turn + endpoint.py
+                              │                                     (abu sutaria → kirpti po ~250 ms)
+                              └─vidutiniškai─► A1.4 fine-tune su mūsų įrašais (train.py)
+```
+
+**A1.1 bandymas (be gyvų skambučių, kodo neliečia):**
+
+- Duomenys: `logs/sessions/*/turn_NN_user.wav` (~600 kliento ėjimų) + `asr`/`user_turn` tekstas.
+- Kiekvienam ėjimui modelis gauna: (a) visą ėjimą — turi sakyti „baigė"; (b) ėjimą, nukirptą
+  per pauzę viduryje — turi sakyti „nebaigė".
+- Matuojam: tikslumas abiem atvejais, klaidingų „baigė" dalis (tai pertraukimai — blogiausia
+  klaida), inferencijos laikas CPU.
+- Rezultatas įrašomas čia, §5.
+
 ## 4. Ką paskambinti (Andrius)
 
 3–5 skambučiai per dashboard'ą, skirtingi keliai, kad suvestinė būtų reprezentatyvi:

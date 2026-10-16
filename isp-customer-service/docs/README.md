@@ -10,6 +10,7 @@
 | [STATUS.md](STATUS.md) | everyone | **What the agent can do, how far from demo and production, risks, proposed order** |
 | [ARCHITECTURE.md](ARCHITECTURE.md) | programmers | **How it works**: call, turn graph, decide and the Case, perceive, speak, every LLM call, models, knowledge files, tools, voice, latency, technical debt |
 | [DECISIONS.md](DECISIONS.md) | programmers | Architecture decisions D-01…D-22 — the *why* |
+| [ROADMAP.md](ROADMAP.md) | everyone | **What we do next**: demo track (latency, turn detection, engine quality) and production track |
 
 ## By folder
 
