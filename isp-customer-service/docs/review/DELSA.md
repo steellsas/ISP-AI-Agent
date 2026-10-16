@@ -200,3 +200,44 @@ ir aptariam: kurie ėjimai lėčiausi ir kodėl (endpoint režimas, suvokimas, i
 - Pridėtas `scripts/latency_report.py`.
 - Pirmas vaizdas — §2 (10-14 skambučiai, prieš 6b).
 - Laukiam naujų skambučių.
+
+### 5.1 A1.1 Smart Turn ant įrašų (2026-10-16)
+
+`scripts/smart_turn_eval.py`, modelis `smart-turn-v3.2-cpu.onnx` (HF `pipecat-ai/smart-turn-v3`
+@ `f766f81`), 597 įrašyti kliento ėjimai (2026-09-28 … 10-14).
+
+| Matas | Rezultatas |
+|---|---|
+| Inferencija CPU | mediana **16 ms**, max 140 ms |
+| Baigtas ėjimas → „baigė" | **95,9 %** (PL 95,4 %, RU 93,5 % gamintojo testuose) — LT intonaciją supranta |
+| Nukirpta per vidurinę pauzę → „nebaigė" | 22,9 % |
+
+**Bet „pauzė viduryje" dažniausiai nėra nebaigta mintis.** 40 nukirpimų perrašyti lokaliu
+Whisper: dauguma — sakinio riba („Prie routerio. | Tuoj susikišiu…", „Viskas tvarkingai
+sukišta. | Rasiat."), kur „baigė" akustiškai teisinga. Tikrai nebaigtų, kuriuos modelis laiko
+baigtais („Ir savo jau…", „Admin…"), ~15–20 % tų atvejų.
+
+**Ką tai reiškia praktiškai** — taisyklė „kirpti po W ms tylos":
+
+| W | be modelio | Smart Turn p > 0,7 |
+|---|---|---|
+| 200 ms | 19,8 % ėjimų pertraukta | 18,2 % |
+| 300 ms | 17,4 % | 15,5 % |
+| 500 ms | 14,0 % | 12,0 % |
+
+Modelis pertraukimų beveik nesumažina (~2 p. p.). Priežastis — ne kalba: **klientai sako pilną
+sakinį ir tęsia**. Akustiškai to atskirti neįmanoma, todėl ir fine-tune (A1.4) to neišspręstų.
+
+**Išvada:** vien Smart Turn endpoint'o iki ~250 ms nesutrumpins be ~15 % pertraukimų. Langą saugiai
+sutrumpinti galima tik žinant **turinį** — ar klientas jau atsakė į tai, ko klausėme.
+
+**Variantai (aptarti):**
+
+| # | Variantas | Kaip | Rizika |
+|---|---|---|---|
+| T1 | **Variklis žino laukiamą atsakymą** | uždaras klausimas („Ar dega?") + dalinis ASR jau turi atsakymą iš žingsnio sąrašo („taip", „nedega") + Smart Turn „baigė" → kirpti po ~250 ms; kitur palikti dabartinius langus | maža; pritaikoma tik uždariems klausimams (didelė ėjimų dalis) |
+| T2 | T1 + Smart Turn kaip papildomas signalas atviriems ėjimams: „nebaigė" (p < 0,3) → ilginti langą | mažiau nukirptų pasakojimų | maža |
+| T3 | Vien Smart Turn su trumpu langu | | ~15 % pertraukimų — netinka |
+
+T1 sutampa su A1.7 (išankstinis atsakymas į uždarą klausimą): abu remiasi tuo, kad variklis žino,
+ko laukia.
