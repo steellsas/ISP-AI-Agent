@@ -174,7 +174,22 @@ class PiperTTSProvider:
         cached = self._CACHE.get(key)
         if cached is not None:
             return cached
+        pcm, sample_rate = self._render(sentence)
+        mp3 = _to_mp3(pcm, sample_rate) if pcm else b""
+        if mp3:
+            if len(self._CACHE) >= self._CACHE_MAX:
+                self._CACHE.pop(next(iter(self._CACHE)))
+            self._CACHE[key] = mp3
+        return mp3
 
+    def synthesize_pcm(self, sentence: str) -> tuple[bytes, int]:
+        """One sentence as raw 16-bit mono PCM and its sample rate — for transports that
+        stream PCM themselves (the Pipecat spike) instead of MP3 blobs."""
+        from .sentences import speakable
+
+        return self._render(speakable(sentence, self._default_language))
+
+    def _render(self, sentence: str) -> tuple[bytes, int]:
         import numpy as np
 
         voice, phonemizer, recipe = self._load()
@@ -196,17 +211,13 @@ class PiperTTSProvider:
         end = int(voiced[-1]) + 1 if voiced.size else 0
         tail = int(synth.sr * (synth.pauze.get(sentence.rstrip()[-1:], 0.0) + _SENTENCE_GAP_S))
         audio = np.concatenate([audio[:end], np.zeros(tail, dtype=np.float32)])
-        mp3 = _to_mp3(recipe.i_int16(audio), synth.sr) if end else b""
+        pcm = recipe.i_int16(audio) if end else b""
         ms = int((time.perf_counter() - t0) * 1000)
         logger.info(
-            "piper %s: %d chars -> %d bytes in %d ms", self._voice, len(sentence), len(mp3), ms
+            "piper %s: %d chars -> %d bytes in %d ms", self._voice, len(sentence), len(pcm), ms
         )
         self.last_synthesis_ms = ms
-        if mp3:
-            if len(self._CACHE) >= self._CACHE_MAX:
-                self._CACHE.pop(next(iter(self._CACHE)))
-            self._CACHE[key] = mp3
-        return mp3
+        return pcm, synth.sr
 
     # --- TTSProvider / StreamingTTSProvider --------------------------------
 

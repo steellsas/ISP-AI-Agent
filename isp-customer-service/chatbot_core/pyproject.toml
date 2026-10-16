@@ -52,6 +52,9 @@ voice = [
     "piper-tts>=1.8.0",  # local LT voices (Reginute/Ingute), scripts/get_piper_voices.py
     "lameenc>=1.7.0",  # Piper PCM -> MP3, the wire format of every TTS adapter
 ]
+pipecat = [
+    "pipecat-ai[runner,webrtc]==1.12.0",
+]
 
 [tool.uv.sources]
 isp-shared = { workspace = true }

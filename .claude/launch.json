@@ -17,6 +17,19 @@
       "cwd": "isp-customer-service"
     },
     {
+      "name": "isp-pipecat",
+      "runtimeExecutable": "uv",
+      "runtimeArgs": [
+        "run",
+        "python",
+        "chatbot_core/src/app/pipecat_bot.py",
+        "-t",
+        "webrtc"
+      ],
+      "port": 7860,
+      "cwd": "isp-customer-service"
+    },
+    {
       "name": "isp-demo-venv",
       "runtimeExecutable": "isp-customer-service/.venv/Scripts/python.exe",
       "runtimeArgs": [
