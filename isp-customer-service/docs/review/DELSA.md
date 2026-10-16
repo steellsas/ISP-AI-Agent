@@ -98,6 +98,44 @@ Tikėtinas rezultatas be GPU (L5 + R1 + L2): **first ~1,0–1,3 s, first + endpo
 
 ---
 
+## 3a. Sutarta (Andrius, 2026-10-16)
+
+- **Matas, kuris svarbiausias:** tarpas tarp kliento tylos pradžios ir agento pirmo garso
+  (`first+ep*`).
+- **Demo tikslas: ~1,5 s.** Demo gali būti lėtesnis — prioritetas yra, kad variklis veiktų gerai.
+- **Produkcijos tikslas: ~0,6 s** su lokaliais modeliais ant GPU.
+- **Iki GPU daromi tik pigūs svertai, kurie liks naudingi ir produkcijoje:** L5 (endpoint), L2
+  (trumpas pirmas sakinys), R1 (daugiau ėjimų be suvokimo LLM). L7, L8, L9 ir modelių derinimas
+  atidedami, kol bus GPU.
+
+**Ką duoda GPU + vLLM ir ko neduoda:**
+
+| Sluoksnis | Demo (dabar) | Produkcija (GPU, vLLM) | Kas pagerina |
+|---|---|---|---|
+| endpoint | ~900 | 200–300 | turn detection modelis (Pipecat/LiveKit), **ne GPU** |
+| ASR | ~550 | 100–200 | srautinis ASR ant GPU |
+| suvokimo LLM | 0 / ~700 | 0 / 100–200 | vLLM: be tinklo, prefix cache, guided decoding |
+| kalbėjimo LLM TTFT | ~260 | ~100 | vLLM, prefix cache |
+| pirmas sakinys + TTS | ~250 | ~150 | trumpas pirmas sakinys; Piper jau lokalus |
+| **iš viso** | **~2,7 s** | **~0,6–0,9 s** | 0,6 s — su persidengimu (žr. žemiau) |
+
+**Persidengimas — kaip paslėpti delsą** (telefone dvi linijos — klientas ir agentas girdi vienas
+kitą vienu metu):
+
+1. **Išankstinis atsakymas į uždarą klausimą.** Kol agentas klausia „Ar dega lemputė?", variklis
+   (~2 ms) jau suplanuoja ėjimą kiekvienam galimam atsakymui iš žingsnio uždaro sąrašo ir TTS
+   paruošia parašytas frazes. Klientui pasakius „taip", atsakymas groja iškart. Tai jūsų variklio
+   pranašumas — LLM agentai to padaryti negali.
+2. **Preemptive generation** — pradėti skaityti ir generuoti nuo dalinio ASR, kol dar laukiama
+   tylos; jei galutinis tekstas sutampa, atsakymas jau paruoštas (LiveKit Agents turi tai
+   įmontuota; Pipecat — per savo procesorių, tikrinti).
+3. **Turininga reakcija iškart** po kliento sakinio (iš anksto įrašyta, apie realų veiksmą —
+   „Tikrinu jūsų liniją"), kol skaičiuojamas likęs atsakymas. Ne „mhm" (atmesta 2026-08-31).
+4. **Trumpas pirmas sakinys** — groja, kol generuojama likusi mintis.
+
+Pipecat / LiveKit agento „protingumo" nekeičia; jie duoda turn detection, pertraukimus,
+telefoniją ir 2 punkto mechaniką. 1 punktą galima daryti ir dabar, be jų — tai variklio darbas.
+
 ## 4. Ką paskambinti (Andrius)
 
 3–5 skambučiai per dashboard'ą, skirtingi keliai, kad suvestinė būtų reprezentatyvi:
