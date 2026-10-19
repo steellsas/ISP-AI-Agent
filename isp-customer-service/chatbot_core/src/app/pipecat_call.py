@@ -13,7 +13,8 @@ turn runs under the session lock and ends with the same `turn_summary`.
 Env: SMART_TURN_STOP_SECS (silence fallback when Smart Turn says “not finished”, default
 1.2 — 2.0 left a caller waiting 1.5 s after a finished “Ne, …”, DELSA §5.4), VAD_STOP_SECS (pause that triggers a Smart Turn check, default 0.2).
 
-Not yet: the barge-in delivery report (what part of the reply was heard) and check-ins.
+After a barge-in the engine hears which sentences were played out (`SpokenTracker`), as on
+the old voice path. Not yet: check-ins.
 """
 
 from __future__ import annotations
@@ -39,6 +40,7 @@ from pipecat.frames.frames import (
     LLMFullResponseStartFrame,
     LLMTextFrame,
     TranscriptionFrame,
+    TTSTextFrame,
 )
 from pipecat.observers.user_bot_latency_observer import UserBotLatencyObserver
 from pipecat.pipeline.pipeline import Pipeline
@@ -163,6 +165,10 @@ class StandaloneTurns:
         async with self._lock:
             yield
 
+    def locked(self):
+        """Write between turns (the delivery report) without counting a turn."""
+        return self._lock
+
     async def call_ended(self) -> None:
         return None
 
@@ -195,19 +201,65 @@ class DashboardTurns:
                 summary = build_turn_summary(hub.events_since(self._sid, mark), wall_ms)
                 ms.session.tracer.emit("turn_summary", **summary)
 
+    def locked(self):
+        """Write between turns (the delivery report) without counting a turn."""
+        return self._ms.lock
+
     async def call_ended(self) -> None:
         self._ms.session.tracer.emit("call_ended", transport="pipecat")
 
 
+class SpokenTracker(FrameProcessor):
+    """After the audio output: which sentences of the current reply the caller actually
+    heard. A TTS service without word timestamps queues each sentence's `TTSTextFrame`
+    behind that sentence's audio, so it passes here once the sentence has been played
+    out — the Pipecat twin of the old voice path's “played N chunks” count (D1)."""
+
+    def __init__(self, **kwargs) -> None:
+        super().__init__(**kwargs)
+        self.reply = ""
+        self.spoken: list[str] = []
+
+    def start(self) -> None:
+        self.reply = ""
+        self.spoken = []
+
+    async def process_frame(self, frame: Frame, direction: FrameDirection):
+        await super().process_frame(frame, direction)
+        if isinstance(frame, TTSTextFrame) and frame.text.strip():
+            self.spoken.append(frame.text.strip())
+        await self.push_frame(frame, direction)
+
+    def unheard(self) -> str:
+        """The part of the reply after the sentences played out ('' = heard it all).
+        Whitespace is compared folded: the TTS aggregator joins tokens its own way."""
+        reply = " ".join(self.reply.split())
+        pos = 0
+        for sentence in self.spoken:
+            sentence = " ".join(sentence.split())
+            at = reply.find(sentence, pos)
+            if at < 0:
+                break
+            pos = at + len(sentence)
+        return reply[pos:].strip()
+
+
 class EngineProcessor(FrameProcessor):
     """Stands where an LLM service would: the user's finished turn in, the engine's
-    reply out as LLM text frames (the TTS splits it into sentences)."""
+    reply out as LLM text frames (the TTS splits it into sentences).
 
-    def __init__(self, session, turns, **kwargs) -> None:
+    On an interruption the reply's remaining words are no longer spoken, but the engine's
+    turn still runs to its end (it closes the LLM stream itself on `request_cancel`): an
+    abandoned turn would leave the graph's last step unsaved. Then the engine is told
+    what the caller actually heard (`apply_delivery`), as on the old voice path."""
+
+    def __init__(self, session, turns, tracker: SpokenTracker, **kwargs) -> None:
         super().__init__(**kwargs)
         self._session = session
         self._turns = turns
+        self._tracker = tracker
         self._task = None
+        self._delivery_task = None
         self._stop = threading.Event()
 
     async def process_frame(self, frame: Frame, direction: FrameDirection):
@@ -215,42 +267,53 @@ class EngineProcessor(FrameProcessor):
         if isinstance(frame, LLMContextFrame):
             text = _last_user_text(frame.context)
             if text:
-                await self._cancel()
-                self._task = self.create_task(self._reply(text))
+                self._task = self.create_task(self._reply(text, self._task))
         elif isinstance(frame, InterruptionFrame):
-            if self._task is not None:
+            self._stop.set()  # the running reply (if any) stops speaking
+            if self._task is not None and not self._task.done():
                 self._session.request_cancel()
-            await self._cancel()
+            if self._delivery_task is None or self._delivery_task.done():
+                self._delivery_task = self.create_task(self._report_delivery(self._task))
             await self.push_frame(frame, direction)
         else:
             await self.push_frame(frame, direction)
 
     async def say(self, text: str) -> None:
         """Speak text the engine already produced (the greeting)."""
+        self._tracker.start()
+        self._tracker.reply = text
         await self.push_frame(LLMFullResponseStartFrame())
         await self.push_frame(LLMTextFrame(text))
         await self.push_frame(LLMFullResponseEndFrame())
 
-    async def _cancel(self) -> None:
-        self._stop.set()
-        if self._task is not None:
-            await self.cancel_task(self._task)
-            self._task = None
-        self._stop = threading.Event()
+    async def _report_delivery(self, reply_task) -> None:
+        """After an interruption — mid-turn or while the finished reply was still
+        playing — tell the engine which sentences the caller heard."""
+        if reply_task is not None and not reply_task.done():
+            await reply_task  # the engine's turn drains first
+        tail = self._tracker.unheard()
+        if not tail:
+            return
+        heard = list(self._tracker.spoken)
+        async with self._turns.locked():
+            await asyncio.to_thread(self._session.apply_delivery, [*heard, tail], len(heard))
 
-    async def _reply(self, text: str) -> None:
-        stop = self._stop
+    async def _reply(self, text: str, previous) -> None:
+        for task in (previous, self._delivery_task):
+            if task is not None and not task.done():
+                await task  # one reply at a time; the last delivery report lands first
+        stop = self._stop = threading.Event()
+        self._tracker.start()
         async with self._turns.turn():
             tokens = self._session.handle_turn_stream(text)
             await self.push_frame(LLMFullResponseStartFrame())
             await self.start_ttfb_metrics()
             try:
-                while not stop.is_set():
-                    token = await asyncio.to_thread(next, tokens, None)
-                    if token is None:
-                        break
-                    await self.stop_ttfb_metrics()
-                    await self.push_frame(LLMTextFrame(token))
+                while (token := await asyncio.to_thread(next, tokens, None)) is not None:
+                    self._tracker.reply += token
+                    if not stop.is_set():
+                        await self.stop_ttfb_metrics()
+                        await self.push_frame(LLMTextFrame(token))
             finally:
                 await self.push_frame(LLMFullResponseEndFrame())
         if self._session.is_complete:
@@ -288,7 +351,8 @@ def build_call(connection, session, asr, tts_provider, turns, greeting: str | No
         webrtc_connection=connection,
         params=TransportParams(audio_in_enabled=True, audio_out_enabled=True),
     )
-    engine = EngineProcessor(session, turns)
+    tracker = SpokenTracker()
+    engine = EngineProcessor(session, turns, tracker)
     user_params = LLMUserAggregatorParams(
         vad_analyzer=SileroVADAnalyzer(
             params=VADParams(stop_secs=float(os.environ.get("VAD_STOP_SECS", "0.2")))
@@ -314,6 +378,7 @@ def build_call(connection, session, asr, tts_provider, turns, greeting: str | No
             engine,
             EnginePiperTTS(session, tts_provider),
             transport.output(),
+            tracker,
             assistant_agg,
         ]
     )
