@@ -323,3 +323,30 @@ Pipecat matuoja **nuo kliento tylos (VAD) iki agento garso** — tai mūsų pagr
 | G12 | Vardas iš ASR šiukšlių: „Čestink ir girdot" → „Malonu susipažinti, Čestink!" |
 | G13 | „Koks jūsų vardas?" (klausimas agentui) → „šis klausimas nėra mano kompetencija" |
 | G14 | Pirmo ėjimo („neveikia internetas") `pipecat_latency` neįrašytas; paskutinio — klaidingas (151 s) |
+
+### 5.4 Senas balsas prieš Pipecat — tas pats skambutis (2026-10-19)
+
+Skolos skambutis abiem keliais dashboard'e, tas pats numeris; Piper — procesų baseine (abiem).
+Pipecat skambutis `20261019-104806…0002`, senas `20261019-104947…0003`, po 6 ėjimus.
+
+| Sluoksnis (mediana, ms) | Senas | Pipecat | Pastaba |
+|---|---|---|---|
+| endpoint (tyla iki nukirpimo) | ~900* | **200** | *nematuojama, sukonfigūruotas langas |
+| ASR | 545 | 620 | Pipecat transkribuoja po nukirpimo; senas kartais naudoja dalinį |
+| variklis + LLM | ~560 | ~470 | panašu — tas pats variklis |
+| TTS 1-a frazė | 160 | 290 | **senas turi frazių talpyklą (0 ms kartotinėms), Pipecat — ne** |
+| **pirmas garsas nuo nukirpimo** | **1 230** | ~1 490 | |
+| **nuo kliento tylos** | **~2 130*** | **1 690** | **−0,45 s** |
+
+- Pipecat laimi beveik vien endpoint'u (−0,7 s); dalį atiduoda ASR ir TTS talpyklos nebuvimui.
+- Vienas Smart Turn „nebaigė" laukė 1,47 s („Ne, čia jau sėgėra.") — vienintelis tokis per skambutį.
+- Elgesys abiem keliais tas pats (G6 „Malonu, Tomai!" gale abiem; Gemma: „Linkiu skambio ir gero
+  dienos").
+
+**Ką pigiai pataisyti Pipecat kelyje:**
+
+| # | Kas | Laimėtų |
+|---|---|---|
+| Q1 | PCM talpykla parašytoms frazėms (kaip MP3 sename) | ~0,2–0,4 s kartotiniuose ėjimuose |
+| Q2 | `SMART_TURN_STOP_SECS` 2,0 → ~1,2 | „nebaigė" atvejai trumpesni |
+| Q3 | ASR iš dalinio (kaip sename) | ~0,1 s |
