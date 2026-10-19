@@ -75,6 +75,9 @@ class PiperTTSProvider:
 
     _CACHE: dict[tuple, bytes] = {}
     _CACHE_MAX = 512
+    # PCM pieces per sentence for the Pipecat voice (~44 kB per second of speech).
+    _PCM_CACHE: dict[tuple, list[tuple[bytes, int]]] = {}
+    _PCM_CACHE_MAX = 1024
     last_synthesis_ms: int = 0
 
     def __init__(
@@ -180,7 +183,15 @@ class PiperTTSProvider:
             if len(self._CACHE) >= self._CACHE_MAX:
                 self._CACHE.pop(next(iter(self._CACHE)))
             self._CACHE[key] = mp3
+            # The same sentence for the PCM transport (Pipecat): the startup prewarm of
+            # the scripted lines fills both caches with one rendering.
+            self._remember_pcm(key, [(pcm, sample_rate)])
         return mp3
+
+    def _remember_pcm(self, key: tuple, pieces: list[tuple[bytes, int]]) -> None:
+        if len(self._PCM_CACHE) >= self._PCM_CACHE_MAX:
+            self._PCM_CACHE.pop(next(iter(self._PCM_CACHE)))
+        self._PCM_CACHE[key] = pieces
 
     def synthesize_pcm(self, sentence: str) -> tuple[bytes, int]:
         """One sentence as raw 16-bit mono PCM and its sample rate — for transports that
@@ -193,12 +204,27 @@ class PiperTTSProvider:
         """One sentence as PCM pieces, each yielded as soon as the recipe renders it —
         a phrase up to a comma or a dash, then its pause. The caller hears the first
         phrase while the rest is still being synthesized (DELSA P1). Same sound as
-        `synthesize_pcm`: the recipe's closing silence is replaced by the sentence gap."""
-        import numpy as np
-
+        `synthesize_pcm`: the recipe's closing silence is replaced by the sentence gap.
+        A sentence said before (a scripted line) comes from the cache at once (DELSA Q1)."""
         from .sentences import speakable
 
         sentence = speakable(sentence, self._default_language)
+        key = self._key(sentence)
+        cached = self._PCM_CACHE.get(key)
+        if cached is not None:
+            yield from cached
+            return
+        pieces = []
+        for piece in self._stream_speakable(sentence):
+            pieces.append(piece)
+            yield piece
+        if pieces:
+            self._remember_pcm(key, pieces)
+
+    def _stream_speakable(self, sentence: str) -> Iterator[tuple[bytes, int]]:
+        """`stream_pcm` for a sentence already made speakable, without the cache."""
+        import numpy as np
+
         synth, recipe = self._new_synth()
         t0 = time.perf_counter()
         held: list[np.ndarray] = []  # silence waits until more speech follows it

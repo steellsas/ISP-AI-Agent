@@ -26,6 +26,7 @@ def test_pool_streams_the_same_audio_as_in_process(pool):
     from adapters.tts.piper_tts import PiperTTSProvider
 
     local = b"".join(pcm for pcm, _ in PiperTTSProvider(voice="reginute").stream_pcm(SENTENCE))
+    PiperTTSProvider._PCM_CACHE.clear()  # the pool must render, not reuse the line above
     pieces = list(pool.stream_pcm(SENTENCE))
     assert len(pieces) > 1  # phrase by phrase, not one blob
     assert {rate for _, rate in pieces} == {22050}
@@ -43,3 +44,24 @@ def test_knobs_travel_with_the_job(pool, monkeypatch):
     monkeypatch.setenv("TTS_RATE", "+30%")
     fast = sum(len(pcm) for pcm, _ in pool.stream_pcm(SENTENCE))
     assert fast < slow
+
+
+def test_a_line_said_before_comes_from_the_cache(pool):
+    import time
+
+    from adapters.tts.piper_tts import PiperTTSProvider
+
+    PiperTTSProvider._PCM_CACHE.clear()
+    first = list(pool.stream_pcm("Ačiū, kad paskambinote."))
+    t0 = time.perf_counter()
+    again = list(pool.stream_pcm("Ačiū, kad paskambinote."))
+    assert again == first
+    assert time.perf_counter() - t0 < 0.05
+
+
+def test_the_dashboard_render_fills_the_pcm_cache_too(pool):
+    from adapters.tts.piper_tts import PiperTTSProvider
+
+    PiperTTSProvider._PCM_CACHE.clear()
+    pool.synthesize("Geros dienos!")  # the old voice path / the startup prewarm
+    assert len(list(pool.stream_pcm("Geros dienos!"))) == 1  # cached whole sentence

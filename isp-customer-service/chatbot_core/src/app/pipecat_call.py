@@ -11,7 +11,7 @@ the brain panel, the archive and the simulate buttons see this call like any oth
 turn runs under the session lock and ends with the same `turn_summary`.
 
 Env: SMART_TURN_STOP_SECS (silence fallback when Smart Turn says “not finished”, default
-2.0), VAD_STOP_SECS (pause that triggers a Smart Turn check, default 0.2).
+1.2 — 2.0 left a caller waiting 1.5 s after a finished “Ne, …”, DELSA §5.4), VAD_STOP_SECS (pause that triggers a Smart Turn check, default 0.2).
 
 Not yet: the barge-in delivery report (what part of the reply was heard) and check-ins.
 """
@@ -298,7 +298,7 @@ def build_call(connection, session, asr, tts_provider, turns, greeting: str | No
                 TurnAnalyzerUserTurnStopStrategy(
                     turn_analyzer=LocalSmartTurnAnalyzerV3(
                         params=SmartTurnParams(
-                            stop_secs=float(os.environ.get("SMART_TURN_STOP_SECS", "2.0"))
+                            stop_secs=float(os.environ.get("SMART_TURN_STOP_SECS", "1.2"))
                         )
                     )
                 )

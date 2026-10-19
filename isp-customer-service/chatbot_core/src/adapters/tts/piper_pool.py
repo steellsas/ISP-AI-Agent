@@ -57,8 +57,8 @@ def _worker_main(voice: str, root: str, threads: int, jobs, results) -> None:
             if kind == "render":  # text is already speakable
                 pcm, rate = provider._render(text)
                 results.put((job_id, pcm, rate))
-            else:
-                for pcm, rate in provider.stream_pcm(text):
+            else:  # text is already speakable; the cache lives in the server
+                for pcm, rate in provider._stream_speakable(text):
                     results.put((job_id, pcm, rate))
             results.put((job_id, _DONE, None))
         except Exception as exc:  # pragma: no cover - reported to the caller
@@ -149,10 +149,10 @@ class PooledPiperTTSProvider(PiperTTSProvider):
         pieces = list(self._pool.run("render", sentence))
         return pieces[0] if pieces else (b"", 22050)
 
-    def stream_pcm(self, sentence: str) -> Iterator[tuple[bytes, int]]:
+    def _stream_speakable(self, sentence: str) -> Iterator[tuple[bytes, int]]:
         if not self._pool.alive():
             logger.warning("piper pool is down; streaming in-process")
-            yield from super().stream_pcm(sentence)
+            yield from super()._stream_speakable(sentence)
             return
         yield from self._pool.run("stream", sentence)
 
