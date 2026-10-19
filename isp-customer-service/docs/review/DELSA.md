@@ -350,3 +350,16 @@ Pipecat skambutis `20261019-104806…0002`, senas `20261019-104947…0003`, po 6
 | Q1 | PCM talpykla parašytoms frazėms (kaip MP3 sename) | ~0,2–0,4 s kartotiniuose ėjimuose |
 | Q2 | `SMART_TURN_STOP_SECS` 2,0 → ~1,2 | „nebaigė" atvejai trumpesni |
 | Q3 | ASR iš dalinio (kaip sename) | ~0,1 s |
+
+### 5.5 Pertraukimų skambutis (2026-10-19 12:57) — vyko senuoju balsu
+
+`20261019-125749…0002` — antraštėje liko „senas", todėl Pipecat A3 (delivery) **dar neišbandytas
+gyvai**. Sename kelyje `BARGE_IN` išjungtas: kalba ant agento balso tik užrašoma (`overlay`),
+agentas kalba toliau — taip ir buvo abu kartus.
+
+- Delsa: first 1,61 s, first + endpoint* ~2,5 s (5 ėjimai).
+- G15: „Oho! Aš mokėjau vakar." / „Tikrai sakiau, kad mokėjau." → „Paslauga atsistatys
+  automatiškai per valandą po apmokėjimo" (`inform.paid_just_now`). Mokėjo **vakar**, o paslauga
+  vis dar sustabdyta — tai ginčas, ne „ką tik sumokėjau": turėtų būti paaiškinimas ir pasiūlymas
+  registruoti `billing_request` (sutarta anksčiau).
+- G16: antrasis `overlay` („Aš mokėjau vakar") neturi `overlay_applied` — sename kelyje dingo.
