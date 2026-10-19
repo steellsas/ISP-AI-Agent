@@ -157,6 +157,11 @@ class SessionManager:
         return ms
 
     @property
+    def hub(self) -> SessionEventHub:
+        """The live event hub (the Pipecat call writes its turn summaries through it)."""
+        return self._hub
+
+    @property
     def active_count(self) -> int:
         return len(self._sessions)
 

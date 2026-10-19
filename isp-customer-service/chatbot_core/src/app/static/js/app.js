@@ -41,7 +41,7 @@ function addMsg(cls, text){
 function setLive(on){
   $("statusDot").className="dot"+(on?" live":"");
   for(const id of ["stop","send","text","mic","simPlug","simReboot","simPower"]) $(id).disabled=!on;
-  $("start").disabled=on; $("phone").disabled=on;
+  $("start").disabled=on; $("phone").disabled=on; $("voiceMode").disabled=on;
 }
 
 /* ---------- events: the conversation here, everything else in Agento vidus (brain.js) ---------- */
@@ -76,8 +76,42 @@ function resetUI(){
   Brain.reset();
   Scenarios.callStarted();
 }
+/* ---------- Pipecat voice (WebRTC) — audio both ways; the WS above carries events only ---------- */
+let pc=null, rtcMic=null, rtcAudio=null;
+try{ $("voiceMode").value = localStorage.getItem("voiceMode") || "ws"; }catch(e){}
+$("voiceMode").onchange = () => { try{ localStorage.setItem("voiceMode", $("voiceMode").value); }catch(e){} };
+async function startWebRTC(){
+  rtcMic = await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,
+    noiseSuppression:true, autoGainControl:true, channelCount:1}});
+  pc = new RTCPeerConnection();
+  for(const t of rtcMic.getTracks()) pc.addTrack(t, rtcMic);
+  pc.createDataChannel("events");            // Pipecat's message channel (unused here)
+  rtcAudio = new Audio(); rtcAudio.autoplay = true;
+  pc.ontrack = ev => { rtcAudio.srcObject = ev.streams[0]; rtcAudio.play().catch(()=>{}); };
+  pc.onconnectionstatechange = () => {
+    if(pc && ["failed","closed"].includes(pc.connectionState)) addMsg("note","🔌 Pipecat ryšys: "+pc.connectionState);
+  };
+  await pc.setLocalDescription(await pc.createOffer());
+  await new Promise(r => {                   // no trickle: send the offer with every candidate
+    if(pc.iceGatheringState==="complete") return r();
+    pc.addEventListener("icegatheringstatechange", () => { if(pc.iceGatheringState==="complete") r(); });
+    setTimeout(r, 2000);
+  });
+  const resp = await fetch(`/sessions/${sid}/webrtc`, {method:"POST",
+    headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({sdp:pc.localDescription.sdp, type:pc.localDescription.type})});
+  if(!resp.ok){ addMsg("note","Pipecat: "+(await resp.text())); stopWebRTC(); return; }
+  await pc.setRemoteDescription(await resp.json());
+  addMsg("note","🎙 Pipecat balsas (WebRTC, Smart Turn)");
+}
+function stopWebRTC(){
+  if(rtcMic){ for(const t of rtcMic.getTracks()) t.stop(); rtcMic=null; }
+  if(pc){ try{ pc.close(); }catch(e){} pc=null; }
+  if(rtcAudio){ rtcAudio.srcObject=null; rtcAudio=null; }
+}
+
 async function teardown(){
-  stopMic(); stopAudio(); VoiceViz.stop();
+  stopMic(); stopAudio(); stopWebRTC(); VoiceViz.stop();
   // End the session while the socket still listens: the call's record (session_end,
   // call_summary) arrives on it, and the scenario card checks the outcome.
   if(sid){ const old=sid; sid=null;
@@ -169,7 +203,9 @@ $("start").onclick = async () => {
       VoiceViz.start();
       loadDuplexCfg();
       addMsg("agent", data.greeting);
-      if($("voiceOn").checked){
+      if($("voiceOn").checked && $("voiceMode").value==="webrtc"){
+        startWebRTC().catch(err => addMsg("note","Pipecat nepavyko: "+err.message));
+      }else if($("voiceOn").checked){
         fetch(`/sessions/${sid}/greeting/audio`).then(r=>r.ok?r.arrayBuffer():null)
           .then(b=>{ if(b) playAudio(b); }).catch(()=>{});
         startMic();
