@@ -476,6 +476,8 @@ consent_yes:
   - "registruok"
   - "užregistruok"
   - "uzregistruok"
+  # Gyvai 2026-10-19: „Registruoti, bet jinai…" — bendratis, ne liepiamoji nuosaka.
+  - "registruot"
   - "darykit"
   - "darykite"
   # Gyvai 2026-10-01: „Nu, pabandom" ir „Esu pasiruošęs" nebuvo atsakymas — pasiūlymas kartojosi
@@ -498,6 +500,7 @@ consent_no:
   - "nereikia"
   - "atsisak"
   - "neregistruok"
+  - "neregistruot"
   - "nedarykit"
   - "ne ačiū"
   - "ne, ačiū"
@@ -1391,9 +1394,9 @@ polarity_yes: ["turiu", "turim", "taip", "yra"]
 # The narrator CLAIMED a registration ("Užregistravau gedimą…") ...
 # A PROMISE counts too („užregistruosiu jūsų klausimą", live 2026-10-07): words may not
 # outrun the engine in either tense — the promise becomes the contact dialogue.
-registration_claim: ["užregistrav", "uzregistrav", "registruoju gedim", "užregistruosiu", "uzregistruosiu", "registruosiu", "užregistruosim", "uzregistruosim"]
+registration_claim: ["užregistrav", "uzregistrav", "užregistruoj", "uzregistruoj", "registruoju gedim", "užregistruosiu", "uzregistruosiu", "registruosiu", "užregistruosim", "uzregistruosim"]
 # ... about the ticket/technician (not a MAC bind "užregistravau routerį").
-registration_claim_subject: ["gedim", "meistr", "tiket", "koleg", "technik", "klausim", "prašym", "prasym", "atsaking"]
+registration_claim_subject: ["gedim", "meistr", "tiket", "koleg", "technik", "klausim", "prašym", "prasym", "atsaking", "kreipim"]
 # "ne aš sudariau sutartį" — explicitly not the contract holder.
 caller_not_holder: ["ne sutart", "nesu sudar", "ne aš sudar", "ne as sudar"]
 # A plain yes to "ar jūs sutartį sudaręs asmuo?".

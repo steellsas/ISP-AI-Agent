@@ -336,7 +336,8 @@ class ClosingState(BaseModel):
     secondary_problems_asked: bool = False
     # A repeat call's note went onto this open ticket instead of a new one (D-12).
     appended_ticket_id: str | None = None
-    # A disputed debt (D-11): None | "asked" (the offer to register it is out) | "answered".
+    # A disputed debt (D-11): None | "asked" (the offer to register it is out) | "clarify"
+    # (the answer was unclear, asked once more) | "answered".
     debt_offer: str | None = None
     # Why a call ended before the caller was identified ("stuck", "not_a_customer") —
     # the contact record's unidentified_reason (D-14).

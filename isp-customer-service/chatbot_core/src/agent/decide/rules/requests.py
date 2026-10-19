@@ -66,16 +66,27 @@ def debt_dispute_due(state: Any, user_input: str | None) -> bool:
 def debt_offer_turn(state: Any, rt: Any, user_input: str | None) -> str | None:
     """After the debt news: a dispute gets the offer to register it for the responsible
     person — the agent does not explain bills. Returns "ask" (the offer goes out now),
-    "start" (they agreed: the contact dialogue starts), or None (not this rule's turn)."""
+    "clarify" (the answer was unclear: asked once more), "start" (they agreed: the contact
+    dialogue starts), or None (not this rule's turn).
+
+    An unclear answer is not a no (live 2026-10-19: „Registruoti, bet jinai…" was taken as a
+    decline in silence, and the model then said „užregistruojau" with no ticket): the offer is
+    asked once more; only a second unclear answer counts as declined."""
     from ..question import clear, register
 
     c = state.closing
-    if c.debt_offer == "asked":
-        c.debt_offer = "answered"
-        clear(state, rt, "debt_offer")
+    if c.debt_offer in ("asked", "clarify"):
         from ...perceive.detectors import detect_ticket_consent
 
-        if detect_ticket_consent(user_input) == "yes":
+        answer = detect_ticket_consent(user_input)
+        if answer is None and c.debt_offer == "asked":
+            c.debt_offer = "clarify"
+            register(state, rt, "inform", "debt_offer")
+            rt.tracer.emit("decision", intent="debt_offer", action="clarify")
+            return "clarify"
+        c.debt_offer = "answered"
+        clear(state, rt, "debt_offer")
+        if answer == "yes":
             start_request(state, rt, "billing_request")
             return "start"
         rt.tracer.emit("decision", intent="debt_offer", action="declined")

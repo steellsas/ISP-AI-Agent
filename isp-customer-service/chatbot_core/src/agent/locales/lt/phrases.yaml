@@ -34,6 +34,8 @@ identification:
   # The caller disputes the debt or does not understand it (D-11): not explained — offered
   # to the responsible person.
   debt_dispute_offer: "Suprantu. Sąskaitų detalių aš nematau, bet galiu užregistruoti jūsų klausimą — atsakingas žmogus su jumis susisieks ir aptars skolą. Ar registruoti?"
+  # Neaiškus atsakymas į pasiūlymą — pasitikslinama vieną kartą, ne laikoma atsisakymu.
+  debt_dispute_clarify: "Atsiprašau, noriu įsitikinti — ar užregistruoti jūsų klausimą dėl sąskaitos, kad atsakingas žmogus su jumis susisiektų?"
   outage_eta: "Numatomas atstatymas iki {eta}."
   anything_else: "Ar dar kuo galiu padėti?"
   thanks: "Ačiū!"

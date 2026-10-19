@@ -1,6 +1,7 @@
 """Requests (M6, D-11): a question outside the agent's knowledge is registered for the
 responsible person — never answered, never diagnosed."""
 
+import pytest
 from agent.decide.rules import requests
 from agent.decide.rules.ticket import caller_owed
 
@@ -88,6 +89,40 @@ class TestDebtDispute:
 
         assert requests.debt_offer_turn(state, rt, "Ne, nereikia") is None
         assert state.ticket.request_type is None and state.ticket.stage is None
+
+    def test_an_unclear_answer_is_asked_again_not_declined(self, make_state, make_runtime):
+        """Live 2026-10-19 (G17): „Registruoti, bet jinai…" was a silent decline."""
+        state = self._told_debt(make_state)
+        rt = make_runtime()
+        requests.debt_offer_turn(state, rt, "Kaip tai skola, aš sumokėjau liepą")
+
+        assert requests.debt_offer_turn(state, rt, "Hmm, nežinau, kaip čia") == "clarify"
+        assert requests.debt_offer_turn(state, rt, "Registruoti, bet jinai…") == "start"
+        assert state.ticket.request_type == "billing_request"
+
+    def test_a_second_unclear_answer_is_a_decline(self, make_state, make_runtime):
+        state = self._told_debt(make_state)
+        rt = make_runtime()
+        requests.debt_offer_turn(state, rt, "Kaip tai skola, aš sumokėjau liepą")
+        requests.debt_offer_turn(state, rt, "Hmm, nežinau, kaip čia")
+
+        assert requests.debt_offer_turn(state, rt, "Nu, kažkaip keista") is None
+        assert state.ticket.request_type is None
+
+
+@pytest.mark.parametrize(
+    "said, answer",
+    [
+        ("Registruoti, bet jinai…", "yes"),
+        ("Gerai, ačiū.", "yes"),
+        ("Ne, neregistruoti", "no"),
+        ("Neregistruokite", "no"),
+    ],
+)
+def test_consent_reads_the_infinitive(said, answer):
+    from agent.perceive.detectors import detect_ticket_consent
+
+    assert detect_ticket_consent(said) == answer
 
 
 def test_a_request_ticket_is_about_its_own_intent():

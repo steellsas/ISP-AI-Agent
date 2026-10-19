@@ -242,6 +242,8 @@ def reply_plan(state: Any, rt: Any, user_input: str | None) -> TurnPlan | None:
         offer = debt_offer_turn(state, rt, user_input)
         if offer == "ask":
             return _words("inform.debt_offer", phrase("identification.debt_dispute_offer"))
+        if offer == "clarify":
+            return _words("inform.debt_offer", phrase("identification.debt_dispute_clarify"))
         if offer == "start":
             return _words(*ticket_question_turn(state, rt))
     if (
