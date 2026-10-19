@@ -140,22 +140,35 @@ class EnginePiperTTS(TTSService):
     async def run_tts(self, text: str, context_id: str):
         await self.start_tts_usage_metrics(text)
         t0 = time.perf_counter()
-        pcm, sample_rate = await asyncio.to_thread(self._provider.synthesize_pcm, text)
-        self._session.tracer.emit(
-            "tts", ms=round((time.perf_counter() - t0) * 1000), chars=len(text), bytes=len(pcm)
-        )
-        if not pcm:
+        pieces = self._provider.stream_pcm(text)
+        first = await asyncio.to_thread(next, pieces, None)
+        first_ms = round((time.perf_counter() - t0) * 1000)
+        if first is None:
             await self.stop_ttfb_metrics()
             return
+        sample_rate = first[1]
+        size = len(first[0])
 
-        async def one_chunk():
-            yield pcm
+        async def phrases():
+            nonlocal size
+            yield first[0]
+            while (piece := await asyncio.to_thread(next, pieces, None)) is not None:
+                size += len(piece[0])
+                yield piece[0]
 
         async for frame in self._stream_audio_frames_from_iterator(
-            one_chunk(), in_sample_rate=sample_rate, context_id=context_id
+            phrases(), in_sample_rate=sample_rate, context_id=context_id
         ):
             await self.stop_ttfb_metrics()
             yield frame
+        # `ms` = the first phrase (what the caller waits for); `all_ms` = the sentence
+        self._session.tracer.emit(
+            "tts",
+            ms=first_ms,
+            all_ms=round((time.perf_counter() - t0) * 1000),
+            chars=len(text),
+            bytes=size,
+        )
 
 
 class EngineProcessor(FrameProcessor):

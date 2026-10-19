@@ -189,13 +189,53 @@ class PiperTTSProvider:
 
         return self._render(speakable(sentence, self._default_language))
 
-    def _render(self, sentence: str) -> tuple[bytes, int]:
+    def stream_pcm(self, sentence: str) -> Iterator[tuple[bytes, int]]:
+        """One sentence as PCM pieces, each yielded as soon as the recipe renders it —
+        a phrase up to a comma or a dash, then its pause. The caller hears the first
+        phrase while the rest is still being synthesized (DELSA P1). Same sound as
+        `synthesize_pcm`: the recipe's closing silence is replaced by the sentence gap."""
         import numpy as np
 
-        voice, phonemizer, recipe = self._load()
+        from .sentences import speakable
+
+        sentence = speakable(sentence, self._default_language)
+        synth, recipe = self._new_synth()
         t0 = time.perf_counter()
-        # A fresh recipe object per sentence: it keeps a tempo reference and a
-        # measurement log, which must neither leak between calls nor grow forever.
+        held: list[np.ndarray] = []  # silence waits until more speech follows it
+        pending = None  # the last phrase waits for the next one: if it is the last, it is trimmed
+        first_ms = None
+        for piece in synth.gabalai(sentence):
+            if not np.any(piece):
+                held.append(piece)
+                continue
+            if pending is not None:
+                if first_ms is None:
+                    first_ms = int((time.perf_counter() - t0) * 1000)
+                yield recipe.i_int16(pending), synth.sr
+            pending = np.concatenate([*held, piece])
+            held = []
+        if pending is None:
+            return
+        voiced = np.flatnonzero(pending)
+        pending = pending[: int(voiced[-1]) + 1]
+        tail = int(synth.sr * (synth.pauze.get(sentence.rstrip()[-1:], 0.0) + _SENTENCE_GAP_S))
+        if first_ms is None:
+            first_ms = int((time.perf_counter() - t0) * 1000)
+        yield recipe.i_int16(np.concatenate([pending, np.zeros(tail, dtype=np.float32)])), synth.sr
+        ms = int((time.perf_counter() - t0) * 1000)
+        logger.info(
+            "piper %s: %d chars streamed, first piece %d ms, all %d ms",
+            self._voice,
+            len(sentence),
+            first_ms,
+            ms,
+        )
+        self.last_synthesis_ms = ms
+
+    def _new_synth(self):
+        """A fresh recipe object per sentence: it keeps a tempo reference and a
+        measurement log, which must neither leak between calls nor grow forever."""
+        voice, phonemizer, recipe = self._load()
         synth = recipe.ReginuteSynth(
             voice,
             phonemizer,
@@ -204,6 +244,13 @@ class PiperTTSProvider:
             lyginti_greiti=self._levelling(),
         )
         synth.syn = replace(synth.syn, noise_scale=self._noise_scale())
+        return synth, recipe
+
+    def _render(self, sentence: str) -> tuple[bytes, int]:
+        import numpy as np
+
+        synth, recipe = self._new_synth()
+        t0 = time.perf_counter()
         audio = np.concatenate([*synth.gabalai(sentence), np.zeros(1, dtype=np.float32)])
         # The recipe ends every call with 0.85 s of silence (it expects a whole
         # text); per sentence that would put a long hole between sentences.
