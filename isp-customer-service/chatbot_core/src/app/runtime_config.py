@@ -378,6 +378,7 @@ def apply(changes: dict[str, str]) -> list[dict[str, Any]]:
         from . import voice
 
         voice._build_asr.cache_clear()
+        voice.close_tts()  # a Piper pool's worker processes go with it
         voice._build_tts.cache_clear()
     _persist(changes)
     return current()

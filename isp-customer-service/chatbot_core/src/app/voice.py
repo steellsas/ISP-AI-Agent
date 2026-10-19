@@ -66,6 +66,14 @@ def _build_tts():
         piper_voice = os.environ.get("TTS_PIPER_VOICE", "reginute").lower()
         try:
             provider = PiperTTSProvider(voice=piper_voice, default_language=_LANGUAGE)
+            if os.environ.get("TTS_PIPER_PROCESS", "on").lower() != "off":
+                # Rendering in worker processes, outside the server's GIL (piper_pool.py).
+                try:
+                    from adapters.tts.piper_pool import PooledPiperTTSProvider
+
+                    provider = PooledPiperTTSProvider(voice=piper_voice, default_language=_LANGUAGE)
+                except Exception as exc:  # the voice still works in-process
+                    logger.warning(f"voice tts: piper pool failed ({exc}); rendering in-process")
             import lameenc  # noqa: F401 - fail here, not mid-call
             import piper  # noqa: F401
 
@@ -78,6 +86,14 @@ def _build_tts():
     voice = os.environ.get("TTS_VOICE", "lt-LT-LeonasNeural")
     logger.info(f"voice tts: edge {voice}")
     return EdgeTTSProvider(default_language=_LANGUAGE, voice=voice)
+
+
+def close_tts() -> None:
+    """Stop the current TTS's worker processes (a Piper pool) before it is rebuilt."""
+    if _build_tts.cache_info().currsize:
+        close = getattr(_build_tts(), "close", None)
+        if callable(close):
+            close()
 
 
 # The locale groups whose lines the engine SPEAKS as scripted replies (the rest —
