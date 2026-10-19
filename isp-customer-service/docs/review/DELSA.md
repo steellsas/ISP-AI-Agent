@@ -389,3 +389,24 @@ Delsa šiame skambutyje: mediana nuo tylos ~1,4 s (8 ėjimai); parašytos frazė
 > **2026-10-19:** pasisveikinimo nepertraukiamumas ir „≥ 3 žodžiai" — **laikini**; tikslinis
 > sprendimas sutartas [PERZIURA.md §6](PERZIURA.md) (pertraukti galima visur, privaloma info
 > grąžinama vėliau, „pritilti → spręsti").
+
+### 5.7 Pipecat su laikinomis taisyklėmis (2026-10-19 14:50)
+
+`20261019-145003…0001`, skolos skambutis, 6 ėjimai, 4 `delivery`.
+
+**Veikė:** pasisveikinimas iki galo; „Oho, oho." (2 žodžiai) nepertraukė; „Taip, dingo internetas."
+pertraukė adreso klausimą → klausimas pakartotas; „Bet negali būti, aš susimokėjau liepos
+mėnesį" pertraukė skolos žinutę → `inform.debt_offer` (ginčas, kaip sutarta). Delsa nuo tylos
+normaliuose ėjimuose 1,07–2,87 s, mediana ~1,4 s.
+
+**Radiniai:**
+
+| # | Kas | Priežastis |
+|---|---|---|
+| G17 | **„užregistruojau jūsų kreipimąsi" — tiketo nėra** (`informed_debt`, `ticket_id` null) | (a) „Gerai, ačiū." — tikras sutikimas — pasakytas agentui dar kalbant ~10 s žinutę → 2 žodžiai → **išmestas** (laikina „≥ 3 žodžiai" taisyklė); (b) „Registruoti, bet jinai…" neperskaitytas kaip „taip" į `debt_offer`; (c) sargas nesustabdė: `registration_claim` neturi „užregistruoj-" (Gemma neteisinga forma), `registration_claim_subject` neturi „kreipim" |
+| G18 | Tas pats atsakymas du kartus („…vadybininkas jus suardys" ×2) | „Liepos 3 dieną" atėjo kaip naujas ėjimas, kol buvo atsakoma į ankstesnį; Gemma „suardys" vietoj „susisieks" |
+| G19 | Pipecat `pipecat_latency` po pertraukimų klaidingas (19,8 s / 56 s / 97 s, `first_request`) | stebėtojas pameta ėjimo pradžią po pertraukimo — tik matavimas |
+
+**Išvada dėl „≥ 3 žodžiai":** saugo nuo „oho", bet išmeta trumpą atsakymą klausimo pabaigoje —
+patvirtina, kad reikia I-3 („pritilti → spręsti"); iki tol trumpos frazės agentui kalbant turėtų
+būti **ne išmetamos, o perduodamos kitam ėjimui** (kaip sename kelyje `overlay`).
