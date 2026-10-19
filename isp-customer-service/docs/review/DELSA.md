@@ -385,3 +385,7 @@ Pipecat pertraukia dėl bet kokios kalbos. Sutvarkyta (`pipecat_call.py`):
 
 Delsa šiame skambutyje: mediana nuo tylos ~1,4 s (8 ėjimai); parašytos frazės iš talpyklos
 (Q1) — 739–1 265 ms, LLM ėjimai 1,35–2,1 s; vienas 4,6 s (ASR 977 + ilgas 154 simb. sakinys 1,76 s).
+
+> **2026-10-19:** pasisveikinimo nepertraukiamumas ir „≥ 3 žodžiai" — **laikini**; tikslinis
+> sprendimas sutartas [PERZIURA.md §6](PERZIURA.md) (pertraukti galima visur, privaloma info
+> grąžinama vėliau, „pritilti → spręsti").
