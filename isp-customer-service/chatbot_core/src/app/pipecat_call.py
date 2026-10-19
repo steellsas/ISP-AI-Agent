@@ -10,7 +10,8 @@ In the dashboard (`run_dashboard_call`) the session is the one `POST /sessions` 
 the brain panel, the archive and the simulate buttons see this call like any other: every
 turn runs under the session lock and ends with the same `turn_summary`.
 
-Env: SMART_TURN_STOP_SECS (silence fallback when Smart Turn says “not finished”, default
+Env: PIPECAT_MIN_WORDS (words the caller must say to interrupt the agent, default 3),
+SMART_TURN_STOP_SECS (silence fallback when Smart Turn says “not finished”, default
 1.2 — 2.0 left a caller waiting 1.5 s after a finished “Ne, …”, DELSA §5.4), VAD_STOP_SECS (pause that triggers a Smart Turn check, default 0.2).
 
 After a barge-in the engine hears which sentences were played out (`SpokenTracker`), as on
@@ -31,6 +32,8 @@ from pipecat.audio.turn.smart_turn.local_smart_turn_v3 import LocalSmartTurnAnal
 from pipecat.audio.vad.silero import SileroVADAnalyzer
 from pipecat.audio.vad.vad_analyzer import VADParams
 from pipecat.frames.frames import (
+    BotStartedSpeakingFrame,
+    BotStoppedSpeakingFrame,
     EndWorkerFrame,
     ErrorFrame,
     Frame,
@@ -56,6 +59,14 @@ from pipecat.services.stt_service import SegmentedSTTService
 from pipecat.services.tts_service import TTSService
 from pipecat.transports.base_transport import TransportParams
 from pipecat.transports.smallwebrtc.transport import SmallWebRTCTransport
+from pipecat.turns.types import ProcessFrameResult
+from pipecat.turns.user_mute.mute_until_first_bot_complete_user_mute_strategy import (
+    MuteUntilFirstBotCompleteUserMuteStrategy,
+)
+from pipecat.turns.user_start.min_words_user_turn_start_strategy import (
+    MinWordsUserTurnStartStrategy,
+)
+from pipecat.turns.user_start.vad_user_turn_start_strategy import VADUserTurnStartStrategy
 from pipecat.turns.user_stop.turn_analyzer_user_turn_stop_strategy import (
     TurnAnalyzerUserTurnStopStrategy,
 )
@@ -152,6 +163,29 @@ class EnginePiperTTS(TTSService):
             chars=len(text),
             bytes=size,
         )
+
+
+class QuietVADUserTurnStartStrategy(VADUserTurnStartStrategy):
+    """VAD starts the caller's turn at once — but only while the agent is silent.
+
+    While the agent speaks, a bare “labas”, “aha”, “laukiu” must not cut it off (live
+    2026-10-19: “Laukiu.” cut the whole debt news 0.15 s in; “Labas!” cut the greeting).
+    Then only `MinWordsUserTurnStartStrategy` may start a turn — and interrupt — once the
+    caller has said a few words; the old voice path classified such speech the same way
+    (backchannel / echo / substantive)."""
+
+    def __init__(self, **kwargs) -> None:
+        super().__init__(**kwargs)
+        self._agent_speaking = False
+
+    async def process_frame(self, frame: Frame) -> ProcessFrameResult:
+        if isinstance(frame, BotStartedSpeakingFrame):
+            self._agent_speaking = True
+        elif isinstance(frame, BotStoppedSpeakingFrame):
+            self._agent_speaking = False
+        if self._agent_speaking:
+            return ProcessFrameResult.CONTINUE
+        return await super().process_frame(frame)
 
 
 class StandaloneTurns:
@@ -358,6 +392,12 @@ def build_call(connection, session, asr, tts_provider, turns, greeting: str | No
             params=VADParams(stop_secs=float(os.environ.get("VAD_STOP_SECS", "0.2")))
         ),
         user_turn_strategies=UserTurnStrategies(
+            start=[
+                QuietVADUserTurnStartStrategy(),
+                MinWordsUserTurnStartStrategy(
+                    min_words=int(os.environ.get("PIPECAT_MIN_WORDS", "3")), use_interim=False
+                ),
+            ],
             stop=[
                 TurnAnalyzerUserTurnStopStrategy(
                     turn_analyzer=LocalSmartTurnAnalyzerV3(
@@ -366,8 +406,10 @@ def build_call(connection, session, asr, tts_provider, turns, greeting: str | No
                         )
                     )
                 )
-            ]
+            ],
         ),
+        # The greeting says the caller is talking to an AI (AI Act): it plays out whole.
+        user_mute_strategies=[MuteUntilFirstBotCompleteUserMuteStrategy()],
     )
     user_agg, assistant_agg = LLMContextAggregatorPair(LLMContext(), user_params=user_params)
     pipeline = Pipeline(

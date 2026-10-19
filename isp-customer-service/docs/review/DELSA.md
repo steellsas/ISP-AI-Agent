@@ -363,3 +363,25 @@ agentas kalba toliau — taip ir buvo abu kartus.
   vis dar sustabdyta — tai ginčas, ne „ką tik sumokėjau": turėtų būti paaiškinimas ir pasiūlymas
   registruoti `billing_request` (sutarta anksčiau).
 - G16: antrasis `overlay` („Aš mokėjau vakar") neturi `overlay_applied` — sename kelyje dingo.
+
+### 5.6 Pipecat su pertraukimais (2026-10-19 13:04)
+
+`20261019-130442…0004` — 8 ėjimai, 4 `delivery`. Pertraukimų apskaita (A3) veikia: neišgirsta
+uodega grįžta į variklį, jis pakartoja (skolos žinutė pasakyta iš naujo po pertraukimo).
+
+**Bet pertraukė ir tai, kas neturėjo:**
+
+| Kada | Kas pertraukė | Pasekmė |
+|---|---|---|
+| pasisveikinimas | „Labas!" | prisistatymas „Esu dirbtinio intelekto asistentas" neišgirstas → klientas klausė „Su kuo čia kalbu?" |
+| skolos žinutė | „Laukiu." (po 0,15 s) | visa žinutė nutraukta, kartota |
+
+Pipecat pertraukia dėl bet kokios kalbos. Sutvarkyta (`pipecat_call.py`):
+
+- pasisveikinimas groja iki galo (`MuteUntilFirstBotCompleteUserMuteStrategy`) — DI prisistatymas
+  visada išgirstamas (AI Act);
+- agentui kalbant pertraukti gali tik ≥ 3 žodžiai (`MinWordsUserTurnStartStrategy`,
+  `PIPECAT_MIN_WORDS`); agentui tylint ėjimas prasideda iš VAD iškart (`QuietVADUserTurnStartStrategy`).
+
+Delsa šiame skambutyje: mediana nuo tylos ~1,4 s (8 ėjimai); parašytos frazės iš talpyklos
+(Q1) — 739–1 265 ms, LLM ėjimai 1,35–2,1 s; vienas 4,6 s (ASR 977 + ilgas 154 simb. sakinys 1,76 s).
