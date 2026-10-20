@@ -51,6 +51,8 @@ identification:
   # F-27: asked only after the end is confirmed — one question per reply.
   end_offer_ticket: "Gerai. Ar užregistruoti gedimą, kad kolegos su jumis susisiektų?"
   goodbye: "Ačiū, kad paskambinote. Geros dienos!"
+  # Tyla po „Ar dar kuo galiu padėti?" (Andrius 2026-10-20): atsakymo nesulaukus — atsisveikinama.
+  silence_goodbye: "Geros dienos! Jei dar ko reikės — skambinkite."
   turn_error: "Atsiprašau, įvyko trikdis mano pusėje. Pakartokite, prašau, ką sakėte."
   # v3 6d: „Telefonu neišspręsim" modelis bandydavo papildyti ir gadindavo („Telefonu šio
   # nešaldymo neišspręsim") — dabar sakinys pilnas.

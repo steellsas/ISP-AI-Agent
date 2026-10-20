@@ -127,6 +127,9 @@ class CheckinSession(FakeSession):
     def awaiting_caller(self):
         return self.waiting
 
+    def awaiting_closing_answer(self):
+        return False
+
 
 @pytest.mark.parametrize("waiting, spoken", [(True, True), (False, False)])
 def test_a_silent_caller_with_a_task_gets_one_checkin(monkeypatch, waiting, spoken):

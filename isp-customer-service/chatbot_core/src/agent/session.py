@@ -380,6 +380,37 @@ class AgentSession:
             self._refresh_state()
             self._emit_turn_plan()
 
+    def awaiting_closing_answer(self) -> bool:
+        """The agent's last question was the closing one („Ar dar kuo galiu padėti?") and the
+        call is still open — the transport waits for the answer (closing_silence_s)."""
+        from .contract.locale import vocab
+        from .evidence import _fold
+
+        s = self._state
+        if s.closing.is_complete:
+            return False
+        question = _fold(s.dialog.last_question or "")
+        return bool(question) and any(
+            _fold(m) in question for m in vocab("closing_question_markers")
+        )
+
+    def close_on_silence(self) -> str:
+        """No answer to the closing question: the polite goodbye, and the call ends. Written
+        between turns, like the delivery report; returns the words to speak."""
+        from .closing import close_call
+        from .contract.locale import phrase
+
+        text = phrase("identification.silence_goodbye")
+
+        def write(state, rt) -> None:
+            close_call(state, rt, "keep", complete=True)
+            state.messages.append({"role": "assistant", "content": text})
+            rt.tracer.emit("closing_silence", text=text)
+            rt.tracer.emit("agent_reply", text=text)
+
+        self._write_between_turns(write)
+        return text
+
     def request_cancel(self) -> None:
         """Barge-in (Phase 5 PR3): stop the running streaming turn — the engine's
         token loop closes the LLM stream and re-asks the interrupted question.

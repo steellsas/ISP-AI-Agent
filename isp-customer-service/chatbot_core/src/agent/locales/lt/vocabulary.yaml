@@ -957,6 +957,10 @@ barge_consent_tokens:
   - "aciu"
   - "laukiu"
 
+# The closing question „Ar dar kuo galiu padėti?" in its usual wordings — after it the agent
+# waits for an answer, and silence ends the call politely (closing_silence_s).
+closing_question_markers: ["dar kuo", "kuo nors padėti", "kuo dar galiu", "dar galiu kuo", "dar kokių klausimų", "kitų klausimų"]
+
 # Halt/negation tokens — hard stop regardless of the utterance length.
 barge_stop_tokens:
   - "ne"

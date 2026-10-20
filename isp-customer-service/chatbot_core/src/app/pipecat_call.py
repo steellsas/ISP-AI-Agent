@@ -562,17 +562,25 @@ class EngineProcessor(FrameProcessor):
     what the caller actually heard (`apply_delivery`), as on the old voice path."""
 
     def __init__(
-        self, session, turns, tracker: SpokenTracker, recorder: CallRecorder | None = None, **kwargs
+        self,
+        session,
+        turns,
+        tracker: SpokenTracker,
+        recorder: CallRecorder | None = None,
+        gate: PacedHoldGate | None = None,
+        **kwargs,
     ) -> None:
         super().__init__(**kwargs)
         self._session = session
         self._turns = turns
         self._tracker = tracker
         self._recorder = recorder or CallRecorder("", enabled=False)
+        self._gate = gate
         self._task = None
         self._delivery_task = None
         self._stop = threading.Event()
         self._checkin_task = None
+        self._hangup_task = None
         self._checked_in = False
 
     async def process_frame(self, frame: Frame, direction: FrameDirection):
@@ -623,6 +631,20 @@ class EngineProcessor(FrameProcessor):
         from agent.contract import limits
         from agent.contract.locale import phrase
 
+        # The closing question („Ar dar kuo galiu padėti?") waits for an answer; none within
+        # closing_silence_s → the polite goodbye and the line goes down (Andrius 2026-10-20).
+        if self._session.awaiting_closing_answer():
+            await asyncio.sleep(float(limits.get("closing_silence_s")))
+            if self._session.is_complete or not self._session.awaiting_closing_answer():
+                return
+            self._checked_in = True
+            text = await asyncio.to_thread(self._session.close_on_silence)
+            await self.push_frame(LLMFullResponseStartFrame())
+            await self.push_frame(LLMTextFrame(text))
+            await self.push_frame(LLMFullResponseEndFrame())
+            # Its own task: the goodbye starting to play disarms (cancels) this check-in task.
+            self._hangup_task = self.create_task(self._hang_up())
+            return
         # After a task („įkiškite laidą") the caller needs time; after a question, silence
         # more likely means they did not hear it (F4).
         asked = self._tracker.reply.rstrip().endswith("?")
@@ -636,6 +658,21 @@ class EngineProcessor(FrameProcessor):
         await self.push_frame(LLMFullResponseStartFrame())
         await self.push_frame(LLMTextFrame(text))
         await self.push_frame(LLMFullResponseEndFrame())
+
+    async def _hang_up(self) -> None:
+        """The goodbye plays out, a short pause, then the line goes down — the call does not
+        end on the agent's last syllable (Andrius 2026-10-20)."""
+        from agent.contract import limits
+
+        await self._turns.call_ended()
+        if self._gate is not None:
+            started = time.monotonic()
+            while not self._gate.busy and time.monotonic() - started < 3:
+                await asyncio.sleep(0.05)  # the goodbye is still being synthesized
+            while self._gate.busy:
+                await asyncio.sleep(0.1)
+        await asyncio.sleep(float(limits.get("goodbye_hangup_after_s")))
+        await self.push_frame(EndWorkerFrame())
 
     async def _report_delivery(self, reply_task) -> None:
         """After an interruption — mid-turn or while the finished reply was still
@@ -671,9 +708,7 @@ class EngineProcessor(FrameProcessor):
             finally:
                 await self.push_frame(LLMFullResponseEndFrame())
         if self._session.is_complete:
-            # Let the goodbye play out, then hang up.
-            await self._turns.call_ended()
-            await self.push_frame(EndWorkerFrame())
+            await self._hang_up()
             return
         # Between turns, as the voice transport does: fresh telemetry, the analyst.
         await asyncio.to_thread(self._between_turns)
@@ -738,7 +773,7 @@ def build_call(connection, session, asr, tts_provider, turns, greeting: str | No
     tracker = SpokenTracker()
     gate = PacedHoldGate()
     recorder = CallRecorder(session.session_id)
-    engine = EngineProcessor(session, turns, tracker, recorder)
+    engine = EngineProcessor(session, turns, tracker, recorder, gate)
     user_params = LLMUserAggregatorParams(
         vad_analyzer=SileroVADAnalyzer(
             params=VADParams(stop_secs=float(os.environ.get("VAD_STOP_SECS", "0.2")))

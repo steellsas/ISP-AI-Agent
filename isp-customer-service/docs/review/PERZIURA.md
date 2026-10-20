@@ -665,3 +665,20 @@ kalba agentui kalbant
 **Laikina (keisti įgyvendinant I-1 ir I-3):** Pipecat kelyje (`47e3c5e`) pasisveikinimas
 nepertraukiamas, o agentui kalbant pertraukia tik ≥ 3 žodžiai — apsauga nuo „Labas!" / „Laukiu."
 nukirpimų, kol nėra I-1 ir I-3. Vieta peržiūroje: 7 etapas, šalia „kelių problemų".
+
+## 7. Pokalbio pabaiga balse (sutarta 2026-10-20)
+
+**Andrius:** agentas neturi „užtrenkti" ragelio. Po baigiamojo klausimo jis **būtinai laukia
+atsakymo**; nesulaukęs — atsisveikina ir tik tada padeda ragelį.
+
+```
+A: „…Ar dar kuo galiu padėti?"            ← laukia atsakymo
+   ├─ „ne, ačiū" / „viso gero"  → „Ačiū, kad paskambinote. Geros dienos!" → pauzė → ragelis
+   ├─ naujas klausimas / „vis tiek neveikia" → pokalbis tęsiasi
+   └─ tyla 5 s (closing_silence_s) → „Geros dienos! Jei dar ko reikės — skambinkite." → ragelis
+```
+
+- Ėjimas, kuriuo skambutis baigiamas, **visada** baigiasi variklio atsisveikinimu (ne LLM); neišgirstas
+  klausimas tada nebekartojamas (gyvai: „viso gero" nutraukė „Ar dar kuo galiu padėti?", modelis jį
+  pakartojo ir ragelis nukrito be atsisveikinimo).
+- Ragelis padedamas, kai atsisveikinimas nuskambėjo, po `goodbye_hangup_after_s` (1,5 s) pauzės.
