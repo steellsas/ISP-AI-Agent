@@ -3,31 +3,12 @@ Voice transport reports between turns — what the caller actually heard and sai
 while the agent was speaking. The session applies them to the checkpointed
 state outside a turn (AgentSession._write_between_turns).
 
-- apply_overlay: the caller's words spoken OVER the agent's voice.
 - apply_delivery: how many sentences of the reply finished playing (D1 ledger).
 """
 
 from __future__ import annotations
 
 from typing import Any
-
-from .contract import limits
-
-
-def apply_overlay(state: Any, rt: Any, texts: list[str]) -> None:
-    """Duplex-hearing 2: the caller's words spoken OVER the agent's voice
-    (echo already filtered by the transport) — deterministic fact ingest
-    through the importance gates + a one-shot narrator note. Overlay may
-    FILL facts, never steer routing."""
-    from .perceive.evidence import ingest_overlay
-
-    kept = [t.strip() for t in texts if t and t.strip()][: limits.get("overlay_apply_max")]
-    if not kept:
-        return
-    for text in kept:
-        ingest_overlay(state, rt, text)
-    state.voice.overlay_heard = kept
-    rt.tracer.emit("overlay_applied", texts=[t[:120] for t in kept])
 
 
 def apply_delivery(state: Any, rt: Any, sentences: list[str], delivered: int) -> None:

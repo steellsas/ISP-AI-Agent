@@ -164,7 +164,7 @@ class CallRecorder:
 
 class EngineSTT(SegmentedSTTService):
     """Our ASR on each VAD segment: Lithuanian domain prompt + the agent's last question
-    as context, numbers normalised, noise dropped (as `voice_pipeline`)."""
+    as context, numbers normalised, noise dropped."""
 
     def __init__(self, session, asr, recorder: CallRecorder, **kwargs) -> None:
         super().__init__(settings=STTSettings(model=None, language=None), **kwargs)
@@ -223,9 +223,13 @@ class EnginePiperTTS(TTSService):
         return True
 
     async def run_tts(self, text: str, context_id: str):
+        from agent.voice_pipeline import speech_text
+
         await self.start_tts_usage_metrics(text)
         t0 = time.perf_counter()
-        pieces = self._provider.stream_pcm(text)
+        # The spoken form („Tilžės g. 60-3" → „Tilžės gatvė 60, butas 3"), as the prewarmed
+        # cache holds it — the dashboard and traces keep the written form.
+        pieces = self._provider.stream_pcm(speech_text(text))
         first = await asyncio.to_thread(next, pieces, None)
         first_ms = round((time.perf_counter() - t0) * 1000)
         if first is None:
@@ -648,7 +652,9 @@ class EngineProcessor(FrameProcessor):
         # After a task („įkiškite laidą") the caller needs time; after a question, silence
         # more likely means they did not hear it (F4).
         asked = self._tracker.reply.rstrip().endswith("?")
-        delay = limits.get("voice_checkin_question_s" if asked else "voice_checkin_after_s")
+        delay = (
+            limits.get("voice_checkin_question_s") if asked else limits.get("voice_checkin_after_s")
+        )
         await asyncio.sleep(float(delay))
         if self._session.is_complete or not self._session.awaiting_caller():
             return

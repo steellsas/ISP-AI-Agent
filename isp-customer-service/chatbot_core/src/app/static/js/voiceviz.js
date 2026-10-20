@@ -1,37 +1,22 @@
 /* Balso linija: a scrolling picture of the conversation — the caller's voice rises above
    the line, the agent's voice falls below it — with who is talking now and the call time.
-   The mic level comes from app.js; the agent's level from the audio actually playing
-   (a WebAudio analyser), or from the playing state when the browser does not allow it. */
+   Both levels come from the call's WebRTC streams (WebAudio analysers that only measure). */
 "use strict";
 const VoiceViz = (() => {
   const WINDOW_S = 12, RATE = 20, N = WINDOW_S * RATE;
   let canvas, ctx2d, statusEl, timerEl;
   let caller = new Array(N).fill(0), agent = new Array(N).fill(0);
   let micPeak = 0, live = false, startedAt = 0, thinkingSince = 0, lastUserText = 0, lastAgentText = 0;
-  let outCtx = null, analyser = null, outGain = null, buf = null, agentPlaying = () => false;
+  let outCtx = null;
   let tickTimer = null, idleFrames = 0, colors = null, colorsAt = 0;
 
   function unlock() {
     // Called from the "Skambinti" click: an AudioContext may only start inside a gesture.
     try {
-      if (!outCtx) {
-        outCtx = new (window.AudioContext || window.webkitAudioContext)();
-        analyser = outCtx.createAnalyser(); analyser.fftSize = 512;
-        outGain = outCtx.createGain();
-        analyser.connect(outGain); outGain.connect(outCtx.destination);
-        buf = new Uint8Array(analyser.fftSize);
-      }
+      if (!outCtx) outCtx = new (window.AudioContext || window.webkitAudioContext)();
       if (outCtx.state === "suspended") outCtx.resume();
     } catch (e) { outCtx = null; }
   }
-
-  // Route one playing <audio> through the analyser; false = play it the plain way.
-  function attach(audio) {
-    if (!outCtx || outCtx.state !== "running") return false;
-    try { outCtx.createMediaElementSource(audio).connect(analyser); return true; } catch (e) { return false; }
-  }
-  function duck(on) { if (outGain) outGain.gain.value = on ? 0.25 : 1.0; }
-  function setPlayingProbe(fn) { agentPlaying = fn; }
 
   function mic(rms) { if (rms > micPeak) micPeak = rms; }
 
@@ -56,16 +41,9 @@ const VoiceViz = (() => {
   function detachStreams() { agentStream = null; callerStream = null; }
 
   function agentLevel() {
-    if (agentStream) { const r = rmsOf(agentStream); return r > 0.004 ? Math.min(1, r * 5) : 0; }
-    if (analyser && buf && agentPlaying()) {
-      analyser.getByteTimeDomainData(buf);
-      let sum = 0;
-      for (let i = 0; i < buf.length; i++) { const v = (buf[i] - 128) / 128; sum += v * v; }
-      const rms = Math.sqrt(sum / buf.length);
-      if (rms > 0.002) return Math.min(1, rms * 5);
-    }
-    // No analyser (or silence between words): a soft synthetic wave while audio plays.
-    return agentPlaying() ? 0.25 + 0.2 * Math.abs(Math.sin(Date.now() / 90)) : 0;
+    if (!agentStream) return 0;
+    const r = rmsOf(agentStream);
+    return r > 0.004 ? Math.min(1, r * 5) : 0;
   }
 
   function tick() {
@@ -76,7 +54,7 @@ const VoiceViz = (() => {
     let a = agentLevel();
     // Text calls: a short pulse when a line is sent or answered.
     if (now - lastUserText < 600) c = Math.max(c, 0.6 * (1 - (now - lastUserText) / 600));
-    if (now - lastAgentText < 900 && !agentPlaying()) a = Math.max(a, 0.5 * (1 - (now - lastAgentText) / 900));
+    if (now - lastAgentText < 900 && !agentStream) a = Math.max(a, 0.5 * (1 - (now - lastAgentText) / 900));
     caller.push(c); caller.shift();
     agent.push(a); agent.shift();
     if (a > 0.05) thinkingSince = 0;
@@ -149,5 +127,5 @@ const VoiceViz = (() => {
     tickTimer = setInterval(tick, 1000 / RATE);
   });
 
-  return { unlock, attach, attachStreams, detachStreams, duck, setPlayingProbe, mic, start, stop, thinking, event };
+  return { unlock, attachStreams, detachStreams, start, stop, thinking, event };
 })();

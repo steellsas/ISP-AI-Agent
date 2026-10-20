@@ -34,8 +34,8 @@ palieka kontakto įrašą (`agent/call_record/`).
 | `analyst` | tipizuoti signalai ir jų ribos | test_analyst_signals |
 | `contract` (failų kontraktas) | žinių schema, limitai/politikos, loader + reload, locale frazės, detektorių glosos, identifikacijos politika | test_knowledge_schema, test_limits, test_loader, test_locale, test_detectors, test_identification_policy |
 | `call_record` + stebėjimas | kontakto įrašo baigtis, trace JSONL, PII maskavimas, `turn_plan` įvykiai | test_call_record, test_tracing, test_pii_redaction, test_turn_plan_trace |
-| `app` (FastAPI host) | sesijų gyvavimas, ėjimai, įvykių srautas, WS, admin | test_api, test_interrupt_ack, test_overlay_stage2 |
-| Balsas (transportas) | audio front (VAD, segmentai), STT biasing, adapteriai, LT skaičių normalizacija | test_audio_front, test_voice_v1, test_voice_adapters, test_lt_text |
+| `app` (FastAPI host) | sesijų gyvavimas, ėjimai, įvykių srautas, WS, admin | test_api |
+| Balsas (transportas) | Pipecat pertraukimai ir pristatymas, privaloma informacija, Piper, STT biasing, adapteriai, LT skaičių normalizacija | test_pipecat_barge_in, test_pipecat_delivery, test_required_information, test_piper_pool, test_piper_tts, test_tts_prewarm, test_voice_v1, test_voice_adapters, test_lt_text |
 | Mišrus (istorinis) | žr. „Dubliavimosi kandidatai" | test_agent |
 
 ## Taisyklės
@@ -63,7 +63,7 @@ palieka kontakto įrašą (`agent/call_record/`).
 | 3. Analizė (telemetrija + hipotezė) | verdiktai, paslaugų profilis, hipotezės stabilumas, analitiko signalai, fast-path | test_verdict, test_service_profile, test_hypothesis, test_analyst_signals, eval S8 pora, S3, D2–D4, R3 |
 | 4. Sprendimo vedimas | pack'ai, procedūros vykdytojas + sargai, solverio ir plano vartai, evidence žurnalas, kartojimo sargas, verifikacija dviem šaltiniais | test_fault_packs, test_procedure, test_procedure_guards, test_resolution, test_router_hung, test_line_faults, test_evidence, test_gate, test_gate_closed_set, test_repeat_guard, test_dialogue_quality, eval S1, S1v, S4, S6, S9, D5, D6, D8, A1 |
 | 5. Tiketas + užbaigimas | kontaktai, registracija, prašymai (D-11), atviri tiketai (D-12), informavimo šablonai, goodbye, kontakto įrašas (D-14) | test_rules_ticket, test_rules_closing, test_closing, test_requests, test_open_ticket, test_inform, test_call_record, test_api (dalis), eval R1, R1b, R2, R4, X_dhcp_silent |
-| 6. Balso transportas | duplex, delivery, overlay, endpointing, pertraukimo ack | test_audio_front, test_voice_v1, test_voice_adapters, test_overlay_stage2, test_interrupt_ack, test_lt_text, test_api ws |
+| 6. Balso transportas | Pipecat pertraukimai, delivery, privaloma informacija | test_pipecat_barge_in, test_pipecat_delivery, test_required_information, test_voice_v1, test_voice_adapters, test_lt_text, test_api ws |
 
 ## Dubliavimosi kandidatai (tikrinti peržiūros metu)
 

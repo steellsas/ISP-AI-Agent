@@ -33,13 +33,13 @@ def test_env_override_wins(monkeypatch):
     assert limits.get("problem_gate_max_turns") == 4
     monkeypatch.setenv("GATE_MAX_TURNS", "7")
     assert limits.get("problem_gate_max_turns") == 7
-    monkeypatch.setenv("ASR_MIN_AUDIO_S", "0.5")
-    assert limits.get("asr_min_audio_s") == 0.5
+    monkeypatch.setenv("GOODBYE_HANGUP_S", "0.5")
+    assert limits.get("goodbye_hangup_after_s") == 0.5
 
 
 def test_bad_env_value_keeps_the_file_value(monkeypatch):
-    monkeypatch.setenv("ENDPOINT_SLOW_MS", "soon")
-    assert limits.get("endpoint_slow_ms") == 1400
+    monkeypatch.setenv("TOOL_SLOW_MS", "soon")
+    assert limits.get("tool_slow_ms") == 1200
 
 
 def test_unknown_limit_fails():

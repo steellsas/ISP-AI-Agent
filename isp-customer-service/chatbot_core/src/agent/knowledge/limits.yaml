@@ -97,33 +97,20 @@ crc_error_rate_threshold: 1.0       # CRC errors/min above this mean a damaged c
 reboot_flap_window_s: 600           # a port flap within this window counts as a real reboot
 
 # --- Voice ----------------------------------------------------------------------------
-endpoint_fast_ms: {value: 350, env: ENDPOINT_FAST_MS}    # silence before cutting a complete answer
-endpoint_slow_ms: {value: 1400, env: ENDPOINT_SLOW_MS}   # silence wait for an unfinished thought
-endpoint_story_ms: {value: 1800, env: ENDPOINT_STORY_MS} # silence wait while the problem is unknown
-asr_min_audio_s: {value: 0.3, env: ASR_MIN_AUDIO_S}      # shorter audio is dropped before ASR
-server_vad_threshold: {value: 0.010, env: SERVER_VAD_THR}
-server_silence_ms: {value: 900, env: SERVER_SIL_MS}
 
 # A tool call slower than this deserves the caller hearing something (knowledge/tools
 # -> filler_key). Traced as `tool_slow`.
 tool_slow_ms: {value: 1200, env: TOOL_SLOW_MS}
-partial_interval_s: {value: 1.0, env: PARTIAL_INTERVAL_S}
-voice_filler_after_s: {value: 1.2, env: VOICE_FILLER_AFTER_S}
-interrupt_ack_after_s: {value: 0.8, env: INTERRUPT_ACK_AFTER_S}
 voice_checkin_after_s: {value: 35, env: VOICE_CHECKIN_AFTER_S}  # caller silence before the agent speaks
 voice_checkin_question_s: {value: 12, env: VOICE_CHECKIN_QUESTION_S}  # …after a question (no task to do, F4)
 closing_silence_s: {value: 5, env: CLOSING_SILENCE_S}   # no answer to „Ar dar kuo galiu padėti?" → goodbye, hang up
 goodbye_hangup_after_s: {value: 1.5, env: GOODBYE_HANGUP_S}  # the goodbye has played → this pause → the line goes down
-overlay_silence_ms: {value: 4000, env: OVERLAY_SIL_MS}   # silence window for speech over the agent
 echo_overlap_threshold: 0.8         # token overlap with our own last words that reads as echo
-echo_min_words: 4                   # without a barge-in only a sentence can be our own echo
 barge_consent_max_words: 3          # a longer interruption is content, not a backchannel
 # Pipecat voice: finish the phrase, then decide (PERZIURA §6 I-3, ROADMAP V2)
 barge_finish_max_ms: {value: 1500, env: BARGE_FINISH_MAX_MS}   # the agent finishes its phrase, at most this long
 barge_wait_transcript_ms: {value: 1200, env: BARGE_WAIT_MS}    # after the caller stops: no words by then → go on
 barge_echo_overlap: 0.9            # stricter than echo_overlap_threshold: an answer repeats the question's words (G1)
-overlay_notes_max: 6                # overlay utterances queued for the next turn
-overlay_apply_max: 3                # overlay utterances handed to the engine per turn
 
 # --- Contact record (D-14) ---------------------------------------------------------------
 audio_retention_days_unidentified: {value: 30, env: AUDIO_RETENTION_DAYS_UNIDENTIFIED}  # privacy: days an unidentified caller's audio is kept

@@ -133,7 +133,7 @@ speaks. Rated against that practice:
 
 | Layer | Today | Proposal | Why |
 |---|---|---|---|
-| **Voice transport** | own WebSocket, VAD, endpointing, barge-in (`app/main.py`, `audio_front.py`, `endpoint.py`) | **Pipecat** (cloud telephony: Twilio/Telnyx) or **LiveKit Agents** (customer's own PBX / on-prem SIP); the engine becomes one processor in the pipeline | telephony, streaming STT, turn-detection model, interruption handling, per-service TTFB metrics, maintained by others. Does **not** reduce LLM latency by itself |
+| **Voice transport** | **Pipecat** over WebRTC in the dashboard (`app/pipecat_call.py`); the own WebSocket voice was deleted (A5, 2026-10-20) | **Pipecat** (cloud telephony: Twilio/Telnyx) or **LiveKit Agents** (customer's own PBX / on-prem SIP); the engine becomes one processor in the pipeline | telephony, streaming STT, turn-detection model, interruption handling, per-service TTFB metrics, maintained by others. Does **not** reduce LLM latency by itself |
 | **Engine** | LangGraph (4 nodes + checkpoints) + plain Python | **keep**, do not deepen the dependency; Case and decide stay plain Python | little of LangGraph is used; a plain state machine would do the same, so switching gains nothing |
 | **LangChain** | not used (litellm) | **do not add** | its strengths (chains, tool agents) are what the design deliberately avoids |
 | **Model serving (on-prem)** | Scaleway API | **vLLM or SGLang** with prefix caching | many concurrent calls; the speak prompt is already cache-shaped |

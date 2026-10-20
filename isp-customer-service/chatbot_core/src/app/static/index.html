@@ -20,11 +20,7 @@
   <input type="text" id="phone" value="+37060020105" size="13" title="Skambinančiojo numeris">
   <button id="start" class="primary">Skambinti</button>
   <button id="stop" class="danger" disabled>Baigti</button>
-  <label class="check"><input type="checkbox" id="voiceOn" checked> balsas</label>
-  <select id="voiceMode" title="Balso kelias: senas (WebSocket) arba Pipecat (WebRTC, Smart Turn)">
-    <option value="ws">senas</option>
-    <option value="webrtc">Pipecat</option>
-  </select>
+  <label class="check" title="Balsas per WebRTC (Pipecat); be varnelės — pokalbis tik tekstu"><input type="checkbox" id="voiceOn" checked> balsas</label>
   <button id="dbReset" class="ghost" title="Atstatyti demo DB į pradinę būseną (tiketai, MAC, statusai)">♻ DB</button>
   <button id="simPlug" class="ghost" disabled title="Imituoti, kad klientas įkišo kabelį į kompiuterį — linijoje atsiranda nepririštas įrenginys">🔌 Kabelis</button>
   <button id="simPower" class="ghost" disabled title="Imituoti, kad klientas vėl įkišo routerio maitinimo laidą — routeris vėl matomas linijoje, srautas eina">⚡ Maitinimas</button>
@@ -45,8 +41,6 @@
         <div id="chat"></div>
         <div id="partialLine"></div>
         <div id="controls">
-          <button id="mic" class="ghost" disabled title="Mikrofonas">🎤</button>
-          <div id="vu"><div></div></div>
           <input type="text" id="text" placeholder="…arba rašykite tekstu" disabled>
           <button id="send" disabled>Siųsti</button>
         </div>
@@ -166,15 +160,7 @@
     <div class="note">Serverio nustatymai galioja pažymėta apimtimi; išsaugomi ir po
       serverio perkrovimo. Prieš viešą talpinimą šis puslapis bus po admin prisijungimu.</div>
     <div id="cfgServer"></div>
-    <h2 style="margin-top:14px">Mikrofonas (šios naršyklės)</h2>
-    <div class="cfgRow"><label>Jautrumas (RMS slenkstis)</label>
-      <input type="number" id="cfgMicThr" step="0.002" min="0.004" max="0.05"></div>
-    <div class="cfgRow"><label>Tylos pauzė iki išsiuntimo (ms)</label>
-      <input type="number" id="cfgMicSil" step="100" min="400" max="2500"></div>
-    <div class="cfgRow"><label>Barge-in (galima pertraukti agentą)</label>
-      <input type="checkbox" id="cfgBargeOn"></div>
-    <div class="cfgRow"><label>Pertraukimo slenkstis (ms kalbos)</label>
-      <input type="number" id="cfgBargeMs" step="100" min="300" max="2000"></div>
+    <h2 style="margin-top:14px">Šios naršyklės</h2>
     <div class="cfgRow"><label>Išdėstymas</label>
       <button id="layoutReset" class="ghost">atstatyti skydelių dydžius</button></div>
     <div id="cfgActions">

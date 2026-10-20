@@ -1,5 +1,5 @@
 """
-Tests for the Phase 3 voice adapters and the VoicePipeline glue.
+Tests for the voice adapters (ASR, TTS, sentence splitting).
 
 These run offline: the engine imports (faster-whisper, gTTS) are lazy, so the
 adapters construct without the optional `voice` dependency and we exercise
@@ -10,13 +10,11 @@ engines/network are guarded with importorskip.
 
 import io
 import wave
-from types import SimpleNamespace
 
 import numpy as np
 import pytest
 from adapters.asr import FasterWhisperASR, GroqWhisperASR
 from adapters.tts import GTTSProvider
-from agent.voice_pipeline import VoicePipeline, VoiceTurn
 from ports.asr import ASRProvider
 from ports.tts import TTSProvider
 
@@ -51,44 +49,6 @@ class _FakeTTS:
     def synthesize(self, text, *, language=None):
         self.calls.append((text, language))
         return b"AUDIO:" + text.encode("utf-8")
-
-
-class _FakeConfig:
-    language = "lt"
-
-
-class _FakeSession:
-    def __init__(self):
-        self.config = _FakeConfig()
-        self.is_complete = False
-        self.turns = []
-
-    def greeting(self):
-        return "Labas!"
-
-    def handle_turn(self, text):
-        self.turns.append(text)
-        return f"atsakymas: {text}"
-
-
-class _FakeStreamingTTS:
-    """A TTSProvider that also streams: one chunk per sentence."""
-
-    def synthesize(self, text, *, language=None):
-        return b"A:" + text.encode()
-
-    def stream(self, text, *, language=None):
-        from adapters.tts import split_sentences
-
-        for sentence in split_sentences(text):
-            yield b"A:" + sentence.encode()
-
-
-class _FakeStreamingSession(_FakeSession):
-    """A session that STREAMS the reply token by token (Pillar C3)."""
-
-    def handle_turn_stream(self, text):
-        yield from ("Svei", "ki. ", "Ar ", "veikia?")
 
 
 class TestProtocolConformance:
@@ -182,209 +142,6 @@ class TestWavDecoding:
         assert decoded.dtype == np.float32
         assert decoded.shape == (3,)
         assert decoded[1] == pytest.approx(0.5, abs=1e-4)
-
-
-class TestVoicePipeline:
-    """The audio-in -> agent -> audio-out orchestration, with fakes."""
-
-    def test_greeting_audio_synthesizes_session_greeting(self):
-        session, asr, tts = _FakeSession(), _FakeASR(), _FakeTTS()
-        pipeline = VoicePipeline(session, asr, tts)
-
-        audio = pipeline.greeting_audio()
-
-        assert audio == b"AUDIO:Labas!"
-        assert tts.calls == [("Labas!", "lt")]  # language pulled from session config
-
-    def test_filler_audio_synthesized_once_and_cached(self):
-        """The 'let me check' cue (step 2.2) is synthesized once, then cached."""
-        session, asr, tts = _FakeSession(), _FakeASR(), _FakeTTS()
-        pipeline = VoicePipeline(session, asr, tts)
-
-        a1 = pipeline.filler_audio()
-        a2 = pipeline.filler_audio()
-
-        assert a1.startswith(b"AUDIO:")
-        assert "Sekundėlę" in a1.decode("utf-8")  # LT cue from session language
-        assert a1 == a2
-        assert len(tts.calls) == 1  # cached, not re-synthesized
-
-    def test_stream_turn_yields_one_chunk_per_sentence(self):
-        session, asr, tts = _FakeSession(), _FakeASR(), _FakeStreamingTTS()
-        session.handle_turn = lambda t: "Sveiki. Ar veikia?"
-        pipeline = VoicePipeline(session, asr, tts)
-
-        chunks = list(pipeline.stream_turn(b"pcm"))
-
-        assert chunks == [b"A:Sveiki.", b"A:Ar veikia?"]
-
-    def test_stream_turn_falls_back_when_tts_not_streaming(self):
-        session, asr, tts = _FakeSession(), _FakeASR(), _FakeTTS()  # synthesize only
-        pipeline = VoicePipeline(session, asr, tts)
-
-        chunks = list(pipeline.stream_turn(b"pcm"))
-
-        assert chunks == [b"AUDIO:atsakymas: neveikia internetas"]
-
-    def test_stream_turn_drops_noise(self):
-        session, asr, tts = _FakeSession(), _FakeASR(), _FakeStreamingTTS()
-        pipeline = VoicePipeline(session, asr, tts, noise_filter=lambda t: True)
-
-        assert list(pipeline.stream_turn(b"pcm")) == []
-
-    def test_stream_turn_buffers_agent_tokens_into_sentence_tts(self):
-        """C3: an agent token stream is buffered to sentences and TTS'd each."""
-        session, asr, tts = _FakeStreamingSession(), _FakeASR(), _FakeTTS()
-        pipeline = VoicePipeline(session, asr, tts)
-
-        chunks = list(pipeline.stream_turn(b"pcm"))
-
-        # "Svei|ki. |Ar |veikia?" -> sentences "Sveiki." then "Ar veikia?"
-        assert chunks == [b"AUDIO:Sveiki.", b"AUDIO:Ar veikia?"]
-
-    def test_stream_turn_reports_where_the_time_went(self):
-        """Review finding AM: one turn_timing event per streamed turn — ASR, the
-        agent's first token, the first sentence, the first audio and the total, in
-        ms from the turn start and in that order."""
-        events = []
-        session, asr, tts = _FakeStreamingSession(), _FakeASR(), _FakeTTS()
-        session.tracer = SimpleNamespace(emit=lambda event, **f: events.append((event, f)))
-        pipeline = VoicePipeline(session, asr, tts)
-
-        list(pipeline.stream_turn(b"pcm"))
-
-        timing = [f for e, f in events if e == "turn_timing"]
-        assert len(timing) == 1
-        t = timing[0]
-        assert t["sentences"] == 2 and t["reused_partial"] is False
-        order = ["asr_ms", "first_token_ms", "first_sentence_ms", "first_audio_ms", "total_ms"]
-        values = [t[k] for k in order]
-        assert values == sorted(values)
-
-    def test_stream_turn_timing_is_emitted_when_the_caller_barges_in(self):
-        events = []
-        session, asr, tts = _FakeStreamingSession(), _FakeASR(), _FakeTTS()
-        session.tracer = SimpleNamespace(emit=lambda event, **f: events.append((event, f)))
-        pipeline = VoicePipeline(session, asr, tts)
-
-        chunks = list(pipeline.stream_turn(b"pcm", should_stop=lambda: True))
-
-        assert chunks == []
-        timing = [f for e, f in events if e == "turn_timing"]
-        assert len(timing) == 1 and timing[0]["cancelled"] == 1
-
-    def test_handle_audio_runs_full_turn(self):
-        session, asr, tts = _FakeSession(), _FakeASR(), _FakeTTS()
-        pipeline = VoicePipeline(session, asr, tts)
-
-        turn = pipeline.handle_audio(b"rawpcm", sample_rate=8_000)
-
-        assert isinstance(turn, VoiceTurn)
-        assert turn.transcript == "neveikia internetas"
-        assert turn.reply_text == "atsakymas: neveikia internetas"
-        assert turn.reply_audio == b"AUDIO:atsakymas: neveikia internetas"
-        assert turn.is_complete is False
-        # ASR got the audio + session language + sample rate; agent saw the transcript.
-        assert asr.calls == [(b"rawpcm", "lt", 8_000)]
-        assert session.turns == ["neveikia internetas"]
-
-    def test_explicit_language_overrides_session(self):
-        session, asr, tts = _FakeSession(), _FakeASR(), _FakeTTS()
-        pipeline = VoicePipeline(session, asr, tts, language="en")
-
-        pipeline.handle_audio(b"x")
-
-        assert asr.calls[0][1] == "en"
-        assert tts.calls[0][1] == "en"
-
-    def test_transcript_filter_applied_before_agent(self):
-        # The filter (e.g. number normalization) runs on the transcript the
-        # agent receives, not the raw ASR text.
-        session, asr, tts = _FakeSession(), _FakeASR(), _FakeTTS()
-        pipeline = VoicePipeline(session, asr, tts, transcript_filter=str.upper)
-
-        turn = pipeline.handle_audio(b"x")
-
-        assert turn.transcript == "NEVEIKIA INTERNETAS"
-        assert session.turns == ["NEVEIKIA INTERNETAS"]
-
-    def test_asr_event_carries_raw_and_normalized(self):
-        class _CaptureTracer:
-            def __init__(self):
-                self.events = []
-
-            def emit(self, event_type, **fields):
-                self.events.append({"type": event_type, **fields})
-
-        session, asr, tts = _FakeSession(), _FakeASR(), _FakeTTS()
-        session.tracer = _CaptureTracer()
-        # filter uppercases -> raw differs from transcript the agent receives.
-        pipeline = VoicePipeline(session, asr, tts, transcript_filter=str.upper)
-
-        pipeline.handle_audio(b"x")
-
-        asr_ev = [e for e in session.tracer.events if e["type"] == "asr"]
-        assert len(asr_ev) == 1
-        assert asr_ev[0]["raw"] == "neveikia internetas"
-        assert asr_ev[0]["transcript"] == "NEVEIKIA INTERNETAS"
-        assert "ms" in asr_ev[0]
-
-    def test_noise_turn_is_dropped_agent_not_called(self):
-        # A noise/hallucination transcript -> agent is NOT called, reply empty.
-        session, asr, tts = _FakeSession(), _FakeASR(), _FakeTTS()
-        pipeline = VoicePipeline(session, asr, tts, noise_filter=lambda t: True)
-
-        turn = pipeline.handle_audio(b"x")
-
-        assert turn.reply_text == ""
-        assert turn.reply_audio == b""
-        assert session.turns == []  # handle_turn never ran
-        assert tts.calls == []  # nothing synthesized
-
-    def test_non_noise_turn_runs_normally(self):
-        session, asr, tts = _FakeSession(), _FakeASR(), _FakeTTS()
-        pipeline = VoicePipeline(session, asr, tts, noise_filter=lambda t: False)
-
-        turn = pipeline.handle_audio(b"x")
-
-        assert turn.reply_text == "atsakymas: neveikia internetas"
-        assert session.turns == ["neveikia internetas"]
-
-    def test_voice_latency_emitted_to_session_tracer(self):
-        class _CaptureTracer:
-            def __init__(self):
-                self.events = []
-
-            def emit(self, event_type, **fields):
-                self.events.append({"type": event_type, **fields})
-
-        session, asr, tts = _FakeSession(), _FakeASR(), _FakeTTS()
-        session.tracer = _CaptureTracer()
-        pipeline = VoicePipeline(session, asr, tts)
-
-        pipeline.handle_audio(b"x")
-
-        lat = [e for e in session.tracer.events if e["type"] == "voice_latency"]
-        assert len(lat) == 1
-        assert {"asr_ms", "agent_ms", "tts_ms", "total_ms"} <= set(lat[0])
-
-    def test_handle_audio_reports_per_stage_latency(self):
-        # A slow ASR proves the stage timer measures real wall-clock, not 0.
-        class _SlowASR(_FakeASR):
-            def transcribe(self, audio, *, language=None, sample_rate=16_000):
-                import time
-
-                time.sleep(0.005)
-                return super().transcribe(audio, language=language, sample_rate=sample_rate)
-
-        session, asr, tts = _FakeSession(), _SlowASR(), _FakeTTS()
-        pipeline = VoicePipeline(session, asr, tts)
-
-        turn = pipeline.handle_audio(b"x")
-
-        assert turn.asr_ms >= 5.0  # the 5 ms sleep is counted in the ASR stage
-        assert turn.agent_ms >= 0.0
-        assert turn.tts_ms >= 0.0
 
 
 @pytest.mark.integration

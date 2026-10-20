@@ -40,18 +40,9 @@ os.environ.setdefault("CLASSIFIER", "off")
 # Persona: narrator-worded evidence questions go through the LLM — unit tests
 # assert the SCRIPTED wording, so the deterministic mode keeps scripts on.
 os.environ.setdefault("NARRATOR_QUESTIONS", "off")
-# VOICE_PLAN V1: unit tests feed tiny fake audio bytes (b"x") — the too-short
-# guard would drop them all. Off here; the guard's own tests set it explicitly.
-os.environ.setdefault("ASR_MIN_AUDIO_S", "0")
 # The analyst calls an LLM — deterministic tests never want that (opt in with
 # ANALYST_MODE=sync when testing it specifically).
 os.environ.setdefault("ANALYST_MODE", "off")
-# Final flush on ws close would fire a REAL ASR call per closed socket —
-# tests exercise it directly (test_classification), never through transport.
-os.environ.setdefault("FINAL_FLUSH", "off")
-# Story window (pre-problem pauses) = the old default in tests, so transport
-# tests' silent-frame counts keep cutting; the live default stays longer.
-os.environ.setdefault("ENDPOINT_STORY_MS", "900")
 # Test sessions write their traces OUTSIDE logs/sessions (review finding L: ~121k test
 # traces buried the real calls there). A dev can still point TRACE_DIR elsewhere.
 TEST_TRACE_DIR = Path(tempfile.gettempdir()) / "isp_agent_test_traces"
