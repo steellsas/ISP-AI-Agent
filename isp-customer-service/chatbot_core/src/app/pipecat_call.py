@@ -392,9 +392,15 @@ class EngineProcessor(FrameProcessor):
         self._task = None
         self._delivery_task = None
         self._stop = threading.Event()
+        self._checkin_task = None
+        self._checked_in = False
 
     async def process_frame(self, frame: Frame, direction: FrameDirection):
         await super().process_frame(frame, direction)
+        if isinstance(frame, BotStoppedSpeakingFrame):
+            self._arm_checkin()
+        elif isinstance(frame, (BotStartedSpeakingFrame, LLMContextFrame, InterruptionFrame)):
+            await self._disarm_checkin()
         if isinstance(frame, LLMContextFrame):
             text = _last_user_text(frame.context)
             if text:
@@ -417,6 +423,36 @@ class EngineProcessor(FrameProcessor):
         await self.push_frame(LLMTextFrame(text))
         await self.push_frame(LLMFullResponseEndFrame())
 
+    # The agent accompanies the caller through a task (G3, as the old voice path): after it
+    # stops speaking, if the caller stays silent past `voice_checkin_after_s` while the engine
+    # waits for them, it speaks first — „Kaip sekasi — ar pavyksta?". Once per turn.
+    def _arm_checkin(self) -> None:
+        if self._checked_in or os.getenv("VOICE_CHECKIN", "on").lower() != "on":
+            return
+        if self._task is None:  # not after the greeting — only once the caller has a task
+            return
+        if self._checkin_task is None or self._checkin_task.done():
+            self._checkin_task = self.create_task(self._checkin())
+
+    async def _disarm_checkin(self) -> None:
+        if self._checkin_task is not None and not self._checkin_task.done():
+            await self.cancel_task(self._checkin_task)
+        self._checkin_task = None
+
+    async def _checkin(self) -> None:
+        from agent.contract import limits
+        from agent.contract.locale import phrase
+
+        await asyncio.sleep(float(limits.get("voice_checkin_after_s")))
+        if self._session.is_complete or not self._session.awaiting_caller():
+            return
+        self._checked_in = True
+        text = phrase("identification.checkin")
+        self._session.tracer.emit("checkin", text=text, transport="pipecat")
+        await self.push_frame(LLMFullResponseStartFrame())
+        await self.push_frame(LLMTextFrame(text))
+        await self.push_frame(LLMFullResponseEndFrame())
+
     async def _report_delivery(self, reply_task) -> None:
         """After an interruption — mid-turn or while the finished reply was still
         playing — tell the engine which sentences the caller heard."""
@@ -435,6 +471,7 @@ class EngineProcessor(FrameProcessor):
             if task is not None and not task.done():
                 await task  # one reply at a time; the last delivery report lands first
         stop = self._stop = threading.Event()
+        self._checked_in = False
         self._tracker.start()
         self._recorder.next_turn()
         async with self._turns.turn():

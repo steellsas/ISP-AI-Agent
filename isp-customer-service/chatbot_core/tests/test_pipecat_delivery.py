@@ -139,3 +139,39 @@ def test_the_call_audio_is_recorded_turn_by_turn(tmp_path, monkeypatch):
         assert w.getnframes() == 320 and w.getframerate() == 16000
     manifest = [json.loads(line) for line in (d / "manifest.jsonl").read_text().splitlines()]
     assert manifest[-1] == {**manifest[-1], "side": "agent", "cancelled": True}
+
+
+class CheckinSession(FakeSession):
+    def __init__(self, waiting: bool) -> None:
+        super().__init__()
+        self.waiting = waiting
+        self.is_complete = False
+        self.events = []
+
+        class Tracer:
+            def emit(_self, kind, **fields):
+                self.events.append(kind)
+
+        self.tracer = Tracer()
+
+    def awaiting_caller(self):
+        return self.waiting
+
+
+@pytest.mark.parametrize("waiting, spoken", [(True, True), (False, False)])
+def test_a_silent_caller_with_a_task_gets_one_checkin(monkeypatch, waiting, spoken):
+    from pipecat.frames.frames import LLMTextFrame
+
+    monkeypatch.setenv("VOICE_CHECKIN_AFTER_S", "0")
+    session = CheckinSession(waiting)
+    engine = EngineProcessor(session, StandaloneTurns(), tracker([]))
+    pushed = []
+
+    async def push(frame, *_args):
+        pushed.append(frame)
+
+    engine.push_frame = push
+    asyncio.run(engine._checkin())
+    said = [f.text for f in pushed if isinstance(f, LLMTextFrame)]
+    assert bool(said) is spoken
+    assert ("checkin" in session.events) is spoken
