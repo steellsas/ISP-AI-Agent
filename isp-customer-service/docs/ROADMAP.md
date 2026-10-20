@@ -45,12 +45,16 @@ barge-in (D1). What the old voice still does and Pipecat does not:
 | # | Step | Why | Done when |
 |---|---|---|---|
 | V1 | **Record the call audio** (caller and agent per turn into `logs/sessions/<id>/`) | the archive and every review need to hear the call | archive plays a Pipecat call |
-| V2 | **I-3 “duck, then decide”** + short phrases never lost (G17-1) | the “≥ 3 words” rule is interim and drops real answers | „Gerai, ačiū" over the question is read as an answer; „aha" does not cut |
+| V2 | **I-3 “finish the phrase, then decide”** + short phrases never lost (G17-1): the agent finishes its current phrase (≤ ~1.5 s), holds, and on the caller's words either goes on from where it stopped (backchannel, echo, nothing heard) or yields (an answer, a question, „palaukit") | the “≥ 3 words” rule is interim and drops real answers | „Gerai, ačiū" over the question is read as an answer; „aha" does not cut |
 | V3 | **I-1 required information** instead of the unbreakable greeting | agreed principle (PERZIURA §6) | an interrupted greeting is still heard later (the AI disclosure) |
 | V4 | **Check-in when the caller is silent** („Ar jūs dar ten?") | the old voice had it | silence → one check-in, then the agreed ending |
 | V5 | **Dashboard parts tied to the old voice**: partial transcript, voice meter, time-to-first-audio in the brain panel; `latency_report` reads Pipecat timings (G19) | visible in the demo | brain panel and report show Pipecat calls fully |
 | V6 | Pipecat the default; Smart Turn and interruption settings on the config page | convenience | — |
 | A5 | **Delete the old voice path** (`audio_front.py`, WS audio in `main.py`, parts of `voice_pipeline`) | one voice path to maintain, the one production uses | after V1–V6 and a few live calls |
+
+Deferred until after the live trials (2026-10-20): **background noise, music and other voices**
+(noise filter, loudness, the caller's voice print — PERZIURA §6 I-4, I-5) — not now, so that
+background sound is never taken for the caller.
 
 ## Stage 2 — Engine quality for the demo
 

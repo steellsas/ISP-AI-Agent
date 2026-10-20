@@ -651,6 +651,17 @@ kalba agentui kalbant
 | I-4 | Triukšmas: aido slopinimas, VAD minimali trukmė ir garsumas, ASR triukšmo filtras **prieš** kirpimą | |
 | I-5 | Kito balso (TV, šeima) atskyrimas — produkcijai (pagrindinio kalbėtojo atpažinimas) | ne demo |
 
+**Patikslinta 2026-10-20 (Andrius):**
+
+- **Privaloma informacija (I-1):** DI prisistatymas; skolos suma ir kaip paslauga atsistato;
+  avarijos priežastis ir numatomas laikas; tiketo registracijos patvirtinimas su kontaktais.
+- **Reakcija su pavėlavimu (I-3):** išgirdęs klientą, agentas **pabaigia dabartinę frazę** (iki
+  kablelio / taško, ne ilgiau ~1,5 s), tada stoja; po sprendimo „tęsti" — **tęsia nuo pauzės vietos**.
+- **Aidas:** telefonijoje agento ir kliento garsas — atskiri takai; likutinis aidas (garsiakalbis)
+  atpažįstamas lyginant su tuo, ką agentas sako.
+- **Foninis triukšmas, muzika, kiti balsai — ATIDĖTA** iki bandymų: nediegti dabar, kad foną
+  netyčia nepalaikytume kliento kalba; apgalvoti, kaip atskirti klientą nuo kitų (I-4, I-5).
+
 **Laikina (keisti įgyvendinant I-1 ir I-3):** Pipecat kelyje (`47e3c5e`) pasisveikinimas
 nepertraukiamas, o agentui kalbant pertraukia tik ≥ 3 žodžiai — apsauga nuo „Labas!" / „Laukiu."
 nukirpimų, kol nėra I-1 ir I-3. Vieta peržiūroje: 7 etapas, šalia „kelių problemų".
