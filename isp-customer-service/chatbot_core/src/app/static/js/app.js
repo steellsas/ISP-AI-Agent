@@ -87,7 +87,10 @@ async function startWebRTC(){
   for(const t of rtcMic.getTracks()) pc.addTrack(t, rtcMic);
   pc.createDataChannel("events");            // Pipecat's message channel (unused here)
   rtcAudio = new Audio(); rtcAudio.autoplay = true;
-  pc.ontrack = ev => { rtcAudio.srcObject = ev.streams[0]; rtcAudio.play().catch(()=>{}); };
+  pc.ontrack = ev => {
+    rtcAudio.srcObject = ev.streams[0]; rtcAudio.play().catch(()=>{});
+    VoiceViz.attachStreams(ev.streams[0], rtcMic);   // the conversation line hears both sides
+  };
   pc.onconnectionstatechange = () => {
     if(pc && ["failed","closed"].includes(pc.connectionState)) addMsg("note","🔌 Pipecat ryšys: "+pc.connectionState);
   };
@@ -105,6 +108,7 @@ async function startWebRTC(){
   addMsg("note","🎙 Pipecat balsas (WebRTC, Smart Turn)");
 }
 function stopWebRTC(){
+  VoiceViz.detachStreams();
   if(rtcMic){ for(const t of rtcMic.getTracks()) t.stop(); rtcMic=null; }
   if(pc){ try{ pc.close(); }catch(e){} pc=null; }
   if(rtcAudio){ rtcAudio.srcObject=null; rtcAudio=null; }
@@ -157,7 +161,7 @@ $("start").onclick = async () => {
       if(m.data instanceof ArrayBuffer){ enqueueAudio(m.data); return; }
       const e = JSON.parse(m.data);
       if(e.type==="voice_turn_done"){ Brain.voiceDone(e); return; }
-      if(e.type==="turn_start"){ turnPlayed=0; Brain.turnStart(); VoiceViz.thinking(); return; } // D1: skaitiklis per turn'ą
+      if(e.type==="turn_start"){ turnPlayed=0; $("partialLine").textContent=""; Brain.turnStart(); VoiceViz.thinking(); return; } // D1: skaitiklis per turn'ą
       if(e.type==="call_ended"){ // pokalbis baigtas — mikrofonas nebeklauso
         stopMic();
         addMsg("note","📞 pokalbis baigtas");
@@ -194,6 +198,12 @@ $("start").onclick = async () => {
         const mark = e.endpoint==="fast" ? " ⏩" : (e.endpoint==="slow" ? " ⏳" : "");
         $("partialLine").textContent = e.text ? "🎧 "+e.text+mark : "";
         return;
+      }
+      if(e.type==="pipecat_latency" && !e.suspect && e.user_turn_ms){  // Pipecat: caller's silence → agent's audio
+        Brain.voiceDone({ttfa_ms:e.total_ms});
+      }
+      if(e.type==="asr" && e.transport==="pipecat"){  // Pipecat has no rolling partials: show each heard segment
+        $("partialLine").textContent = e.dropped ? "" : "🎧 "+(e.transcript||"");
       }
       if(e.type==="voice_turn"||e.type==="reply"||e.type==="error") return; // rendered via events
       onEvent(e);

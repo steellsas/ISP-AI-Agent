@@ -35,7 +35,7 @@ function makeBrain(root, opts = {}) {
     doubt: ["h-doubt", "abejojama"], confirming: ["h-confirming", "tikslinama"],
     confirmed: ["h-confirmed", "patvirtinta"], changed: ["h-changed", "pakeista"],
   };
-  const AFTER_TURN = new Set(["turn_summary", "voice_latency", "tts", "analyst_signals", "call_summary", "session_end", "delivery", "telemetry_refresh"]);
+  const AFTER_TURN = new Set(["turn_summary", "voice_latency", "pipecat_latency", "checkin", "tts", "analyst_signals", "call_summary", "session_end", "delivery", "telemetry_refresh"]);
   const PLAN_HINT = '<div class="muted">Ėjimo planas atsiras po pirmo kliento sakinio.</div>';
   const STATE_HINT = '<div class="muted">Būsena — kas žinoma apie skambutį.</div>';
 
@@ -281,6 +281,11 @@ function makeBrain(root, opts = {}) {
       case "asr": return ["voice", "ASR", `„${e.raw || ""}“${e.dropped ? " — atmesta" : ""}`, e.ms];
       case "tts": return ["voice", "TTS", `${e.chars} simb.`, e.ms];
       case "voice_latency": return ["voice", "balsas", `asr ${e.asr_ms} · agentas ${e.agent_ms} · tts ${e.tts_ms}`, e.total_ms];
+      case "pipecat_latency": {
+        if (e.suspect || !e.user_turn_ms) return null;  // greeting, or a measurement lost in a barge-in
+        const p = e.parts || {};
+        return ["voice", "balsas", `tyla ${p.endpointing_wait ?? "–"} · asr ${p.transcription ?? "–"} · agentas ${p.pipeline ?? "–"} · tts ${p.speech_synthesis ?? "–"}`, e.total_ms];
+      }
       case "overlay": return ["voice", "ant balso", `„${e.text}“${e.echo ? " (aidas)" : ""}`];
       case "barge_in": return ["voice", "pertrauka", "klientas pertraukė agentą"];
       case "graph_node": return ["graph", "mazgas", e.node, e.ms];

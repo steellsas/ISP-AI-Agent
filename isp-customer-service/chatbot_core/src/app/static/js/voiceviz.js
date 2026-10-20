@@ -35,7 +35,28 @@ const VoiceViz = (() => {
 
   function mic(rms) { if (rms > micPeak) micPeak = rms; }
 
+  // Pipecat voice (WebRTC): both sides are live streams, not <audio> blobs — measure them
+  // with analysers that are not connected to the speakers (the <audio> element plays).
+  let agentStream = null, callerStream = null;
+  function meter(stream) {
+    if (!outCtx || !stream) return null;
+    try {
+      const an = outCtx.createAnalyser(); an.fftSize = 512;
+      outCtx.createMediaStreamSource(stream).connect(an);
+      return { an, buf: new Uint8Array(an.fftSize) };
+    } catch (e) { return null; }
+  }
+  function rmsOf(m) {
+    m.an.getByteTimeDomainData(m.buf);
+    let sum = 0;
+    for (let i = 0; i < m.buf.length; i++) { const v = (m.buf[i] - 128) / 128; sum += v * v; }
+    return Math.sqrt(sum / m.buf.length);
+  }
+  function attachStreams(agent, caller) { agentStream = meter(agent); callerStream = meter(caller); }
+  function detachStreams() { agentStream = null; callerStream = null; }
+
   function agentLevel() {
+    if (agentStream) { const r = rmsOf(agentStream); return r > 0.004 ? Math.min(1, r * 5) : 0; }
     if (analyser && buf && agentPlaying()) {
       analyser.getByteTimeDomainData(buf);
       let sum = 0;
@@ -49,6 +70,7 @@ const VoiceViz = (() => {
 
   function tick() {
     const now = Date.now();
+    if (callerStream) mic(rmsOf(callerStream));
     let c = Math.min(1, micPeak * 9);
     micPeak = 0;
     let a = agentLevel();
@@ -127,5 +149,5 @@ const VoiceViz = (() => {
     tickTimer = setInterval(tick, 1000 / RATE);
   });
 
-  return { unlock, attach, duck, setPlayingProbe, mic, start, stop, thinking, event };
+  return { unlock, attach, attachStreams, detachStreams, duck, setPlayingProbe, mic, start, stop, thinking, event };
 })();

@@ -568,11 +568,15 @@ def build_call(connection, session, asr, tts_provider, turns, greeting: str | No
     @latency.event_handler("on_latency_breakdown")
     async def _on_breakdown(_observer, breakdown):
         parts = {c.key: round(c.duration_secs * 1000) for c in breakdown.contributions}
+        total_ms = round(breakdown.total_secs * 1000)
         session.tracer.emit(
             "pipecat_latency",
-            total_ms=round(breakdown.total_secs * 1000),
+            total_ms=total_ms,
             user_turn_ms=round((breakdown.user_turn_secs or 0) * 1000),
             parts=parts,
+            # After a barge-in the observer loses the turn start and measures from the call's
+            # first request (G19: 19.8 s, 56 s, 97 s) — kept in the trace, left out of reports.
+            suspect="first_request" in parts or "transcription" not in parts or total_ms > 15000,
         )
         logger.info(f"user→bot {breakdown.total_secs:.2f}s {parts}")
 
