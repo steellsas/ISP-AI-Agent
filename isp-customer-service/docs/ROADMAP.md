@@ -40,8 +40,9 @@ was: the open model runs through an EU API now, so we know what to expect on a l
 
 Done: WebRTC in the dashboard (`app/pipecat_call.py`), Smart Turn (endpoint 900 → 200 ms),
 Piper in worker processes, PCM cache for scripted lines, “what the caller heard” after a
-barge-in (D1). **2026-10-20: V1–V6 done** (`56b1de5`, `23271ba`, `902fda1`, `78a12fa`,
-`0aba9d0`, `eb58bb6`) — waiting for live calls, then A5. The steps:
+barge-in (D1). **2026-10-20: V1–V6 done, live calls pass** (F1–F5 fixed in `d00ee65`, call
+ending agreed and built in `4001fb9`) (`56b1de5`, `23271ba`, `902fda1`, `78a12fa`,
+`0aba9d0`, `eb58bb6`) — next: A5. The steps:
 
 | # | Step | Why | Done when |
 |---|---|---|---|
@@ -63,6 +64,7 @@ background sound is never taken for the caller.
 |---|---|---|
 | E1 | I-1 required information, I-2 partial answers (PERZIURA §6) | nothing the agent must say is lost; ask for what is missing |
 | E2 | Live-call findings: G2–G4 (address and name readers), G7 (clarify an unclear „ne"), G8 (hours), G11 (non-Latin letters from Gemma), G12–G13, G15 (paid-but-suspended is a dispute), G18 (double reply), G6 (stale „Malonu") | what a listener notices |
+| E2b | **Live voice calls 2026-10-20** (DELSA §5.8, PERZIURA §7): (1) the inform wrap-up closes after `wrap_content_turns_max` content turns even while the caller disagrees — reaching the cap must ask „Ar dar kuo galiu padėti?" and wait, only a farewell / „ne" / 5 s silence ends the call; (2) a debt dispute is missed when ASR garbles it („aš mokiau liepą", „mokėjimo nematot", „sumokėjau prieš 5 valandas, neveikia") — widen the dispute vocabulary, a dispute goes straight to the registration offer and does not count against the cap; (3) the narrator invents facts („kol bankas nusiunčia informaciją") — prompt and guard; (4) a caller who will not give a name loops („Neatskleisiu" taken as the name) | the agent hangs up on a caller who is still talking |
 | E3 | Review stage 7a — several problems in one call (one at a time, one ticket) | real callers do it |
 | E4 | TV cards, if the demo shows TV | „internet only" narrows the story |
 | E5 | v3: phases owned in one place | the remaining live-call bugs come from scattered ownership |
