@@ -280,3 +280,163 @@ Skola · miręs routeris + tiltas + tiketas · linija nutrūkusi + tiketas · ne
 
 Gerai veikė: skolos pranešimas, avarija tik po identifikacijos, miręs routeris → tiltas → MAC
 pririšimas → patikra → tiketas (sk. 2 — visas kelias be klaidų), tiketo kontaktai.
+
+### 5.3 Pipecat bandymas — pirmas gyvas skambutis (2026-10-16)
+
+Šaka `feature/pipecat-voice`, `chatbot_core/src/app/pipecat_bot.py`; skolos skambutis, 7 ėjimai.
+Pipecat matuoja **nuo kliento tylos (VAD) iki agento garso** — tai mūsų pagrindinis matas.
+
+| Ėjimas | Iš viso | endpoint | ASR | variklis + LLM | TTS (1-as sakinys) |
+|---|---|---|---|---|---|
+| „Taip, dėl šio…" (scripted) | 1 627 | 200 | 917 | ~0 | 452 |
+| „Mano vardas Petras…" (scripted) | 2 186 | 200 | 1 007 | ~0 | 936 (73 simb.) |
+| „…girdot" (scripted) | 2 152 | 200 | 537 | ~0 | 1 376 (106 simb.) |
+| „Taip, kita." (scripted) | **863** | 200 | 485 | ~0 | 139 |
+| „Tietos man." (LLM) | 2 260 | 200 | 495 | 1 175 | 345 |
+| „Koks jūsų vardas?" (LLM) | 2 497 | 200 | 591 | 1 283 | 380 |
+| „Kodėl neveikia?" (LLM) | 2 922 | 200 | 658 | 968 | 1 050 (79 simb.) |
+| **mediana** | **2 186** | **200** | **591** | | |
+
+**Ką rodo:**
+
+1. **Endpoint 900 → 200 ms** — Smart Turn sprendžia per 3–5 ms; per visą skambutį tik vieną
+   kartą nukirpo per anksti („Ne, negaliu." | „…Sėgaujau" → du ėjimai, agentas atsakė abiem).
+2. **Visa mediana nepagerėjo** (2,19 s; senas balsas ~2,15 s su įvertintu endpoint), nes atsirado
+   kiti: **ilgas pirmas sakinys** (Piper ~12 ms/simb.: 106 simb. = 1,4 s) ir LLM ėjimai (~1–1,3 s:
+   suvokimas ~0,6 + kalbėjimas ~0,4–0,7).
+3. **Trumpas parašytas ėjimas — 0,86 s.** Tai rodo, kur galima nueiti be GPU.
+4. Pipecat suskaido laiką pats (`pipecat_latency` trace'e) — matavimas be savo kodo.
+
+**Svertai, kuriuos parodė šis skambutis (tinka ir senam balsui):**
+
+| # | Kas | Laimėtų |
+|---|---|---|
+| P1 | **Piper srautu**: recepto `gabalai()` jau duoda frazes po vieną — siųsti kiekvieną iškart, ne laukti viso sakinio | 0,3–1 s ilguose sakiniuose |
+| P2 | Ilgą sakinį TTS'ui skaidyti ties „—" / kableliu (L2) | tas pats, paprasčiau |
+| P3 | ASR ilgiems sakiniams ~0,9–1 s — Groq; srautinis ASR tik su GPU (L8) | vėliau |
+
+**Elgesio radiniai (ne Pipecat kaltė):**
+
+| # | Kas |
+|---|---|
+| G11 | **Gemma įterpė kiniškus rašmenis**: „paslauga la暂时iškai sustabdyta" — sargas taiso tik kirilicą |
+| G12 | Vardas iš ASR šiukšlių: „Čestink ir girdot" → „Malonu susipažinti, Čestink!" |
+| G13 | „Koks jūsų vardas?" (klausimas agentui) → „šis klausimas nėra mano kompetencija" |
+| G14 | Pirmo ėjimo („neveikia internetas") `pipecat_latency` neįrašytas; paskutinio — klaidingas (151 s) |
+
+### 5.4 Senas balsas prieš Pipecat — tas pats skambutis (2026-10-19)
+
+Skolos skambutis abiem keliais dashboard'e, tas pats numeris; Piper — procesų baseine (abiem).
+Pipecat skambutis `20261019-104806…0002`, senas `20261019-104947…0003`, po 6 ėjimus.
+
+| Sluoksnis (mediana, ms) | Senas | Pipecat | Pastaba |
+|---|---|---|---|
+| endpoint (tyla iki nukirpimo) | ~900* | **200** | *nematuojama, sukonfigūruotas langas |
+| ASR | 545 | 620 | Pipecat transkribuoja po nukirpimo; senas kartais naudoja dalinį |
+| variklis + LLM | ~560 | ~470 | panašu — tas pats variklis |
+| TTS 1-a frazė | 160 | 290 | **senas turi frazių talpyklą (0 ms kartotinėms), Pipecat — ne** |
+| **pirmas garsas nuo nukirpimo** | **1 230** | ~1 490 | |
+| **nuo kliento tylos** | **~2 130*** | **1 690** | **−0,45 s** |
+
+- Pipecat laimi beveik vien endpoint'u (−0,7 s); dalį atiduoda ASR ir TTS talpyklos nebuvimui.
+- Vienas Smart Turn „nebaigė" laukė 1,47 s („Ne, čia jau sėgėra.") — vienintelis tokis per skambutį.
+- Elgesys abiem keliais tas pats (G6 „Malonu, Tomai!" gale abiem; Gemma: „Linkiu skambio ir gero
+  dienos").
+
+**Ką pigiai pataisyti Pipecat kelyje:**
+
+| # | Kas | Laimėtų |
+|---|---|---|
+| Q1 | PCM talpykla parašytoms frazėms (kaip MP3 sename) | ~0,2–0,4 s kartotiniuose ėjimuose |
+| Q2 | `SMART_TURN_STOP_SECS` 2,0 → ~1,2 | „nebaigė" atvejai trumpesni |
+| Q3 | ASR iš dalinio (kaip sename) | ~0,1 s |
+
+### 5.5 Pertraukimų skambutis (2026-10-19 12:57) — vyko senuoju balsu
+
+`20261019-125749…0002` — antraštėje liko „senas", todėl Pipecat A3 (delivery) **dar neišbandytas
+gyvai**. Sename kelyje `BARGE_IN` išjungtas: kalba ant agento balso tik užrašoma (`overlay`),
+agentas kalba toliau — taip ir buvo abu kartus.
+
+- Delsa: first 1,61 s, first + endpoint* ~2,5 s (5 ėjimai).
+- G15: „Oho! Aš mokėjau vakar." / „Tikrai sakiau, kad mokėjau." → „Paslauga atsistatys
+  automatiškai per valandą po apmokėjimo" (`inform.paid_just_now`). Mokėjo **vakar**, o paslauga
+  vis dar sustabdyta — tai ginčas, ne „ką tik sumokėjau": turėtų būti paaiškinimas ir pasiūlymas
+  registruoti `billing_request` (sutarta anksčiau).
+- G16: antrasis `overlay` („Aš mokėjau vakar") neturi `overlay_applied` — sename kelyje dingo.
+
+### 5.6 Pipecat su pertraukimais (2026-10-19 13:04)
+
+`20261019-130442…0004` — 8 ėjimai, 4 `delivery`. Pertraukimų apskaita (A3) veikia: neišgirsta
+uodega grįžta į variklį, jis pakartoja (skolos žinutė pasakyta iš naujo po pertraukimo).
+
+**Bet pertraukė ir tai, kas neturėjo:**
+
+| Kada | Kas pertraukė | Pasekmė |
+|---|---|---|
+| pasisveikinimas | „Labas!" | prisistatymas „Esu dirbtinio intelekto asistentas" neišgirstas → klientas klausė „Su kuo čia kalbu?" |
+| skolos žinutė | „Laukiu." (po 0,15 s) | visa žinutė nutraukta, kartota |
+
+Pipecat pertraukia dėl bet kokios kalbos. Sutvarkyta (`pipecat_call.py`):
+
+- pasisveikinimas groja iki galo (`MuteUntilFirstBotCompleteUserMuteStrategy`) — DI prisistatymas
+  visada išgirstamas (AI Act);
+- agentui kalbant pertraukti gali tik ≥ 3 žodžiai (`MinWordsUserTurnStartStrategy`,
+  `PIPECAT_MIN_WORDS`); agentui tylint ėjimas prasideda iš VAD iškart (`QuietVADUserTurnStartStrategy`).
+
+Delsa šiame skambutyje: mediana nuo tylos ~1,4 s (8 ėjimai); parašytos frazės iš talpyklos
+(Q1) — 739–1 265 ms, LLM ėjimai 1,35–2,1 s; vienas 4,6 s (ASR 977 + ilgas 154 simb. sakinys 1,76 s).
+
+> **2026-10-19:** pasisveikinimo nepertraukiamumas ir „≥ 3 žodžiai" — **laikini**; tikslinis
+> sprendimas sutartas [PERZIURA.md §6](PERZIURA.md) (pertraukti galima visur, privaloma info
+> grąžinama vėliau, „pritilti → spręsti").
+
+### 5.7 Pipecat su laikinomis taisyklėmis (2026-10-19 14:50)
+
+`20261019-145003…0001`, skolos skambutis, 6 ėjimai, 4 `delivery`.
+
+**Veikė:** pasisveikinimas iki galo; „Oho, oho." (2 žodžiai) nepertraukė; „Taip, dingo internetas."
+pertraukė adreso klausimą → klausimas pakartotas; „Bet negali būti, aš susimokėjau liepos
+mėnesį" pertraukė skolos žinutę → `inform.debt_offer` (ginčas, kaip sutarta). Delsa nuo tylos
+normaliuose ėjimuose 1,07–2,87 s, mediana ~1,4 s.
+
+**Radiniai:**
+
+| # | Kas | Priežastis |
+|---|---|---|
+| G17 | **„užregistruojau jūsų kreipimąsi" — tiketo nėra** (`informed_debt`, `ticket_id` null) | (a) „Gerai, ačiū." — tikras sutikimas — pasakytas agentui dar kalbant ~10 s žinutę → 2 žodžiai → **išmestas** (laikina „≥ 3 žodžiai" taisyklė); (b) „Registruoti, bet jinai…" neperskaitytas kaip „taip" į `debt_offer`; (c) sargas nesustabdė: `registration_claim` neturi „užregistruoj-" (Gemma neteisinga forma), `registration_claim_subject` neturi „kreipim" |
+| G18 | Tas pats atsakymas du kartus („…vadybininkas jus suardys" ×2) | „Liepos 3 dieną" atėjo kaip naujas ėjimas, kol buvo atsakoma į ankstesnį; Gemma „suardys" vietoj „susisieks" |
+| G19 | Pipecat `pipecat_latency` po pertraukimų klaidingas (19,8 s / 56 s / 97 s, `first_request`) | stebėtojas pameta ėjimo pradžią po pertraukimo — tik matavimas |
+
+**Išvada dėl „≥ 3 žodžiai":** saugo nuo „oho", bet išmeta trumpą atsakymą klausimo pabaigoje —
+patvirtina, kad reikia I-3 („pritilti → spręsti"); iki tol trumpos frazės agentui kalbant turėtų
+būti **ne išmetamos, o perduodamos kitam ėjimui** (kaip sename kelyje `overlay`).
+
+### 5.8 Pipecat po V1–V6 (2026-10-20, 2 skambučiai)
+
+`20261020-111428…0002` (skola, pertraukimai, tiketas) ir `20261020-111756…0003` (vardo nesakymas, tyla).
+
+**Veikia:**
+
+| Kas | Įrodymas |
+|---|---|
+| I-1 privaloma info | „Labai gerai" nutraukė pasisveikinimą → `required_owed` → kitas atsakymas prasidėjo „Esu dirbtinio intelekto asistentas…" |
+| I-3 pritarimas | „Aha." ir „Oho!" skolos žinutės metu → `barge_in continue`, agentas kalbėjo toliau |
+| I-3 pertraukimas | „Aš mokėjau liepos 6 d." → `yield`, neišgirsta skolos dalis pakartota |
+| G17 | „Taip, registruokit" → tiketas `TKTE95FE271` |
+| Įrašymas (V1) | `turn_00…13_*.wav` abiem skambučiams |
+| Delsa | nuo tylos mediana ~1,5–1,8 s (endpoint 200 ms) |
+
+**Radiniai (balsas — prieš A5):**
+
+| # | Kas | Priežastis |
+|---|---|---|
+| F1 | **Skolos naujiena kartojama 2–3 kartus** (sk. 2, 11:20:06–11:20:12) | skola = visas privalomas tekstas; pertrauktas pakartojimas vėl tampa skola → ciklas. Turėtų būti: skola tik **neišgirsti sakiniai**, ir pakartojama **vieną kartą** |
+| F2 | Po skolos LLM dar kartą pasako tą pačią informaciją („…bet sistemoje matosi skola 49 eurai…") | modelis nežino, kad variklis ką tik ją pasakė |
+| F3 | „Ačiū, kad paskambinote. Geros dienos!" du kartus; skambutis nesibaigia | po atsisveikinimo konvejeris neužsidaro (`EndWorkerFrame` iš procesoriaus jo nebaigia), dashboard'as nepadeda ragelio |
+| F4 | Tyla neiššaukė „Kaip sekasi?" | klientas tylėjo ~25 s, riba `voice_checkin_after_s` = 35 s (skirta fiziniams veiksmams prie routerio); klausimui per ilga |
+| F5 | „Mhm" ant atviro klausimo „Kuo galiu padėti?" → `yield` | taisyklė „agentas klausia → bet kas = atsakymas"; pritarimas atsakymas tik į taip/ne klausimą |
+| F6 | „Aš jau prieš / 5 valandas apmokiau ir / jis dar neaktyvavo" — ėjimas užsibaigė per vidurį, agentas atsisveikino | Smart Turn „nebaigė" + 1,2 s riba (Q2) — klientas tylėjo ilgiau; stebėti |
+
+**Variklio radiniai (2 etapas, atidėta — Andrius):** vardo nesakymo neapdoroja („Neatskleisiu" →
+vardas „Neatskleisiu"); „sumokėjau prieš 5 valandas, neveikia" — ginčas, o ne atsisveikinimas
+(G15/G21); pasenęs „Malonu, Tomas!" (G6).

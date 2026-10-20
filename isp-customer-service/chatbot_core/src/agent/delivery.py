@@ -48,6 +48,7 @@ def apply_delivery(state: Any, rt: Any, sentences: list[str], delivered: int) ->
         if msg.get("role") == "assistant":
             msg["content"] = (heard + " —") if heard else "—"
             break
+    tail = _owe_required(state, rt, heard, tail)
     state.voice.undelivered_tail = tail or None
     # Andrius 2026-08-26: the agent must NEVER believe it asked a question
     # the caller could not hear. When the "?" lives only in the unheard
@@ -78,3 +79,36 @@ def apply_delivery(state: Any, rt: Any, sentences: list[str], delivered: int) ->
         unheard=tail[:160],
         question_unheard=bool(state.voice.unheard_question),
     )
+
+
+def _sentences(text: str) -> list[str]:
+    import re
+
+    return [s for s in re.split(r"(?<=[.!?])\s+", (text or "").strip()) if s]
+
+
+def _fold(text: str) -> str:
+    return " ".join((text or "").lower().split())
+
+
+def _owe_required(state: Any, rt: Any, heard: str, tail: str) -> str:
+    """PERZIURA §6 I-1: required words (`Say.required`) the caller did not hear in full are
+    owed — the next reply says them first, as the engine wrote them. They leave the unheard
+    tail, so the narrator is not asked to say them a second time in its own words."""
+    owed = []
+    heard_folded = _fold(heard)
+    for required in state.voice.required_said:
+        for sentence in _sentences(required):
+            if _fold(sentence) in heard_folded:
+                continue  # this part was heard
+            if sentence in state.voice.redelivered:
+                # Said again once already: no loop (F1) — it stays in the unheard tail, for
+                # the narrator to mention briefly in its own words.
+                continue
+            owed.append(sentence)
+            tail = tail.replace(sentence, "").strip()
+    state.voice.required_said = []
+    if owed:
+        state.voice.owed = [*state.voice.owed, *[o for o in owed if o not in state.voice.owed]]
+        rt.tracer.emit("required_owed", owed=[o[:120] for o in owed])
+    return tail

@@ -57,10 +57,13 @@ def endpoint_windows() -> dict[str, int]:
 
 
 def turns_of(path: Path, windows: dict) -> list[dict]:
+    text = path.read_text(encoding="utf-8", errors="replace")
+    if '"pipecat_latency"' in text:
+        return pipecat_turns_of(path, text)
     turns: list[dict] = []
     cur: dict | None = None
     last_mode = None
-    for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
+    for line in text.splitlines():
         try:
             e = json.loads(line)
         except ValueError:
@@ -106,6 +109,56 @@ def turns_of(path: Path, windows: dict) -> list[dict]:
     return turns
 
 
+def pipecat_turns_of(path: Path, text: str) -> list[dict]:
+    """A Pipecat call: Pipecat measures the turn itself (`pipecat_latency`, from the caller's
+    silence as VAD hears it) — the endpoint wait is measured here, not estimated. `speak`
+    is the engine's turn minus the LLM read and the engine nodes."""
+    turns: list[dict] = []
+    cur: dict | None = None
+    for line in text.splitlines():
+        try:
+            e = json.loads(line)
+        except ValueError:
+            continue
+        t = e.get("type")
+        if t == "user_turn":
+            cur = {"text": e.get("text", ""), "read": 0, "engine": 0, "mode": "pipecat"}
+            turns.append(cur)
+        elif cur is None:
+            continue
+        elif t == "llm" and e.get("role") in READ_ROLES:
+            cur["read"] += e.get("latency_ms", 0)
+        elif t == "graph_node" and e.get("node") in ("decide", "execute"):
+            cur["engine"] += e.get("ms", 0)
+        elif t == "tts" and "first_chars" not in cur:
+            cur["first_chars"] = e.get("chars", 0)
+        elif t == "turn_summary":
+            cur["kind"] = e.get("engine", "?")
+        elif t == "pipecat_latency" and "latency" not in cur:
+            parts = e.get("parts", {})
+            if e.get("suspect") or "transcription" not in parts or "first_request" in parts:
+                continue  # the greeting, or a measurement lost in a barge-in (G19)
+            cur["latency"] = e
+    rows = []
+    for turn in turns:
+        lat = turn.pop("latency", None)
+        if lat is None:
+            continue
+        parts = lat.get("parts", {})
+        pipeline = parts.get("pipeline", 0)
+        turn["endpoint*"] = parts.get("endpointing_wait", 0) + parts.get("turn_detection", 0)
+        turn["asr"] = parts.get("transcription", 0)
+        turn["speak"] = max(0, pipeline - turn["read"] - turn["engine"])
+        turn["sentence"] = parts.get("sentence_aggregation", 0)
+        turn["tts"] = parts.get("speech_synthesis", 0)
+        turn["first+ep*"] = lat.get("total_ms", 0)
+        turn["first"] = turn["first+ep*"] - turn["endpoint*"]
+        turn["session"] = path.stem
+        turn.setdefault("kind", "?")
+        rows.append(turn)
+    return rows
+
+
 def pick_files(args) -> list[Path]:
     files = sorted(LOGS.glob("*.jsonl"))
     if args.session:
@@ -148,7 +201,9 @@ def main() -> int:
         print("Nerasta balso ėjimų su turn_timing.")
         return 1
     print(f"Skambučiai: {len(files)} ({files[0].stem} … {files[-1].stem})")
-    print("* endpoint — įvertis iš tylos lango, ne išmatuotas laikas")
+    print(
+        "* endpoint — senas balsas: įvertis iš tylos lango; Pipecat: išmatuota (laukimas + Smart Turn)"
+    )
 
     if args.turns:
         head = " ".join(f"{c:>9}" for c in LAYERS)

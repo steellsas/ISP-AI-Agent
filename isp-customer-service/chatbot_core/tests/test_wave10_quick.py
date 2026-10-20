@@ -230,6 +230,16 @@ class TestAPromiseNothingBacksIsNotSpoken:
             state.ticket.stage = "phone"
         assert not unbacked_promise(state, self.PROMISE)
 
+    def test_a_misformed_past_promise_after_the_debt_offer_is_withheld(self, case_call):
+        """Live 2026-10-19 (G17): Gemma's „užregistruojau jūsų kreipimąsi" with no ticket."""
+        from agent.execute.ticket import unbacked_promise
+
+        state, _ = case_call
+        state.case.fault = None
+        state.diagnosis.verdicts["network"] = {"reason": "billing_suspended"}
+        state.diagnosis.news_delivered = True
+        assert unbacked_promise(state, "Gerai, Tomas, užregistruojau jūsų kreipimąsi.")
+
     def test_other_sentences_pass(self, case_call):
         from agent.execute.ticket import unbacked_promise
 

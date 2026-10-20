@@ -22,17 +22,19 @@ def speak(state: Any, rt: Any, plan: Any, action_text: str | None) -> str | None
 
     say = plan.say
     if say.kind == "none":
-        return None
+        return None  # anything owed waits for a turn that speaks
     user_input = state.turn.user_input
+    owed = _take_owed(state, rt)
     if say.kind == "phrase":
         text = phrase(say.key, **say.vars) if say.key else (say.text or action_text)
+        _remember_required(state, plan, text, owed)
         if text and say.written:
             # L2: parašyti žodžiai eina kaip yra, bet VISA kita ėjimo apskaita turi likti —
             # žingsnio žymė, pakartojimų sargas, atsakymų istorija. Be `finalize` scenarinis
             # atsakymas sargui yra nematomas.
             from ..speak.postprocess import finalize, trim_to_cap
 
-            text = trim_to_cap(state, rt, text)
+            text = _with_owed(owed, trim_to_cap(state, rt, text))
             _speak_text(state, rt, say, user_input, text)
             if say.stage in ("intake", "diagnosis"):
                 from .step import mark_case_step_said, mark_step_presented
@@ -42,17 +44,79 @@ def speak(state: Any, rt: Any, plan: Any, action_text: str | None) -> str | None
             finalize(state, rt, text, trace_reply=False)
             return text
         if text and say.committed:
+            if owed:
+                _say_owed(state, rt, owed)
             _stream(text)  # the engine already put the words on the history and trace
             return text
         if text:
+            text = _with_owed(owed, text)
             _speak_text(state, rt, say, user_input, text)
             return text
+    _remember_required(state, plan, None, owed)
+    if owed:
+        _say_owed(state, rt, owed)  # first, then the model's words (it sees them on the history)
+        state.voice.just_said = owed  # …and is told not to say them again (F2)
     reply = _narrate(state, rt, say.stage, user_input)
+    if owed:
+        _merge_owed_message(state, owed)
+        reply = f"{owed} {reply}"
     if say.stage in ("intake", "diagnosis"):
         from .step import mark_step_presented
 
         mark_step_presented(state, rt)
     return reply
+
+
+# --- required information (PERZIURA §6 I-1) ------------------------------------------------
+# A barge-in may cut words the caller must hear (the AI disclosure, the debt or outage news,
+# the ticket confirmation). The delivery report marks them owed; the next reply says them
+# first — engine words from the cache, before whatever this turn says.
+
+
+def _take_owed(state: Any, rt: Any) -> str | None:
+    owed = " ".join(state.voice.owed).strip()
+    if not owed:
+        return None
+    rt.tracer.emit("required_redelivered", text=owed[:200])
+    state.voice.redelivered = [*state.voice.redelivered, *state.voice.owed]
+    state.voice.owed = []
+    return owed
+
+
+def _with_owed(owed: str | None, text: str) -> str:
+    return f"{owed} {text}" if owed else text
+
+
+def _remember_required(state: Any, plan: Any, text: str | None, owed: str | None) -> None:
+    """What this reply must get across — the delivery report checks it after a barge-in."""
+    required = [r for r in (owed, plan.say.required or _ticket_confirmation(plan, text)) if r]
+    state.voice.required_said = required
+
+
+def _ticket_confirmation(plan: Any, text: str | None) -> str | None:
+    """„Užregistravau. Skambinsime …, … ." — the registration, without the closing question."""
+    if plan.rule != "ticket.register" or not text:
+        return None
+    import re
+
+    sentences = re.split(r"(?<=[.!?])\s+", text.strip())
+    kept = [s for s in sentences if not s.rstrip().endswith("?")]
+    return " ".join(kept) or None
+
+
+def _say_owed(state: Any, rt: Any, owed: str) -> None:
+    state.messages.append({"role": "assistant", "content": owed})
+    rt.tracer.emit("agent_reply", text=owed)
+    _stream(owed + " ")
+
+
+def _merge_owed_message(state: Any, owed: str) -> None:
+    """The owed words and the model's reply are one turn on the history."""
+    msgs = state.messages
+    if len(msgs) >= 2 and msgs[-2].get("role") == "assistant" and msgs[-2].get("content") == owed:
+        if msgs[-1].get("role") == "assistant":
+            msgs[-1]["content"] = f"{owed} {msgs[-1].get('content') or ''}".strip()
+            del msgs[-2]
 
 
 def _speak_text(state: Any, rt: Any, say: Any, user_input: str | None, text: str) -> None:

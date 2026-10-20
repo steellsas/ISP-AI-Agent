@@ -47,6 +47,16 @@ def reply_plan(state: Any, rt: Any, user_input: str | None) -> TurnPlan | None:
         key, state.closing.declined_goodbye_due = state.closing.declined_goodbye_due, None
         return _words("dialog.declined_goodbye", _end_phrase(key))
     if s.closing.case_closed:
+        if s.closing.is_complete:
+            # The call ends this turn: the goodbye is said — always, by the engine (Andrius
+            # 2026-10-20: live, the caller's „viso gero" cut „Ar dar kuo galiu padėti?", the
+            # narrator re-asked it as told, and the line went down without a goodbye). A
+            # question the caller did not hear is not asked any more.
+            from ...contract.locale import phrase as _bye
+
+            state.voice.unheard_question = None
+            state.voice.undelivered_tail = None
+            return _words("closing.closed_this_turn", _bye("identification.goodbye"))
         return _plan("closing.closed_this_turn", None, directive=True)
     from ...contract.locale import phrase
     from ...identification import caller_question
@@ -242,6 +252,8 @@ def reply_plan(state: Any, rt: Any, user_input: str | None) -> TurnPlan | None:
         offer = debt_offer_turn(state, rt, user_input)
         if offer == "ask":
             return _words("inform.debt_offer", phrase("identification.debt_dispute_offer"))
+        if offer == "clarify":
+            return _words("inform.debt_offer", phrase("identification.debt_dispute_clarify"))
         if offer == "start":
             return _words(*ticket_question_turn(state, rt))
     if (
@@ -454,6 +466,7 @@ def reply_plan(state: Any, rt: Any, user_input: str | None) -> TurnPlan | None:
                 [phrase("identification.thanks"), inf, phrase("identification.anything_else")]
             ),
             action=inform_action,
+            required=inf,
         )
     zinia = phrase_or(f"verdict.{reason}.gloss", reason or "")
     if not zinia:
@@ -487,7 +500,11 @@ _STATE: dict[str, Any] = {}
 
 
 def _plan(
-    rule: str, words: str | None, action: Action | None = None, directive: bool = False
+    rule: str,
+    words: str | None,
+    action: Action | None = None,
+    directive: bool = False,
+    required: str | None = None,
 ) -> TurnPlan:
     state = _STATE["state"]
     owner = _owner(state, rule)
@@ -500,7 +517,7 @@ def _plan(
     if directive:
         say = Say(kind="directive", stage=stage)
     else:
-        say = Say(kind="phrase", text=words, stage=stage)
+        say = Say(kind="phrase", text=words, stage=stage, required=required)
     return TurnPlan(owner=owner, rule=rule, action=action or Action(type="none"), say=say)
 
 

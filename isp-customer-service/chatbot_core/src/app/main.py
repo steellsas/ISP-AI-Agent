@@ -342,8 +342,63 @@ async def greeting_audio(session_id: str):
     return Response(content=audio, media_type="audio/mpeg")
 
 
+class WebRTCOffer(BaseModel):
+    sdp: str
+    type: str
+    pc_id: str | None = None
+    restart_pc: bool | None = None
+
+
+_webrtc_handler = None  # one SmallWebRTCRequestHandler, made on the first Pipecat call
+_pipecat_calls: dict[str, asyncio.Task] = {}
+
+
+@app.post("/sessions/{session_id}/webrtc")
+async def webrtc_offer(session_id: str, offer: WebRTCOffer):
+    """Pipecat voice mode: the browser's WebRTC offer for a dashboard session. Audio goes
+    through Pipecat (VAD, Smart Turn, interruptions); the brain panel still follows the call
+    over /ws/call/{id}, which carries events only. Needs the `pipecat` extra."""
+    global _webrtc_handler
+    try:
+        manager.get(session_id)
+    except SessionNotFound:
+        raise HTTPException(status_code=404, detail="unknown session") from None
+    try:
+        from pipecat.transports.smallwebrtc.request_handler import (
+            SmallWebRTCRequest,
+            SmallWebRTCRequestHandler,
+        )
+
+        from .pipecat_call import run_dashboard_call
+    except ImportError as exc:
+        raise HTTPException(
+            status_code=501, detail=f"Pipecat is not installed (uv sync --extra pipecat): {exc}"
+        ) from None
+    if _webrtc_handler is None:
+        _webrtc_handler = SmallWebRTCRequestHandler()
+
+    async def _start(connection) -> None:
+        async def _run() -> None:
+            try:
+                await run_dashboard_call(connection, manager, session_id)
+            except Exception:
+                logger.exception(f"pipecat call {session_id} failed")
+            finally:
+                _pipecat_calls.pop(session_id, None)
+
+        _pipecat_calls[session_id] = asyncio.create_task(_run())
+
+    return await _webrtc_handler.handle_web_request(
+        request=SmallWebRTCRequest(**offer.model_dump()),
+        webrtc_connection_callback=_start,
+    )
+
+
 @app.delete("/sessions/{session_id}")
 async def delete_session(session_id: str):
+    call = _pipecat_calls.pop(session_id, None)
+    if call is not None:  # the Pipecat audio of this session stops with it
+        call.cancel()
     try:
         await manager.end(session_id, outcome="client_closed")
     except SessionNotFound:

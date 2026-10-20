@@ -617,3 +617,68 @@ dydžiai, fazių savininkai, mazgų vidus, šių radinių būklė. Sutarta su An
   pirma šešėlyje.
 - Etapas 0 (greiti taisymai) atliktas 10 bangoje; projektas ir etapai 2–7 —
   [STRUKTURA_V3.md](STRUKTURA_V3.md) (laukia patvirtinimo).
+
+## 6. Pertraukimai ir privaloma informacija (sutarta 2026-10-19)
+
+**Principas (Andrius):** pertraukti galima visada ir visose fazėse — taip pokalbis natūralus.
+Bet tai, ką agentas **privalėjo pasakyti, neprarandama**: variklis žino, kas išgirsta, o kas ne,
+ir neišgirstą pasako vėliau, savais žodžiais, natūralioje vietoje.
+
+Pavyzdžiai:
+
+- Pasisveikinimą pertraukia kliento „Labas" → agentas atsako ir **vėliau prisistato** („…esu
+  dirbtinio intelekto asistentas"), nes prisistatymas buvo neišgirstas.
+- Klientas pertraukia atsakydamas į **dalį** klausimo („Dega!") → agentas klausia likusios dalies
+  („O kokios spalvos?") arba pasitikslina.
+- Pertraukti **neturi**: aidas, foninis triukšmas, kitas balsas ragelyje (TV, šeima); pritarimai
+  („aha", „mhm") agento nesustabdo.
+
+```
+kalba agentui kalbant
+ ├─ 1 ar tai klientas?   aidas / triukšmas / kitas balsas → ignoruoti, agentas tęsia
+ ├─ 2 kokia rūšis?       pritarimas → tęsia │ pasisveikinimas, atsakymas, klausimas, pataisymas → pertraukia
+ ├─ 3 apskaita           kas išgirsta (D1) + privaloma info → neišgirsta = „skola"
+ └─ 4 variklis           atsako į kliento žodžius; „skolą" įterpia vėliau (sprendžia variklis, ne LLM)
+```
+
+**Sprendimai:**
+
+| # | Kas | Pastaba |
+|---|---|---|
+| I-1 | **Privaloma informacija variklyje** — kortelės / frazės žymi privalomus teiginius (DI prisistatymas, skolos suma, avarijos laikas, tiketo duomenys); variklis seka, ar išgirsti; neišgirstas → kitas planas įpareigoja jį pasakyti | dabar `undelivered_tail` tik patarimas LLM'ui |
+| I-2 | **Dalinis atsakymas** — klausimas turi dalis (faktus); atsakius į dalį, variklis klausia likusios | adresui jau veikia, bendro mechanizmo nėra |
+| I-3 | **„Pritilti → spręsti"**: išgirdus kalbą agentas iškart pritildo / sustoja; po ASR — tikras pertraukimas → užleidžia (D1 apskaita); pritarimas / triukšmas → tęsia nuo sakinio pradžios | seno kelio `duck` + `classify_interruption` perkelti į Pipecat |
+| I-4 | Triukšmas: aido slopinimas, VAD minimali trukmė ir garsumas, ASR triukšmo filtras **prieš** kirpimą | |
+| I-5 | Kito balso (TV, šeima) atskyrimas — produkcijai (pagrindinio kalbėtojo atpažinimas) | ne demo |
+
+**Patikslinta 2026-10-20 (Andrius):**
+
+- **Privaloma informacija (I-1):** DI prisistatymas; skolos suma ir kaip paslauga atsistato;
+  avarijos priežastis ir numatomas laikas; tiketo registracijos patvirtinimas su kontaktais.
+- **Reakcija su pavėlavimu (I-3):** išgirdęs klientą, agentas **pabaigia dabartinę frazę** (iki
+  kablelio / taško, ne ilgiau ~1,5 s), tada stoja; po sprendimo „tęsti" — **tęsia nuo pauzės vietos**.
+- **Aidas:** telefonijoje agento ir kliento garsas — atskiri takai; likutinis aidas (garsiakalbis)
+  atpažįstamas lyginant su tuo, ką agentas sako.
+- **Foninis triukšmas, muzika, kiti balsai — ATIDĖTA** iki bandymų: nediegti dabar, kad foną
+  netyčia nepalaikytume kliento kalba; apgalvoti, kaip atskirti klientą nuo kitų (I-4, I-5).
+
+**Laikina (keisti įgyvendinant I-1 ir I-3):** Pipecat kelyje (`47e3c5e`) pasisveikinimas
+nepertraukiamas, o agentui kalbant pertraukia tik ≥ 3 žodžiai — apsauga nuo „Labas!" / „Laukiu."
+nukirpimų, kol nėra I-1 ir I-3. Vieta peržiūroje: 7 etapas, šalia „kelių problemų".
+
+## 7. Pokalbio pabaiga balse (sutarta 2026-10-20)
+
+**Andrius:** agentas neturi „užtrenkti" ragelio. Po baigiamojo klausimo jis **būtinai laukia
+atsakymo**; nesulaukęs — atsisveikina ir tik tada padeda ragelį.
+
+```
+A: „…Ar dar kuo galiu padėti?"            ← laukia atsakymo
+   ├─ „ne, ačiū" / „viso gero"  → „Ačiū, kad paskambinote. Geros dienos!" → pauzė → ragelis
+   ├─ naujas klausimas / „vis tiek neveikia" → pokalbis tęsiasi
+   └─ tyla 5 s (closing_silence_s) → „Geros dienos! Jei dar ko reikės — skambinkite." → ragelis
+```
+
+- Ėjimas, kuriuo skambutis baigiamas, **visada** baigiasi variklio atsisveikinimu (ne LLM); neišgirstas
+  klausimas tada nebekartojamas (gyvai: „viso gero" nutraukė „Ar dar kuo galiu padėti?", modelis jį
+  pakartojo ir ragelis nukrito be atsisveikinimo).
+- Ragelis padedamas, kai atsisveikinimas nuskambėjo, po `goodbye_hangup_after_s` (1,5 s) pauzės.

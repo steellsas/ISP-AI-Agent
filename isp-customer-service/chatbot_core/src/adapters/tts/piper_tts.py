@@ -75,6 +75,9 @@ class PiperTTSProvider:
 
     _CACHE: dict[tuple, bytes] = {}
     _CACHE_MAX = 512
+    # PCM pieces per sentence for the Pipecat voice (~44 kB per second of speech).
+    _PCM_CACHE: dict[tuple, list[tuple[bytes, int]]] = {}
+    _PCM_CACHE_MAX = 1024
     last_synthesis_ms: int = 0
 
     def __init__(
@@ -174,13 +177,91 @@ class PiperTTSProvider:
         cached = self._CACHE.get(key)
         if cached is not None:
             return cached
+        pcm, sample_rate = self._render(sentence)
+        mp3 = _to_mp3(pcm, sample_rate) if pcm else b""
+        if mp3:
+            if len(self._CACHE) >= self._CACHE_MAX:
+                self._CACHE.pop(next(iter(self._CACHE)))
+            self._CACHE[key] = mp3
+            # The same sentence for the PCM transport (Pipecat): the startup prewarm of
+            # the scripted lines fills both caches with one rendering.
+            self._remember_pcm(key, [(pcm, sample_rate)])
+        return mp3
 
+    def _remember_pcm(self, key: tuple, pieces: list[tuple[bytes, int]]) -> None:
+        if len(self._PCM_CACHE) >= self._PCM_CACHE_MAX:
+            self._PCM_CACHE.pop(next(iter(self._PCM_CACHE)))
+        self._PCM_CACHE[key] = pieces
+
+    def synthesize_pcm(self, sentence: str) -> tuple[bytes, int]:
+        """One sentence as raw 16-bit mono PCM and its sample rate — for transports that
+        stream PCM themselves (the Pipecat spike) instead of MP3 blobs."""
+        from .sentences import speakable
+
+        return self._render(speakable(sentence, self._default_language))
+
+    def stream_pcm(self, sentence: str) -> Iterator[tuple[bytes, int]]:
+        """One sentence as PCM pieces, each yielded as soon as the recipe renders it —
+        a phrase up to a comma or a dash, then its pause. The caller hears the first
+        phrase while the rest is still being synthesized (DELSA P1). Same sound as
+        `synthesize_pcm`: the recipe's closing silence is replaced by the sentence gap.
+        A sentence said before (a scripted line) comes from the cache at once (DELSA Q1)."""
+        from .sentences import speakable
+
+        sentence = speakable(sentence, self._default_language)
+        key = self._key(sentence)
+        cached = self._PCM_CACHE.get(key)
+        if cached is not None:
+            yield from cached
+            return
+        pieces = []
+        for piece in self._stream_speakable(sentence):
+            pieces.append(piece)
+            yield piece
+        if pieces:
+            self._remember_pcm(key, pieces)
+
+    def _stream_speakable(self, sentence: str) -> Iterator[tuple[bytes, int]]:
+        """`stream_pcm` for a sentence already made speakable, without the cache."""
         import numpy as np
 
-        voice, phonemizer, recipe = self._load()
+        synth, recipe = self._new_synth()
         t0 = time.perf_counter()
-        # A fresh recipe object per sentence: it keeps a tempo reference and a
-        # measurement log, which must neither leak between calls nor grow forever.
+        held: list[np.ndarray] = []  # silence waits until more speech follows it
+        pending = None  # the last phrase waits for the next one: if it is the last, it is trimmed
+        first_ms = None
+        for piece in synth.gabalai(sentence):
+            if not np.any(piece):
+                held.append(piece)
+                continue
+            if pending is not None:
+                if first_ms is None:
+                    first_ms = int((time.perf_counter() - t0) * 1000)
+                yield recipe.i_int16(pending), synth.sr
+            pending = np.concatenate([*held, piece])
+            held = []
+        if pending is None:
+            return
+        voiced = np.flatnonzero(pending)
+        pending = pending[: int(voiced[-1]) + 1]
+        tail = int(synth.sr * (synth.pauze.get(sentence.rstrip()[-1:], 0.0) + _SENTENCE_GAP_S))
+        if first_ms is None:
+            first_ms = int((time.perf_counter() - t0) * 1000)
+        yield recipe.i_int16(np.concatenate([pending, np.zeros(tail, dtype=np.float32)])), synth.sr
+        ms = int((time.perf_counter() - t0) * 1000)
+        logger.info(
+            "piper %s: %d chars streamed, first piece %d ms, all %d ms",
+            self._voice,
+            len(sentence),
+            first_ms,
+            ms,
+        )
+        self.last_synthesis_ms = ms
+
+    def _new_synth(self):
+        """A fresh recipe object per sentence: it keeps a tempo reference and a
+        measurement log, which must neither leak between calls nor grow forever."""
+        voice, phonemizer, recipe = self._load()
         synth = recipe.ReginuteSynth(
             voice,
             phonemizer,
@@ -189,6 +270,13 @@ class PiperTTSProvider:
             lyginti_greiti=self._levelling(),
         )
         synth.syn = replace(synth.syn, noise_scale=self._noise_scale())
+        return synth, recipe
+
+    def _render(self, sentence: str) -> tuple[bytes, int]:
+        import numpy as np
+
+        synth, recipe = self._new_synth()
+        t0 = time.perf_counter()
         audio = np.concatenate([*synth.gabalai(sentence), np.zeros(1, dtype=np.float32)])
         # The recipe ends every call with 0.85 s of silence (it expects a whole
         # text); per sentence that would put a long hole between sentences.
@@ -196,17 +284,13 @@ class PiperTTSProvider:
         end = int(voiced[-1]) + 1 if voiced.size else 0
         tail = int(synth.sr * (synth.pauze.get(sentence.rstrip()[-1:], 0.0) + _SENTENCE_GAP_S))
         audio = np.concatenate([audio[:end], np.zeros(tail, dtype=np.float32)])
-        mp3 = _to_mp3(recipe.i_int16(audio), synth.sr) if end else b""
+        pcm = recipe.i_int16(audio) if end else b""
         ms = int((time.perf_counter() - t0) * 1000)
         logger.info(
-            "piper %s: %d chars -> %d bytes in %d ms", self._voice, len(sentence), len(mp3), ms
+            "piper %s: %d chars -> %d bytes in %d ms", self._voice, len(sentence), len(pcm), ms
         )
         self.last_synthesis_ms = ms
-        if mp3:
-            if len(self._CACHE) >= self._CACHE_MAX:
-                self._CACHE.pop(next(iter(self._CACHE)))
-            self._CACHE[key] = mp3
-        return mp3
+        return pcm, synth.sr
 
     # --- TTSProvider / StreamingTTSProvider --------------------------------
 
