@@ -10,8 +10,7 @@ In the dashboard (`run_dashboard_call`) the session is the one `POST /sessions` 
 the brain panel, the archive and the simulate buttons see this call like any other: every
 turn runs under the session lock and ends with the same `turn_summary`.
 
-Env: PIPECAT_MIN_WORDS (words the caller must say to interrupt the agent, default 3),
-SMART_TURN_STOP_SECS (silence fallback when Smart Turn says “not finished”, default
+Env: SMART_TURN_STOP_SECS (silence fallback when Smart Turn says “not finished”, default
 1.2 — 2.0 left a caller waiting 1.5 s after a finished “Ne, …”, DELSA §5.4), VAD_STOP_SECS (pause that triggers a Smart Turn check, default 0.2).
 
 After a barge-in the engine hears which sentences were played out (`SpokenTracker`), as on
@@ -21,11 +20,13 @@ the old voice path. Not yet: check-ins.
 from __future__ import annotations
 
 import asyncio
+import collections
 import contextlib
 import os
 import threading
 import time
 
+from agent.barge_in import overlap_decision
 from loguru import logger
 from pipecat.audio.turn.smart_turn.base_smart_turn import SmartTurnParams
 from pipecat.audio.turn.smart_turn.local_smart_turn_v3 import LocalSmartTurnAnalyzerV3
@@ -42,8 +43,12 @@ from pipecat.frames.frames import (
     LLMFullResponseEndFrame,
     LLMFullResponseStartFrame,
     LLMTextFrame,
+    SystemFrame,
     TranscriptionFrame,
+    TTSAudioRawFrame,
     TTSTextFrame,
+    VADUserStartedSpeakingFrame,
+    VADUserStoppedSpeakingFrame,
 )
 from pipecat.observers.user_bot_latency_observer import UserBotLatencyObserver
 from pipecat.pipeline.pipeline import Pipeline
@@ -63,10 +68,7 @@ from pipecat.turns.types import ProcessFrameResult
 from pipecat.turns.user_mute.mute_until_first_bot_complete_user_mute_strategy import (
     MuteUntilFirstBotCompleteUserMuteStrategy,
 )
-from pipecat.turns.user_start.min_words_user_turn_start_strategy import (
-    MinWordsUserTurnStartStrategy,
-)
-from pipecat.turns.user_start.vad_user_turn_start_strategy import VADUserTurnStartStrategy
+from pipecat.turns.user_start.base_user_turn_start_strategy import BaseUserTurnStartStrategy
 from pipecat.turns.user_stop.turn_analyzer_user_turn_stop_strategy import (
     TurnAnalyzerUserTurnStopStrategy,
 )
@@ -259,27 +261,185 @@ class EnginePiperTTS(TTSService):
         )
 
 
-class QuietVADUserTurnStartStrategy(VADUserTurnStartStrategy):
-    """VAD starts the caller's turn at once — but only while the agent is silent.
+class PacedHoldGate(FrameProcessor):
+    """Between the TTS and the audio output: the agent's audio goes out at speaking pace
+    (a quarter second ahead of the speaker, not the whole reply at once), so the agent can
+    stop at the end of its current phrase and go on from there (PERZIURA §6 I-3).
 
-    While the agent speaks, a bare “labas”, “aha”, “laukiu” must not cut it off (live
-    2026-10-19: “Laukiu.” cut the whole debt news 0.15 s in; “Labas!” cut the greeting).
-    Then only `MinWordsUserTurnStartStrategy` may start a turn — and interrupt — once the
-    caller has said a few words; the old voice path classified such speech the same way
-    (backchannel / echo / substantive)."""
+    open       audio flows at speaking pace
+    finishing  the caller spoke: the current phrase plays out up to its pause (the recipe's
+               silence after a comma or a full stop), at most `barge_finish_max_ms`
+    held       nothing more goes out; `release()` goes on from here, `drop()` (or a barge-in
+               interruption) throws the rest away
+    """
+
+    CHUNK_S = 0.04
+    LEAD_S = 0.25
+    SILENT_RMS = 60.0
 
     def __init__(self, **kwargs) -> None:
         super().__init__(**kwargs)
-        self._agent_speaking = False
+        self._queue: collections.deque = collections.deque()
+        self._wake = asyncio.Event()
+        self._state = "open"
+        self._deadline = 0.0
+        self._out_until = 0.0  # when the audio already handed to the output ends
+        self._pump = None
+
+    @property
+    def busy(self) -> bool:
+        """The agent is speaking, or holds speech it may still say."""
+        return bool(self._queue) or self._state != "open" or time.monotonic() < self._out_until
+
+    def finish_then_hold(self) -> None:
+        from agent.contract import limits
+
+        if self._state == "open" and self.busy:
+            self._state = "finishing"
+            self._deadline = time.monotonic() + limits.get("barge_finish_max_ms") / 1000
+            self._wake.set()
+
+    def release(self) -> None:
+        self._state = "open"
+        self._wake.set()
+
+    def drop(self) -> None:
+        self._queue.clear()
+        self._state = "open"
+        self._out_until = time.monotonic()
+
+    async def process_frame(self, frame: Frame, direction: FrameDirection):
+        await super().process_frame(frame, direction)
+        if isinstance(frame, InterruptionFrame):
+            self.drop()
+            await self.push_frame(frame, direction)
+            return
+        if direction != FrameDirection.DOWNSTREAM or isinstance(frame, SystemFrame):
+            await self.push_frame(frame, direction)
+            return
+        if isinstance(frame, TTSAudioRawFrame):
+            self._enqueue_audio(frame)
+        elif self._queue:
+            self._queue.append(frame)  # keeps its place behind the audio (TTSTextFrame timing)
+        else:
+            await self.push_frame(frame, direction)
+            return
+        if self._pump is None:
+            self._pump = self.create_task(self._run())
+        self._wake.set()
+
+    def _enqueue_audio(self, frame: TTSAudioRawFrame) -> None:
+        step = int(frame.sample_rate * self.CHUNK_S) * 2 * frame.num_channels
+        audio = frame.audio
+        for i in range(0, len(audio), step):
+            self._queue.append(
+                TTSAudioRawFrame(
+                    audio[i : i + step],
+                    frame.sample_rate,
+                    frame.num_channels,
+                    context_id=getattr(frame, "context_id", None),
+                )
+            )
+
+    def _silent(self, frame: TTSAudioRawFrame) -> bool:
+        import numpy as np
+
+        pcm = np.frombuffer(frame.audio, dtype=np.int16)
+        if pcm.size == 0:
+            return True
+        return float(np.sqrt(np.mean(pcm.astype(np.float32) ** 2))) < self.SILENT_RMS
+
+    async def _run(self) -> None:
+        while True:
+            if not self._queue or self._state == "held":
+                self._wake.clear()
+                await self._wake.wait()
+                continue
+            frame = self._queue[0]
+            if isinstance(frame, TTSAudioRawFrame):
+                now = time.monotonic()
+                if self._state == "finishing" and (self._silent(frame) or now >= self._deadline):
+                    self._state = "held"  # the phrase is over: the agent stops here
+                    continue
+                lead = self._out_until - now
+                if lead > self.LEAD_S:
+                    self._wake.clear()
+                    with contextlib.suppress(asyncio.TimeoutError):
+                        await asyncio.wait_for(self._wake.wait(), lead - self.LEAD_S)
+                    continue
+                self._queue.popleft()
+                duration = len(frame.audio) / (2 * frame.num_channels * frame.sample_rate)
+                self._out_until = max(self._out_until, now) + duration
+                await self.push_frame(frame)
+            else:
+                self._queue.popleft()
+                await self.push_frame(frame)
+
+
+class FinishThenDecideUserTurnStartStrategy(BaseUserTurnStartStrategy):
+    """Who takes the turn when the caller speaks (PERZIURA §6 I-3).
+
+    The agent is silent: the caller's voice starts the turn at once (VAD).
+    The agent is speaking: it finishes its phrase and holds (`PacedHoldGate`); once the
+    caller's words are transcribed, `agent.barge_in.overlap_decision` decides: an answer, a
+    question, a halt -> the caller's turn (and the D1 report of what they heard); a
+    backchannel, our own echo, nothing readable -> the agent goes on from where it stopped.
+    No words within `barge_wait_transcript_ms` after the caller stops -> it goes on too."""
+
+    def __init__(self, gate: PacedHoldGate, tracker: SpokenTracker, session, **kwargs) -> None:
+        super().__init__(**kwargs)
+        self._gate = gate
+        self._tracker = tracker
+        self._session = session
+        self._pending = False
+        self._timer = None
 
     async def process_frame(self, frame: Frame) -> ProcessFrameResult:
-        if isinstance(frame, BotStartedSpeakingFrame):
-            self._agent_speaking = True
-        elif isinstance(frame, BotStoppedSpeakingFrame):
-            self._agent_speaking = False
-        if self._agent_speaking:
-            return ProcessFrameResult.CONTINUE
-        return await super().process_frame(frame)
+        if isinstance(frame, VADUserStartedSpeakingFrame):
+            if self._gate.busy:
+                self._pending = True
+                self._cancel_timer()
+                self._gate.finish_then_hold()
+                return ProcessFrameResult.CONTINUE
+            await self.trigger_user_turn_started()
+            return ProcessFrameResult.STOP
+        if isinstance(frame, VADUserStoppedSpeakingFrame) and self._pending:
+            self._cancel_timer()
+            self._timer = asyncio.create_task(self._give_up())
+        elif isinstance(frame, TranscriptionFrame) and self._pending:
+            self._pending = False
+            self._cancel_timer()
+            asked = self._tracker.agent_asked()
+            decision = overlap_decision(frame.text, self._tracker.reply, asked)
+            self._session.tracer.emit(
+                "barge_in",
+                verdict=decision,
+                transcript=frame.text,
+                asked=asked,
+                transport="pipecat",
+            )
+            if decision == "yield":
+                self._gate.drop()
+                await self.trigger_user_turn_started()
+                return ProcessFrameResult.STOP
+            self._gate.release()
+        return ProcessFrameResult.CONTINUE
+
+    async def _give_up(self) -> None:
+        from agent.contract import limits
+
+        await asyncio.sleep(limits.get("barge_wait_transcript_ms") / 1000)
+        if self._pending:  # the caller made a sound, not words
+            self._pending = False
+            self._session.tracer.emit(
+                "barge_in", verdict="continue", transcript="", transport="pipecat"
+            )
+            self._gate.release()
+
+    def _cancel_timer(self) -> None:
+        if self._timer is not None and not self._timer.done():
+            self._timer.cancel()
+        self._timer = None
 
 
 class StandaloneTurns:
@@ -357,6 +517,16 @@ class SpokenTracker(FrameProcessor):
         if isinstance(frame, TTSTextFrame) and frame.text.strip():
             self.spoken.append(frame.text.strip())
         await self.push_frame(frame, direction)
+
+    def agent_asked(self) -> bool:
+        """Has the agent asked a question in this reply - one already played out, or the
+        sentence playing now? Then any words from the caller are an answer."""
+        import re
+
+        if any("?" in sentence for sentence in self.spoken):
+            return True
+        current = re.split(r"(?<=[.!?])\s+", self.unheard(), maxsplit=1)[0]
+        return current.rstrip().endswith("?")
 
     def unheard(self) -> str:
         """The part of the reply after the sentences played out ('' = heard it all).
@@ -523,6 +693,7 @@ def build_call(connection, session, asr, tts_provider, turns, greeting: str | No
         params=TransportParams(audio_in_enabled=True, audio_out_enabled=True),
     )
     tracker = SpokenTracker()
+    gate = PacedHoldGate()
     recorder = CallRecorder(session.session_id)
     engine = EngineProcessor(session, turns, tracker, recorder)
     user_params = LLMUserAggregatorParams(
@@ -530,12 +701,7 @@ def build_call(connection, session, asr, tts_provider, turns, greeting: str | No
             params=VADParams(stop_secs=float(os.environ.get("VAD_STOP_SECS", "0.2")))
         ),
         user_turn_strategies=UserTurnStrategies(
-            start=[
-                QuietVADUserTurnStartStrategy(),
-                MinWordsUserTurnStartStrategy(
-                    min_words=int(os.environ.get("PIPECAT_MIN_WORDS", "3")), use_interim=False
-                ),
-            ],
+            start=[FinishThenDecideUserTurnStartStrategy(gate, tracker, session)],
             stop=[
                 TurnAnalyzerUserTurnStopStrategy(
                     turn_analyzer=LocalSmartTurnAnalyzerV3(
@@ -557,6 +723,7 @@ def build_call(connection, session, asr, tts_provider, turns, greeting: str | No
             user_agg,
             engine,
             EnginePiperTTS(session, tts_provider, recorder),
+            gate,
             transport.output(),
             tracker,
             assistant_agg,

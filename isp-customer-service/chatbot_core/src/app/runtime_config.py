@@ -252,15 +252,6 @@ SCHEMA: list[dict[str, Any]] = [
         "kind": "env",
     },
     {
-        # Laikina iki PERZIURA §6 I-3 („pritilti → spręsti"): agentui kalbant pertraukia
-        # tik tiek žodžių; trumpesnė frazė jo nesustabdo.
-        "key": "PIPECAT_MIN_WORDS",
-        "label": "Pipecat: kiek žodžių pertraukia kalbantį agentą",
-        "options": ["3", "2", "4", "1"],
-        "scope": "new_calls",
-        "kind": "env",
-    },
-    {
         # L4 duplex E1 (2026-08-24): klientas siunčia frazės momentines kopijas
         # dar KALBANT — serveris veda slenkantį dalinį transkriptą (E1: tik
         # trace + ekranas; E2 ant jo statys semantinį turn-taking'ą).

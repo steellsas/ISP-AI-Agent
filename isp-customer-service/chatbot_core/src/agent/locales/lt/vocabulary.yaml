@@ -951,6 +951,11 @@ barge_consent_tokens:
   - "jo"
   - "nu"
   - "puiku"
+  # Gyvai 2026-10-19: „Oho, oho.", „Laukiu.", „Gerai, ačiū." agentui kalbant — reakcija, ne ėjimas.
+  - "oho"
+  - "ačiū"
+  - "aciu"
+  - "laukiu"
 
 # Halt/negation tokens — hard stop regardless of the utterance length.
 barge_stop_tokens:

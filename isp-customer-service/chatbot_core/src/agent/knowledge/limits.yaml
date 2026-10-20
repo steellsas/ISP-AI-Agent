@@ -115,6 +115,10 @@ overlay_silence_ms: {value: 4000, env: OVERLAY_SIL_MS}   # silence window for sp
 echo_overlap_threshold: 0.8         # token overlap with our own last words that reads as echo
 echo_min_words: 4                   # without a barge-in only a sentence can be our own echo
 barge_consent_max_words: 3          # a longer interruption is content, not a backchannel
+# Pipecat voice: finish the phrase, then decide (PERZIURA §6 I-3, ROADMAP V2)
+barge_finish_max_ms: {value: 1500, env: BARGE_FINISH_MAX_MS}   # the agent finishes its phrase, at most this long
+barge_wait_transcript_ms: {value: 1200, env: BARGE_WAIT_MS}    # after the caller stops: no words by then → go on
+barge_echo_overlap: 0.9            # stricter than echo_overlap_threshold: an answer repeats the question's words (G1)
 overlay_notes_max: 6                # overlay utterances queued for the next turn
 overlay_apply_max: 3                # overlay utterances handed to the engine per turn
 

@@ -74,36 +74,6 @@ def test_a_fully_heard_reply_reports_nothing():
     assert session.delivered is None
 
 
-def test_the_caller_starts_a_turn_by_voice_only_while_the_agent_is_silent():
-    from app.pipecat_call import QuietVADUserTurnStartStrategy
-    from pipecat.frames.frames import (
-        BotStartedSpeakingFrame,
-        BotStoppedSpeakingFrame,
-        VADUserStartedSpeakingFrame,
-    )
-    from pipecat.turns.types import ProcessFrameResult
-
-    started = []
-    strategy = QuietVADUserTurnStartStrategy()
-
-    async def trigger(*_args, **_kwargs):
-        started.append(True)
-
-    strategy.trigger_user_turn_started = trigger
-
-    async def run():
-        await strategy.process_frame(BotStartedSpeakingFrame())
-        speaking = await strategy.process_frame(VADUserStartedSpeakingFrame())
-        await strategy.process_frame(BotStoppedSpeakingFrame())
-        silent = await strategy.process_frame(VADUserStartedSpeakingFrame())
-        return speaking, silent
-
-    speaking, silent = asyncio.run(run())
-    assert speaking == ProcessFrameResult.CONTINUE  # a bare word does not cut the agent off
-    assert silent == ProcessFrameResult.STOP
-    assert started == [True]
-
-
 def test_the_call_audio_is_recorded_turn_by_turn(tmp_path, monkeypatch):
     """V1: the archive plays a Pipecat call — the old voice path's file names."""
     import io
