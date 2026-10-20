@@ -102,3 +102,40 @@ def test_the_caller_starts_a_turn_by_voice_only_while_the_agent_is_silent():
     assert speaking == ProcessFrameResult.CONTINUE  # a bare word does not cut the agent off
     assert silent == ProcessFrameResult.STOP
     assert started == [True]
+
+
+def test_the_call_audio_is_recorded_turn_by_turn(tmp_path, monkeypatch):
+    """V1: the archive plays a Pipecat call — the old voice path's file names."""
+    import io
+    import json
+    import wave
+
+    from app.pipecat_call import CallRecorder
+
+    monkeypatch.setenv("API_RECORD_DIR", str(tmp_path))
+
+    def wav(frames: int) -> bytes:
+        buf = io.BytesIO()
+        with wave.open(buf, "wb") as w:
+            w.setnchannels(1)
+            w.setsampwidth(2)
+            w.setframerate(16000)
+            w.writeframes(b"\x01\x00" * frames)
+        return buf.getvalue()
+
+    rec = CallRecorder("call-1", enabled=True)
+    rec.agent(b"\x00\x00" * 100, 22050)  # the greeting
+    rec.caller(wav(160))
+    rec.caller(wav(160))  # two VAD segments of one turn
+    rec.next_turn()  # the first reply starts
+    rec.agent(b"\x00\x00" * 50, 22050)
+    rec.interrupted()
+    rec.close()
+
+    d = tmp_path / "call-1"
+    names = sorted(p.name for p in d.iterdir())
+    assert names == ["manifest.jsonl", "turn_00_agent.wav", "turn_01_agent.wav", "turn_01_user.wav"]
+    with wave.open(str(d / "turn_01_user.wav")) as w:
+        assert w.getnframes() == 320 and w.getframerate() == 16000
+    manifest = [json.loads(line) for line in (d / "manifest.jsonl").read_text().splitlines()]
+    assert manifest[-1] == {**manifest[-1], "side": "agent", "cancelled": True}

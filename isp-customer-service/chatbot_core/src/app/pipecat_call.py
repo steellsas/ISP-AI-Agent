@@ -74,14 +74,104 @@ from pipecat.turns.user_turn_strategies import UserTurnStrategies
 from pipecat.utils.time import time_now_iso8601
 
 
+class CallRecorder:
+    """The call's audio, turn by turn, where the old voice path kept it: the caller's
+    `turn_NN_user.wav` and the agent's `turn_NN_agent.wav` in `logs/sessions/<id>/`, with
+    `manifest.jsonl` — so the archive plays a Pipecat call and the offline tools
+    (`smart_turn_eval.py`) read it. The greeting is `turn_00_agent.wav`. Off with
+    API_RECORD_AUDIO=0."""
+
+    def __init__(self, session_id: str, enabled: bool | None = None) -> None:
+        if enabled is None:
+            enabled = os.environ.get("API_RECORD_AUDIO", "1") != "0"
+        self.enabled = enabled
+        self._sid = session_id
+        self._turn = 0
+        self._caller = bytearray()
+        self._caller_rate = 16000
+        self._agent = bytearray()
+        self._agent_rate = 22050
+        self._cancelled = False
+
+    def caller(self, wav: bytes) -> None:
+        """One VAD segment (a WAV container) of the caller's speech."""
+        if not self.enabled:
+            return
+        import io
+        import wave
+
+        try:
+            with wave.open(io.BytesIO(wav)) as w:
+                self._caller_rate = w.getframerate()
+                self._caller += w.readframes(w.getnframes())
+        except Exception:  # pragma: no cover - a recording never breaks a call
+            logger.debug("caller segment not recorded", exc_info=True)
+
+    def agent(self, pcm: bytes, rate: int) -> None:
+        if self.enabled:
+            self._agent_rate = rate
+            self._agent += pcm
+
+    def interrupted(self) -> None:
+        self._cancelled = True
+
+    def next_turn(self) -> None:
+        """A reply starts: the previous agent audio and this turn's caller audio go to disk."""
+        self._write_agent()
+        self._turn += 1
+        if self._caller:
+            self._write(
+                f"turn_{self._turn:02d}_user.wav", self._caller, self._caller_rate, "caller"
+            )
+        self._caller = bytearray()
+
+    def close(self) -> None:
+        self._write_agent()
+        if self._caller:  # the caller spoke after the last reply (a goodbye over the hang-up)
+            self._turn += 1
+            self._write(
+                f"turn_{self._turn:02d}_user.wav", self._caller, self._caller_rate, "caller"
+            )
+            self._caller = bytearray()
+
+    def _write_agent(self) -> None:
+        if self._agent:
+            extra = {"cancelled": True} if self._cancelled else {}
+            self._write(
+                f"turn_{self._turn:02d}_agent.wav", self._agent, self._agent_rate, "agent", **extra
+            )
+        self._agent = bytearray()
+        self._cancelled = False
+
+    def _write(self, name: str, pcm: bytearray, rate: int, side: str, **extra) -> None:
+        if not self.enabled:
+            return
+        import wave
+
+        from .voice import _manifest, _record_dir
+
+        try:
+            d = _record_dir(self._sid)
+            d.mkdir(parents=True, exist_ok=True)
+            with wave.open(str(d / name), "wb") as w:
+                w.setnchannels(1)
+                w.setsampwidth(2)
+                w.setframerate(rate)
+                w.writeframes(bytes(pcm))
+            _manifest(d, side, name, **extra)
+        except Exception:  # pragma: no cover - a recording never breaks a call
+            logger.warning(f"audio recording failed: {name}", exc_info=True)
+
+
 class EngineSTT(SegmentedSTTService):
     """Our ASR on each VAD segment: Lithuanian domain prompt + the agent's last question
     as context, numbers normalised, noise dropped (as `voice_pipeline`)."""
 
-    def __init__(self, session, asr, **kwargs) -> None:
+    def __init__(self, session, asr, recorder: CallRecorder, **kwargs) -> None:
         super().__init__(settings=STTSettings(model=None, language=None), **kwargs)
         self._session = session
         self._asr = asr
+        self._recorder = recorder
 
     def can_generate_metrics(self) -> bool:
         return True
@@ -90,6 +180,7 @@ class EngineSTT(SegmentedSTTService):
         from adapters.asr.lt_text import is_asr_noise, normalize_lt_numbers
 
         await self.start_processing_metrics()
+        self._recorder.caller(audio)
         t0 = time.perf_counter()
         context = self._session.asr_context()
         try:
@@ -118,7 +209,7 @@ class EngineSTT(SegmentedSTTService):
 class EnginePiperTTS(TTSService):
     """Piper with our Lithuanian phonemizer and recipe, phrase by phrase as PCM."""
 
-    def __init__(self, session, provider, **kwargs) -> None:
+    def __init__(self, session, provider, recorder: CallRecorder, **kwargs) -> None:
         super().__init__(
             push_start_frame=True,
             push_stop_frames=True,
@@ -127,6 +218,7 @@ class EnginePiperTTS(TTSService):
         )
         self._session = session
         self._provider = provider
+        self._recorder = recorder
 
     def can_generate_metrics(self) -> bool:
         return True
@@ -142,12 +234,14 @@ class EnginePiperTTS(TTSService):
             return
         sample_rate = first[1]
         size = len(first[0])
+        self._recorder.agent(first[0], sample_rate)
 
         async def phrases():
             nonlocal size
             yield first[0]
             while (piece := await asyncio.to_thread(next, pieces, None)) is not None:
                 size += len(piece[0])
+                self._recorder.agent(piece[0], sample_rate)
                 yield piece[0]
 
         async for frame in self._stream_audio_frames_from_iterator(
@@ -287,11 +381,14 @@ class EngineProcessor(FrameProcessor):
     abandoned turn would leave the graph's last step unsaved. Then the engine is told
     what the caller actually heard (`apply_delivery`), as on the old voice path."""
 
-    def __init__(self, session, turns, tracker: SpokenTracker, **kwargs) -> None:
+    def __init__(
+        self, session, turns, tracker: SpokenTracker, recorder: CallRecorder | None = None, **kwargs
+    ) -> None:
         super().__init__(**kwargs)
         self._session = session
         self._turns = turns
         self._tracker = tracker
+        self._recorder = recorder or CallRecorder("", enabled=False)
         self._task = None
         self._delivery_task = None
         self._stop = threading.Event()
@@ -328,6 +425,7 @@ class EngineProcessor(FrameProcessor):
         tail = self._tracker.unheard()
         if not tail:
             return
+        self._recorder.interrupted()
         heard = list(self._tracker.spoken)
         async with self._turns.locked():
             await asyncio.to_thread(self._session.apply_delivery, [*heard, tail], len(heard))
@@ -338,6 +436,7 @@ class EngineProcessor(FrameProcessor):
                 await task  # one reply at a time; the last delivery report lands first
         stop = self._stop = threading.Event()
         self._tracker.start()
+        self._recorder.next_turn()
         async with self._turns.turn():
             tokens = self._session.handle_turn_stream(text)
             await self.push_frame(LLMFullResponseStartFrame())
@@ -379,14 +478,16 @@ def _last_user_text(context: LLMContext) -> str:
 
 
 def build_call(connection, session, asr, tts_provider, turns, greeting: str | None):
-    """The pipeline for one call; returns its worker. `greeting=None` asks the engine for
-    one when the browser connects; a string is spoken as is (the dashboard made it)."""
+    """The pipeline for one call; returns its worker and the call's audio recorder (close it
+    when the call ends). `greeting=None` asks the engine for one when the browser connects;
+    a string is spoken as is (the dashboard made it)."""
     transport = SmallWebRTCTransport(
         webrtc_connection=connection,
         params=TransportParams(audio_in_enabled=True, audio_out_enabled=True),
     )
     tracker = SpokenTracker()
-    engine = EngineProcessor(session, turns, tracker)
+    recorder = CallRecorder(session.session_id)
+    engine = EngineProcessor(session, turns, tracker, recorder)
     user_params = LLMUserAggregatorParams(
         vad_analyzer=SileroVADAnalyzer(
             params=VADParams(stop_secs=float(os.environ.get("VAD_STOP_SECS", "0.2")))
@@ -415,10 +516,10 @@ def build_call(connection, session, asr, tts_provider, turns, greeting: str | No
     pipeline = Pipeline(
         [
             transport.input(),
-            EngineSTT(session, asr),
+            EngineSTT(session, asr, recorder),
             user_agg,
             engine,
-            EnginePiperTTS(session, tts_provider),
+            EnginePiperTTS(session, tts_provider, recorder),
             transport.output(),
             tracker,
             assistant_agg,
@@ -454,7 +555,7 @@ def build_call(connection, session, asr, tts_provider, turns, greeting: str | No
         await worker.cancel()
 
     session.tracer.emit("transport", name="pipecat")
-    return worker
+    return worker, recorder
 
 
 async def run_dashboard_call(connection, manager, session_id: str) -> None:
@@ -469,9 +570,12 @@ async def run_dashboard_call(connection, manager, session_id: str) -> None:
     if not hasattr(tts, "stream_pcm"):
         raise RuntimeError("Pipecat voice needs Piper (TTS_ENGINE=piper)")
     ms.session.use_background_analyst()
-    worker = build_call(
+    worker, recorder = build_call(
         connection, ms.session, asr, tts, DashboardTurns(ms, manager, session_id), ms.greeting
     )
     runner = WorkerRunner(handle_sigint=False)
     await runner.add_workers(worker)
-    await runner.run()
+    try:
+        await runner.run()
+    finally:
+        recorder.close()

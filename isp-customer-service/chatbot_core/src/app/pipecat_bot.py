@@ -63,7 +63,7 @@ async def bot(runner_args: RunnerArguments):
     asr, tts = await asyncio.to_thread(_startup)
     session = AgentSession(caller_phone=os.environ.get("PIPECAT_CALLER", DEFAULT_CALLER))
     session.use_background_analyst()
-    worker = build_call(
+    worker, recorder = build_call(
         runner_args.webrtc_connection, session, asr, tts, StandaloneTurns(), greeting=None
     )
     runner = WorkerRunner(handle_sigint=runner_args.handle_sigint)
@@ -71,6 +71,7 @@ async def bot(runner_args: RunnerArguments):
     try:
         await runner.run()
     finally:  # the agent hung up, or the browser left — the finalizer runs once
+        recorder.close()
         await asyncio.to_thread(session.end_session, "client_closed")
 
 
