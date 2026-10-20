@@ -55,6 +55,7 @@ def speak(state: Any, rt: Any, plan: Any, action_text: str | None) -> str | None
     _remember_required(state, plan, None, owed)
     if owed:
         _say_owed(state, rt, owed)  # first, then the model's words (it sees them on the history)
+        state.voice.just_said = owed  # …and is told not to say them again (F2)
     reply = _narrate(state, rt, say.stage, user_input)
     if owed:
         _merge_owed_message(state, owed)
@@ -77,6 +78,7 @@ def _take_owed(state: Any, rt: Any) -> str | None:
     if not owed:
         return None
     rt.tracer.emit("required_redelivered", text=owed[:200])
+    state.voice.redelivered = [*state.voice.redelivered, *state.voice.owed]
     state.voice.owed = []
     return owed
 

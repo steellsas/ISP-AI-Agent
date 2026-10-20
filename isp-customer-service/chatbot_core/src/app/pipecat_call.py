@@ -407,7 +407,9 @@ class FinishThenDecideUserTurnStartStrategy(BaseUserTurnStartStrategy):
             self._pending = False
             self._cancel_timer()
             asked = self._tracker.agent_asked()
-            decision = overlap_decision(frame.text, self._tracker.reply, asked)
+            decision = overlap_decision(
+                frame.text, self._tracker.reply, asked, self._tracker.question_is_yes_no()
+            )
             self._session.tracer.emit(
                 "barge_in",
                 verdict=decision,
@@ -525,6 +527,17 @@ class SpokenTracker(FrameProcessor):
         current = re.split(r"(?<=[.!?])\s+", self.unheard(), maxsplit=1)[0]
         return current.rstrip().endswith("?")
 
+    def question_is_yes_no(self) -> bool:
+        """A Lithuanian yes/no question opens with „Ar …" — „taip", „mhm" answer it; an open
+        one („Kuo galiu padėti?", „Koks jūsų vardas?") is not answered by a backchannel."""
+        import re
+
+        sentences = [*self.spoken, *re.split(r"(?<=[.!?])\s+", self.unheard())]
+        questions = [s for s in sentences if s.rstrip().endswith("?")]
+        if not questions:
+            return True
+        return questions[-1].strip().lower().startswith("ar ")
+
     def unheard(self) -> str:
         """The part of the reply after the sentences played out ('' = heard it all).
         Whitespace is compared folded: the TTS aggregator joins tokens its own way."""
@@ -570,7 +583,7 @@ class EngineProcessor(FrameProcessor):
             await self._disarm_checkin()
         if isinstance(frame, LLMContextFrame):
             text = _last_user_text(frame.context)
-            if text:
+            if text and not self._session.is_complete:  # after the goodbye: no more turns
                 self._task = self.create_task(self._reply(text, self._task))
         elif isinstance(frame, InterruptionFrame):
             self._stop.set()  # the running reply (if any) stops speaking
@@ -610,11 +623,15 @@ class EngineProcessor(FrameProcessor):
         from agent.contract import limits
         from agent.contract.locale import phrase
 
-        await asyncio.sleep(float(limits.get("voice_checkin_after_s")))
+        # After a task („įkiškite laidą") the caller needs time; after a question, silence
+        # more likely means they did not hear it (F4).
+        asked = self._tracker.reply.rstrip().endswith("?")
+        delay = limits.get("voice_checkin_question_s" if asked else "voice_checkin_after_s")
+        await asyncio.sleep(float(delay))
         if self._session.is_complete or not self._session.awaiting_caller():
             return
         self._checked_in = True
-        text = phrase("identification.checkin")
+        text = phrase("identification.checkin_question" if asked else "identification.checkin")
         self._session.tracer.emit("checkin", text=text, transport="pipecat")
         await self.push_frame(LLMFullResponseStartFrame())
         await self.push_frame(LLMTextFrame(text))
@@ -642,11 +659,11 @@ class EngineProcessor(FrameProcessor):
         self._tracker.start()
         self._recorder.next_turn()
         async with self._turns.turn():
-            tokens = self._session.handle_turn_stream(text)
+            tokens = lambda: self._session.handle_turn_stream(text)  # noqa: E731
             await self.push_frame(LLMFullResponseStartFrame())
             await self.start_ttfb_metrics()
             try:
-                while (token := await asyncio.to_thread(next, tokens, None)) is not None:
+                async for token in _in_one_thread(tokens):
                     self._tracker.reply += token
                     if not stop.is_set():
                         await self.stop_ttfb_metrics()
@@ -667,6 +684,35 @@ class EngineProcessor(FrameProcessor):
             self._session.analyst_next()
         except Exception:  # pragma: no cover - background best-effort
             logger.exception("between-turn work failed")
+
+
+async def _in_one_thread(make_tokens):
+    """The engine's token stream, run start to end in ONE thread.
+
+    The session's turn opens a ContextVar scope (`AgentSession._observing`: LLM stats, the
+    conversation's LLM budget) and closes it when the stream ends. Pulled token by token
+    through `asyncio.to_thread`, every step ran in a fresh copy of the context, the close
+    failed (`ValueError: token created in a different Context`) and the reply task died at
+    every turn's end — no hang-up after the goodbye, no between-turn analyst or telemetry
+    (live 2026-10-20, F3). The old voice path consumed the stream in one thread too."""
+    loop = asyncio.get_running_loop()
+    queue: asyncio.Queue = asyncio.Queue()
+    end = object()
+
+    def run() -> None:
+        try:
+            for token in make_tokens():
+                loop.call_soon_threadsafe(queue.put_nowait, token)
+        except BaseException as exc:  # handed to the awaiting side
+            loop.call_soon_threadsafe(queue.put_nowait, exc)
+        finally:
+            loop.call_soon_threadsafe(queue.put_nowait, end)
+
+    threading.Thread(target=run, name="engine-turn", daemon=True).start()
+    while (item := await queue.get()) is not end:
+        if isinstance(item, BaseException):
+            raise item
+        yield item
 
 
 def _last_user_text(context: LLMContext) -> str:
@@ -782,3 +828,6 @@ async def run_dashboard_call(connection, manager, session_id: str) -> None:
         await runner.run()
     finally:
         recorder.close()
+        # The agent hung up (or the browser left): close the line, the dashboard ends the call.
+        with contextlib.suppress(Exception):
+            await connection.disconnect()

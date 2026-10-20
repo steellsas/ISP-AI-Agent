@@ -456,6 +456,13 @@ def _delivery(state, rt) -> list[str]:
     """Voice delivery notes: a barge-in cut the reply, the caller spoke over it, or the
     question never went out. One-shot — each is consumed as it is rendered."""
     out: list[str] = []
+    just = state.voice.just_said
+    if just:
+        state.voice.just_said = None
+        out.append(
+            f"YOU HAVE JUST SAID (the caller missed it earlier, the engine said it again): "
+            f"„{just[:220]}“ — do NOT repeat any of it; go on with the rest of your reply."
+        )
     tail = state.voice.undelivered_tail
     if tail:
         state.voice.undelivered_tail = None

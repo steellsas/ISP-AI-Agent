@@ -89,7 +89,9 @@ def is_echo(transcript: str, agent_text: str | None) -> bool:
     )
 
 
-def overlap_decision(transcript: str, agent_text: str | None, agent_asked: bool) -> str:
+def overlap_decision(
+    transcript: str, agent_text: str | None, agent_asked: bool, yes_no: bool = True
+) -> str:
     """The caller spoke while the agent was speaking (Pipecat: the agent finished its phrase
     and holds) — "yield" (stop, the caller's words become the turn) or "continue" (go on
     from where it stopped). PERZIURA §6 I-3 (Andrius 2026-10-19/20).
@@ -100,7 +102,8 @@ def overlap_decision(transcript: str, agent_text: str | None, agent_asked: bool)
       because an answer repeats the question's words („Lemputė nedega su interneto
       simboliu", G1);
     - the agent has asked a question → any words are an answer → yield („Gerai, ačiū." over
-      „Ar registruoti?", G17);
+      „Ar registruoti?", G17) — except a bare backchannel over an OPEN question („Mhm" over
+      „Kuo galiu padėti?" answers nothing, F5);
     - a bare backchannel („aha", „mhm", „taip") → continue;
     - anything else → yield (default-deny: never swallow a real request).
     """
@@ -119,10 +122,9 @@ def overlap_decision(transcript: str, agent_text: str | None, agent_asked: bool)
         and token_overlap(transcript, agent_text) >= limits.get("barge_echo_overlap")
     ):
         return "continue"
-    if agent_asked:
-        return "yield"
-    if len(toks) <= limits.get("barge_consent_max_words") and all(
+    backchannel = len(toks) <= limits.get("barge_consent_max_words") and all(
         t in vocab("barge_consent_tokens") for t in toks
-    ):
-        return "continue"
-    return "yield"
+    )
+    if agent_asked:
+        return "continue" if backchannel and not yes_no else "yield"
+    return "continue" if backchannel else "yield"

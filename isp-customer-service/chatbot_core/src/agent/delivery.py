@@ -81,6 +81,12 @@ def apply_delivery(state: Any, rt: Any, sentences: list[str], delivered: int) ->
     )
 
 
+def _sentences(text: str) -> list[str]:
+    import re
+
+    return [s for s in re.split(r"(?<=[.!?])\s+", (text or "").strip()) if s]
+
+
 def _fold(text: str) -> str:
     return " ".join((text or "").lower().split())
 
@@ -90,10 +96,17 @@ def _owe_required(state: Any, rt: Any, heard: str, tail: str) -> str:
     owed — the next reply says them first, as the engine wrote them. They leave the unheard
     tail, so the narrator is not asked to say them a second time in its own words."""
     owed = []
+    heard_folded = _fold(heard)
     for required in state.voice.required_said:
-        if required and _fold(required) not in _fold(heard):
-            owed.append(required)
-            tail = tail.replace(required, "").strip()
+        for sentence in _sentences(required):
+            if _fold(sentence) in heard_folded:
+                continue  # this part was heard
+            if sentence in state.voice.redelivered:
+                # Said again once already: no loop (F1) — it stays in the unheard tail, for
+                # the narrator to mention briefly in its own words.
+                continue
+            owed.append(sentence)
+            tail = tail.replace(sentence, "").strip()
     state.voice.required_said = []
     if owed:
         state.voice.owed = [*state.voice.owed, *[o for o in owed if o not in state.voice.owed]]

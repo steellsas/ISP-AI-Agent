@@ -38,6 +38,30 @@ def test_who_takes_the_turn(said, agent_text, asked, decision):
     assert overlap_decision(said, agent_text, asked) == decision
 
 
+@pytest.mark.parametrize(
+    "said, yes_no, decision",
+    [
+        ("Mhm.", False, "continue"),  # F5: „Mhm" over „Kuo galiu padėti?" answers nothing
+        ("Mhm.", True, "yield"),  # …but over „Ar registruoti?" it is a yes
+        ("Neveikia internetas", False, "yield"),  # a real answer to the open question
+    ],
+)
+def test_a_backchannel_answers_only_a_yes_no_question(said, yes_no, decision):
+    from agent.barge_in import overlap_decision
+
+    assert overlap_decision(said, "Kuo galiu padėti?", True, yes_no) == decision
+
+
+def test_the_open_question_is_told_from_a_yes_no_one():
+    from app.pipecat_call import SpokenTracker
+
+    t = SpokenTracker()
+    t.reply = "Labas! Kuo galiu padėti?"
+    assert not t.question_is_yes_no()
+    t.reply = "Patikrinau. Ar registruoti?"
+    assert t.question_is_yes_no()
+
+
 pytest.importorskip("pipecat")
 
 
@@ -63,6 +87,9 @@ class FakeTracker:
 
     def agent_asked(self):
         return self._asked
+
+    def question_is_yes_no(self):
+        return True
 
 
 class FakeSession:

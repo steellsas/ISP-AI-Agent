@@ -88,3 +88,47 @@ def test_the_ticket_confirmation_is_required_without_its_closing_question(make_s
         "Užregistravau. Skambinsime 860012345, nuo 13 iki 15 val. Ar dar kuo padėti?",
     )
     assert state.voice.required_said == ["Užregistravau. Skambinsime 860012345, nuo 13 iki 15 val."]
+
+
+NEWS = (
+    "Patikrinau — paslauga sustabdyta dėl neapmokėtų sąskaitų. "
+    "Skola 49 eurai 98 centai už liepą ir rugpjūtį. "
+    "Apmokėjus, paslauga įsijungs automatiškai."
+)
+
+
+def _news_said(make_state, make_runtime):
+    state, rt = make_state(), make_runtime()
+    state.voice.required_said = [NEWS]
+    state.messages.append(
+        {"role": "assistant", "content": f"Ačiū! {NEWS} Ar dar kuo galiu padėti?"}
+    )
+    return state, rt
+
+
+def test_only_the_unheard_sentences_are_owed(make_state, make_runtime):
+    state, rt = _news_said(make_state, make_runtime)
+    heard = ["Ačiū!", "Patikrinau — paslauga sustabdyta dėl neapmokėtų sąskaitų."]
+    apply_delivery(state, rt, [*heard, NEWS.split(". ", 1)[1] + " Ar dar kuo galiu padėti?"], 2)
+    assert state.voice.owed == [
+        "Skola 49 eurai 98 centai už liepą ir rugpjūtį.",
+        "Apmokėjus, paslauga įsijungs automatiškai.",
+    ]
+
+
+def test_owed_words_are_said_again_once_then_left_to_the_narrator(make_state, make_runtime):
+    """F1 (live 2026-10-20): cut again, the debt news looped three times."""
+    state, rt = _news_said(make_state, make_runtime)
+    apply_delivery(state, rt, ["Ačiū!", NEWS + " Ar dar kuo galiu padėti?"], 1)
+    plan = TurnPlan(
+        owner="inform",
+        rule="inform.wrap_react",
+        action=Action(type="none"),
+        say=Say(kind="phrase", text="Supratau. Ar dar kuo galiu padėti?", stage="diagnosis"),
+    )
+    text = speak(state, rt, plan, None)  # the news again, first
+    assert text.startswith("Patikrinau")
+
+    apply_delivery(state, rt, [text], 0)  # cut again before anything was heard
+    assert state.voice.owed == []
+    assert "Skola 49 eurai" in (state.voice.unheard_question or state.voice.undelivered_tail or "")

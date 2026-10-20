@@ -145,3 +145,47 @@ def test_a_silent_caller_with_a_task_gets_one_checkin(monkeypatch, waiting, spok
     said = [f.text for f in pushed if isinstance(f, LLMTextFrame)]
     assert bool(said) is spoken
     assert ("checkin" in session.events) is spoken
+
+
+def test_the_engine_turn_runs_in_one_thread_so_its_context_scope_closes():
+    """F3 (live 2026-10-20): pulled token by token through asyncio.to_thread, the session's
+    ContextVar scope failed to close and the reply task died at every turn's end."""
+    import contextvars
+
+    from app.pipecat_call import _in_one_thread
+
+    var = contextvars.ContextVar("scope", default=None)
+
+    def turn():
+        token = var.set("call-1")
+        try:
+            yield "Gerai. "
+            yield "Kas toliau?"
+        finally:
+            var.reset(token)  # raises if the steps ran in different contexts
+
+    async def collect():
+        return [t async for t in _in_one_thread(turn)]
+
+    assert asyncio.run(collect()) == ["Gerai. ", "Kas toliau?"]
+
+
+def test_silence_after_a_question_gets_a_shorter_different_checkin(monkeypatch):
+    """F4: after a question the caller has nothing to do — silence means they may not hear."""
+    from agent.contract.locale import phrase
+    from pipecat.frames.frames import LLMTextFrame
+
+    monkeypatch.setenv("VOICE_CHECKIN_QUESTION_S", "0")
+    monkeypatch.setenv("VOICE_CHECKIN_AFTER_S", "60")  # would hang the test if used
+    session = CheckinSession(True)
+    t = tracker([], reply="Tuoj patikrinsiu ryšį. O su kuo kalbu — koks jūsų vardas?")
+    engine = EngineProcessor(session, StandaloneTurns(), t)
+    pushed = []
+
+    async def push(frame, *_args):
+        pushed.append(frame)
+
+    engine.push_frame = push
+    asyncio.run(engine._checkin())
+    said = [f.text for f in pushed if isinstance(f, LLMTextFrame)]
+    assert said == [phrase("identification.checkin_question")]

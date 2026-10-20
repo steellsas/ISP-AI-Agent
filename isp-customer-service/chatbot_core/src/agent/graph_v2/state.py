@@ -362,6 +362,12 @@ class VoiceState(BaseModel):
     required_said: list[str] = Field(default_factory=list)
     # Required words a barge-in cut off: the next reply says them first (PERZIURA §6 I-1).
     owed: list[str] = Field(default_factory=list)
+    # Required sentences already said again once — cut a second time, they are not owed
+    # again (live 2026-10-20: the debt news looped three times, F1).
+    redelivered: list[str] = Field(default_factory=list)
+    # The owed words the engine has just said before an LLM reply — the narrator must not
+    # say them a second time in its own words (F2). One-shot, read by the context card.
+    just_said: str | None = None
 
 
 class TurnDirectives(BaseModel):

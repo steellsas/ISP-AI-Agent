@@ -77,7 +77,7 @@ function resetUI(){
   Scenarios.callStarted();
 }
 /* ---------- Pipecat voice (WebRTC) — audio both ways; the WS above carries events only ---------- */
-let pc=null, rtcMic=null, rtcAudio=null;
+let pc=null, rtcMic=null, rtcAudio=null, callEnded=false;
 // The browser's own choice wins; otherwise the server's default (config page VOICE_MODE).
 (async () => {
   let mine = null;
@@ -91,6 +91,7 @@ let pc=null, rtcMic=null, rtcAudio=null;
 })();
 $("voiceMode").onchange = () => { try{ localStorage.setItem("voiceMode", $("voiceMode").value); }catch(e){} };
 async function startWebRTC(){
+  callEnded = false;
   rtcMic = await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,
     noiseSuppression:true, autoGainControl:true, channelCount:1}});
   pc = new RTCPeerConnection();
@@ -102,7 +103,13 @@ async function startWebRTC(){
     VoiceViz.attachStreams(ev.streams[0], rtcMic);   // the conversation line hears both sides
   };
   pc.onconnectionstatechange = () => {
-    if(pc && ["failed","closed"].includes(pc.connectionState)) addMsg("note","🔌 Pipecat ryšys: "+pc.connectionState);
+    if(!pc) return;
+    const st = pc.connectionState;
+    // The agent said goodbye and the server closed the line: the call is over.
+    if(st==="closed" || st==="failed" || (callEnded && st==="disconnected")){
+      addMsg("note", callEnded ? "📞 agentas padėjo ragelį" : "🔌 Pipecat ryšys: "+st);
+      teardown();
+    }
   };
   await pc.setLocalDescription(await pc.createOffer());
   await new Promise(r => {                   // no trickle: send the offer with every candidate
@@ -173,6 +180,7 @@ $("start").onclick = async () => {
       if(e.type==="voice_turn_done"){ Brain.voiceDone(e); return; }
       if(e.type==="turn_start"){ turnPlayed=0; $("partialLine").textContent=""; Brain.turnStart(); VoiceViz.thinking(); return; } // D1: skaitiklis per turn'ą
       if(e.type==="call_ended"){ // pokalbis baigtas — mikrofonas nebeklauso
+        callEnded = true;
         stopMic();
         addMsg("note","📞 pokalbis baigtas");
         return;

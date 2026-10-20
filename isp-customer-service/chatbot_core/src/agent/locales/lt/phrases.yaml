@@ -98,6 +98,8 @@ identification:
   anamnesis_last_used: "O kada paskutinį kartą internetas tikrai veikė?"
   # G3 (2026-08-20): aktyvus pasiteiravimas po tylos, kai klientas kažką daro.
   checkin: "Kaip sekasi — ar pavyksta?"
+  # Tyla po KLAUSIMO (ne po užduoties): klientas neturi ką daryti — gal negirdi (F4).
+  checkin_question: "Ar mane girdite?"
   # Problemos vartai (2026-08-21): po kelių bandymų be aiškios mūsų srities problemos.
   no_problem_goodbye: "Supratau. Kadangi nepasakėte, kas neveikia, padėti negaliu, todėl baigiu pokalbį. Čia interneto ir televizijos gedimų pagalba — jei kils ryšio ar TV bėda, skambinkite. Geros dienos!"
   # Identifikacijos etalonas (Andrius 2026-09-03): adresui nepavykus ~4
