@@ -32,6 +32,8 @@ def stuck_backstop(state: Any) -> tuple[str, bool] | None:
 def greeting(state: Any, rt: Any) -> TurnPlan | None:
     """The first turn has no caller words: the fixed opening line, with the caller's
     number looked up while it plays."""
+    from ...contract.locale import phrase
+
     if state.turn.user_input is not None or state.dialog.turn_count != 0:
         return None
     state.dialog.turn_count += 1  # the opening line is the call's first turn
@@ -45,5 +47,6 @@ def greeting(state: Any, rt: Any) -> TurnPlan | None:
             vars={"company_name": rt.config.company_name},
             stage="intake",
             remember_question=False,
+            required=phrase("system.ai_disclosure"),
         ),
     )

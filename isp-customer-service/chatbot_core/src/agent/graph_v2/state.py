@@ -358,6 +358,10 @@ class VoiceState(BaseModel):
     # After a barge-in: the reply tail the caller did not hear / an unheard question.
     undelivered_tail: str | None = None
     unheard_question: str | None = None
+    # Required words (Say.required) the last reply carried — the delivery report checks them.
+    required_said: list[str] = Field(default_factory=list)
+    # Required words a barge-in cut off: the next reply says them first (PERZIURA §6 I-1).
+    owed: list[str] = Field(default_factory=list)
 
 
 class TurnDirectives(BaseModel):

@@ -48,6 +48,7 @@ def apply_delivery(state: Any, rt: Any, sentences: list[str], delivered: int) ->
         if msg.get("role") == "assistant":
             msg["content"] = (heard + " —") if heard else "—"
             break
+    tail = _owe_required(state, rt, heard, tail)
     state.voice.undelivered_tail = tail or None
     # Andrius 2026-08-26: the agent must NEVER believe it asked a question
     # the caller could not hear. When the "?" lives only in the unheard
@@ -78,3 +79,23 @@ def apply_delivery(state: Any, rt: Any, sentences: list[str], delivered: int) ->
         unheard=tail[:160],
         question_unheard=bool(state.voice.unheard_question),
     )
+
+
+def _fold(text: str) -> str:
+    return " ".join((text or "").lower().split())
+
+
+def _owe_required(state: Any, rt: Any, heard: str, tail: str) -> str:
+    """PERZIURA §6 I-1: required words (`Say.required`) the caller did not hear in full are
+    owed — the next reply says them first, as the engine wrote them. They leave the unheard
+    tail, so the narrator is not asked to say them a second time in its own words."""
+    owed = []
+    for required in state.voice.required_said:
+        if required and _fold(required) not in _fold(heard):
+            owed.append(required)
+            tail = tail.replace(required, "").strip()
+    state.voice.required_said = []
+    if owed:
+        state.voice.owed = [*state.voice.owed, *[o for o in owed if o not in state.voice.owed]]
+        rt.tracer.emit("required_owed", owed=[o[:120] for o in owed])
+    return tail

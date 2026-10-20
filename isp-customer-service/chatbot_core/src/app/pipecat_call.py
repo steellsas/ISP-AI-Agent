@@ -65,9 +65,6 @@ from pipecat.services.tts_service import TTSService
 from pipecat.transports.base_transport import TransportParams
 from pipecat.transports.smallwebrtc.transport import SmallWebRTCTransport
 from pipecat.turns.types import ProcessFrameResult
-from pipecat.turns.user_mute.mute_until_first_bot_complete_user_mute_strategy import (
-    MuteUntilFirstBotCompleteUserMuteStrategy,
-)
 from pipecat.turns.user_start.base_user_turn_start_strategy import BaseUserTurnStartStrategy
 from pipecat.turns.user_stop.turn_analyzer_user_turn_stop_strategy import (
     TurnAnalyzerUserTurnStopStrategy,
@@ -712,8 +709,6 @@ def build_call(connection, session, asr, tts_provider, turns, greeting: str | No
                 )
             ],
         ),
-        # The greeting says the caller is talking to an AI (AI Act): it plays out whole.
-        user_mute_strategies=[MuteUntilFirstBotCompleteUserMuteStrategy()],
     )
     user_agg, assistant_agg = LLMContextAggregatorPair(LLMContext(), user_params=user_params)
     pipeline = Pipeline(

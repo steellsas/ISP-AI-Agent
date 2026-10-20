@@ -456,6 +456,7 @@ def reply_plan(state: Any, rt: Any, user_input: str | None) -> TurnPlan | None:
                 [phrase("identification.thanks"), inf, phrase("identification.anything_else")]
             ),
             action=inform_action,
+            required=inf,
         )
     zinia = phrase_or(f"verdict.{reason}.gloss", reason or "")
     if not zinia:
@@ -489,7 +490,11 @@ _STATE: dict[str, Any] = {}
 
 
 def _plan(
-    rule: str, words: str | None, action: Action | None = None, directive: bool = False
+    rule: str,
+    words: str | None,
+    action: Action | None = None,
+    directive: bool = False,
+    required: str | None = None,
 ) -> TurnPlan:
     state = _STATE["state"]
     owner = _owner(state, rule)
@@ -502,7 +507,7 @@ def _plan(
     if directive:
         say = Say(kind="directive", stage=stage)
     else:
-        say = Say(kind="phrase", text=words, stage=stage)
+        say = Say(kind="phrase", text=words, stage=stage, required=required)
     return TurnPlan(owner=owner, rule=rule, action=action or Action(type="none"), say=say)
 
 

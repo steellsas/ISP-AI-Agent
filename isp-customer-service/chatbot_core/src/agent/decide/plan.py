@@ -47,6 +47,9 @@ class Say(BaseModel):
     # L2: šie žodžiai jau PARAŠYTI (kortelės / dokumento / katalogo sakinys), tad eina kaip yra
     # — be modelio. Narratorius reikalingas tada, kai reikia atsakyti ar sudėti kelis dalykus.
     written: bool = False
+    # Words the caller MUST hear (PERZIURA §6 I-1): the AI disclosure, the debt / outage news,
+    # the ticket confirmation. Cut by a barge-in, they are owed and said on the next turn.
+    required: str | None = None
 
 
 class Action(BaseModel):

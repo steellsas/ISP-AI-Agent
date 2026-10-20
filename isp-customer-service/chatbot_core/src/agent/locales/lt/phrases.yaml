@@ -530,6 +530,8 @@ inform:
 
 system:
   greeting: "Labas! Čia {company_name}. Esu dirbtinio intelekto asistentas — padedu dėl interneto ir televizijos gedimų. Kuo galiu padėti?"
+  # Privaloma pasisveikinimo dalis (AI Act): nutraukta — pasakoma kitame ėjime. Turi sutapti su greeting.
+  ai_disclosure: "Esu dirbtinio intelekto asistentas — padedu dėl interneto ir televizijos gedimų."
   error: "Atsiprašau, įvyko techninė klaida. Pabandykite dar kartą."
   timeout: "Atsiprašau, negaliu apdoroti užklausos. Ar galite pakartoti?"
   max_turns: "Atsiprašau, pokalbis užtruko per ilgai. Registruoju jūsų problemą."
