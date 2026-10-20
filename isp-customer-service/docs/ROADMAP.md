@@ -40,7 +40,8 @@ was: the open model runs through an EU API now, so we know what to expect on a l
 
 Done: WebRTC in the dashboard (`app/pipecat_call.py`), Smart Turn (endpoint 900 → 200 ms),
 Piper in worker processes, PCM cache for scripted lines, “what the caller heard” after a
-barge-in (D1). What the old voice still does and Pipecat does not:
+barge-in (D1). **2026-10-20: V1–V6 done** (`56b1de5`, `23271ba`, `902fda1`, `78a12fa`,
+`0aba9d0`, `eb58bb6`) — waiting for live calls, then A5. The steps:
 
 | # | Step | Why | Done when |
 |---|---|---|---|
