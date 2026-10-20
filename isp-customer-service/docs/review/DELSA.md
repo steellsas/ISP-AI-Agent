@@ -410,3 +410,33 @@ normaliuose ėjimuose 1,07–2,87 s, mediana ~1,4 s.
 **Išvada dėl „≥ 3 žodžiai":** saugo nuo „oho", bet išmeta trumpą atsakymą klausimo pabaigoje —
 patvirtina, kad reikia I-3 („pritilti → spręsti"); iki tol trumpos frazės agentui kalbant turėtų
 būti **ne išmetamos, o perduodamos kitam ėjimui** (kaip sename kelyje `overlay`).
+
+### 5.8 Pipecat po V1–V6 (2026-10-20, 2 skambučiai)
+
+`20261020-111428…0002` (skola, pertraukimai, tiketas) ir `20261020-111756…0003` (vardo nesakymas, tyla).
+
+**Veikia:**
+
+| Kas | Įrodymas |
+|---|---|
+| I-1 privaloma info | „Labai gerai" nutraukė pasisveikinimą → `required_owed` → kitas atsakymas prasidėjo „Esu dirbtinio intelekto asistentas…" |
+| I-3 pritarimas | „Aha." ir „Oho!" skolos žinutės metu → `barge_in continue`, agentas kalbėjo toliau |
+| I-3 pertraukimas | „Aš mokėjau liepos 6 d." → `yield`, neišgirsta skolos dalis pakartota |
+| G17 | „Taip, registruokit" → tiketas `TKTE95FE271` |
+| Įrašymas (V1) | `turn_00…13_*.wav` abiem skambučiams |
+| Delsa | nuo tylos mediana ~1,5–1,8 s (endpoint 200 ms) |
+
+**Radiniai (balsas — prieš A5):**
+
+| # | Kas | Priežastis |
+|---|---|---|
+| F1 | **Skolos naujiena kartojama 2–3 kartus** (sk. 2, 11:20:06–11:20:12) | skola = visas privalomas tekstas; pertrauktas pakartojimas vėl tampa skola → ciklas. Turėtų būti: skola tik **neišgirsti sakiniai**, ir pakartojama **vieną kartą** |
+| F2 | Po skolos LLM dar kartą pasako tą pačią informaciją („…bet sistemoje matosi skola 49 eurai…") | modelis nežino, kad variklis ką tik ją pasakė |
+| F3 | „Ačiū, kad paskambinote. Geros dienos!" du kartus; skambutis nesibaigia | po atsisveikinimo konvejeris neužsidaro (`EndWorkerFrame` iš procesoriaus jo nebaigia), dashboard'as nepadeda ragelio |
+| F4 | Tyla neiššaukė „Kaip sekasi?" | klientas tylėjo ~25 s, riba `voice_checkin_after_s` = 35 s (skirta fiziniams veiksmams prie routerio); klausimui per ilga |
+| F5 | „Mhm" ant atviro klausimo „Kuo galiu padėti?" → `yield` | taisyklė „agentas klausia → bet kas = atsakymas"; pritarimas atsakymas tik į taip/ne klausimą |
+| F6 | „Aš jau prieš / 5 valandas apmokiau ir / jis dar neaktyvavo" — ėjimas užsibaigė per vidurį, agentas atsisveikino | Smart Turn „nebaigė" + 1,2 s riba (Q2) — klientas tylėjo ilgiau; stebėti |
+
+**Variklio radiniai (2 etapas, atidėta — Andrius):** vardo nesakymo neapdoroja („Neatskleisiu" →
+vardas „Neatskleisiu"); „sumokėjau prieš 5 valandas, neveikia" — ginčas, o ne atsisveikinimas
+(G15/G21); pasenęs „Malonu, Tomas!" (G6).
