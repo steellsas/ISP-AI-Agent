@@ -229,6 +229,38 @@ SCHEMA: list[dict[str, Any]] = [
         "kind": "env",
     },
     {
+        # ROADMAP V6 (2026-10-20): Pipecat (WebRTC, Smart Turn) — the voice production uses;
+        # the dashboard's selector starts on this unless the browser remembers another choice.
+        "key": "VOICE_MODE",
+        "label": "Balso kelias pagal nutylėjimą (webrtc = Pipecat, ws = senas)",
+        "options": ["webrtc", "ws"],
+        "scope": "immediate",
+        "kind": "env",
+    },
+    {
+        "key": "SMART_TURN_STOP_SECS",
+        "label": "Pipecat: laukti tylos, kai Smart Turn sako „nebaigė“, s",
+        "options": ["1.2", "0.8", "1.6", "2.0"],
+        "scope": "new_calls",
+        "kind": "env",
+    },
+    {
+        "key": "VAD_STOP_SECS",
+        "label": "Pipecat: pauzė, po kurios klausiama Smart Turn, s",
+        "options": ["0.2", "0.3", "0.4"],
+        "scope": "new_calls",
+        "kind": "env",
+    },
+    {
+        # Laikina iki PERZIURA §6 I-3 („pritilti → spręsti"): agentui kalbant pertraukia
+        # tik tiek žodžių; trumpesnė frazė jo nesustabdo.
+        "key": "PIPECAT_MIN_WORDS",
+        "label": "Pipecat: kiek žodžių pertraukia kalbantį agentą",
+        "options": ["3", "2", "4", "1"],
+        "scope": "new_calls",
+        "kind": "env",
+    },
+    {
         # L4 duplex E1 (2026-08-24): klientas siunčia frazės momentines kopijas
         # dar KALBANT — serveris veda slenkantį dalinį transkriptą (E1: tik
         # trace + ekranas; E2 ant jo statys semantinį turn-taking'ą).

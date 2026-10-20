@@ -78,7 +78,17 @@ function resetUI(){
 }
 /* ---------- Pipecat voice (WebRTC) — audio both ways; the WS above carries events only ---------- */
 let pc=null, rtcMic=null, rtcAudio=null;
-try{ $("voiceMode").value = localStorage.getItem("voiceMode") || "ws"; }catch(e){}
+// The browser's own choice wins; otherwise the server's default (config page VOICE_MODE).
+(async () => {
+  let mine = null;
+  try{ mine = localStorage.getItem("voiceMode"); }catch(e){}
+  if(mine){ $("voiceMode").value = mine; return; }
+  try{
+    const j = await (await fetch("/admin/config")).json();
+    const v = ((j.settings||[]).find(s=>s.key==="VOICE_MODE")||{}).value;
+    $("voiceMode").value = v || "webrtc";
+  }catch(e){ $("voiceMode").value = "webrtc"; }
+})();
 $("voiceMode").onchange = () => { try{ localStorage.setItem("voiceMode", $("voiceMode").value); }catch(e){} };
 async function startWebRTC(){
   rtcMic = await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,
