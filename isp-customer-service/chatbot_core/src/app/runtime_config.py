@@ -118,24 +118,6 @@ SCHEMA: list[dict[str, Any]] = [
         "kind": "env+voice",
     },
     {
-        # VOICE_PLAN V1: fragments shorter than this never reach Whisper (it
-        # hallucinates words from sub-word blips). 0 disables the guard.
-        "key": "ASR_MIN_AUDIO_S",
-        "label": "Trumpo garso sargas, s (0 = išjungta)",
-        "options": ["0.2", "0.3", "0.4", "0.5", "0"],
-        "scope": "immediate",
-        "kind": "env",
-    },
-    {
-        # Latency mask: the cached "Sekundėlę, tikrinu." cue when the LLM is
-        # still thinking past the delay below.
-        "key": "VOICE_FILLER",
-        "label": "Užpildas „Sekundėlę, tikrinu“",
-        "options": ["off", "on"],
-        "scope": "immediate",
-        "kind": "env",
-    },
-    {
         # Kalbėjimo greitis: '+10%' — informacija teka greičiau, tonas
         # dalykiškesnis (Andrius 2026-08-20).
         "key": "TTS_RATE",
@@ -150,13 +132,6 @@ SCHEMA: list[dict[str, Any]] = [
         "key": "TTS_PITCH",
         "label": "Edge balso tonas (žemesnis = techniškesnis)",
         "options": ["+0Hz", "-10Hz", "-20Hz", "+10Hz"],
-        "scope": "immediate",
-        "kind": "env",
-    },
-    {
-        "key": "VOICE_FILLER_AFTER_S",
-        "label": "Užpildo vėlinimas, s",
-        "options": ["1.2", "0.8", "1.6", "2.0"],
         "scope": "immediate",
         "kind": "env",
     },
@@ -222,22 +197,6 @@ SCHEMA: list[dict[str, Any]] = [
         "kind": "env",
     },
     {
-        "key": "VOICE_STREAM",
-        "label": "Srautinis kalbėjimas (sakinys po sakinio)",
-        "options": ["on", "off"],
-        "scope": "immediate",
-        "kind": "env",
-    },
-    {
-        # ROADMAP V6 (2026-10-20): Pipecat (WebRTC, Smart Turn) — the voice production uses;
-        # the dashboard's selector starts on this unless the browser remembers another choice.
-        "key": "VOICE_MODE",
-        "label": "Balso kelias pagal nutylėjimą (webrtc = Pipecat, ws = senas)",
-        "options": ["webrtc", "ws"],
-        "scope": "immediate",
-        "kind": "env",
-    },
-    {
         "key": "SMART_TURN_STOP_SECS",
         "label": "Pipecat: laukti tylos, kai Smart Turn sako „nebaigė“, s",
         "options": ["1.2", "0.8", "1.6", "2.0"],
@@ -252,90 +211,11 @@ SCHEMA: list[dict[str, Any]] = [
         "kind": "env",
     },
     {
-        # L4 duplex E1 (2026-08-24): klientas siunčia frazės momentines kopijas
-        # dar KALBANT — serveris veda slenkantį dalinį transkriptą (E1: tik
-        # trace + ekranas; E2 ant jo statys semantinį turn-taking'ą).
-        "key": "DUPLEX",
-        "label": "Duplex (daliniai transkriptai kalbant)",
-        "options": ["off", "on"],
-        "scope": "immediate",
-        "kind": "env",
-    },
-    {
-        "key": "PARTIAL_INTERVAL_S",
-        "label": "Dalinių intervalas, s",
-        "options": ["1.0", "0.8", "1.5", "2.0"],
-        "scope": "immediate",
-        "kind": "env",
-    },
-    {
-        # E2: pilnas laukiamas atsakymas dalinyje -> kerpam turn'ą po tiek
-        # tylos (vietoj kliento micSil ~900 ms).
-        "key": "ENDPOINT_FAST_MS",
-        "label": "Greitas kirpimas (pilnas atsakymas), ms",
-        "options": ["350", "250", "450", "600"],
-        "scope": "immediate",
-        "kind": "env",
-    },
-    {
-        # E2: nebaigta mintis (jungtukas/kablelis gale) -> laukiam tiek tylos.
-        "key": "ENDPOINT_SLOW_MS",
-        "label": "Ilgas laukimas (nebaigta mintis), ms",
-        "options": ["1400", "1200", "1800", "2200"],
-        "scope": "immediate",
-        "kind": "env",
-    },
-    {
-        # D2: serverio VAD slenkstis (kliento mikrofonai skiriasi — derinti
-        # pirmo balso testo metu, jei kalba nesigirdi arba triukšmas kerta).
-        "key": "SERVER_VAD_THR",
-        "label": "Serverio VAD slenkstis",
-        "options": ["0.010", "0.006", "0.015", "0.020"],
-        "scope": "immediate",
-        "kind": "env",
-    },
-    {
-        # D2: numatytasis tylos langas serverio kirpimui (be E2 užuominos).
-        "key": "SERVER_SIL_MS",
-        "label": "Serverio tylos langas, ms",
-        "options": ["900", "700", "1100", "1400"],
-        "scope": "immediate",
-        "kind": "env",
-    },
-    {
         # Analitikas (M5): skaito visą pokalbį ir grąžina tipizuotus signalus.
         # sync — ėjimo pabaigoje, async — fone (balsui), off — išjungtas.
         "key": "ANALYST_MODE",
         "label": "Analitikas (signalai): sync / async / off",
         "options": ["sync", "async", "off"],
-        "scope": "immediate",
-        "kind": "env",
-    },
-    {
-        # P1b (2026-08-26): po pertraukimo — trumpas „Aha, girdžiu" iš kešo,
-        # jei tikras atsakas neatėjo per INTERRUPT_ACK_AFTER_S.
-        "key": "INTERRUPT_ACK",
-        "label": "Ack po pertraukimo („Aha, girdžiu“)",
-        "options": ["on", "off"],
-        "scope": "immediate",
-        "kind": "env",
-    },
-    {
-        # Default OFF (Andrius 2026-08-26): šabloniniai „Mhm" ilgo pasakojimo
-        # metu jaučiasi dirbtinai ir trikdo — pritarimas turi būti gyvas.
-        "key": "BACKCHANNEL",
-        "label": "„Mhm“ ilgo pasakojimo metu",
-        "options": ["off", "on"],
-        "scope": "immediate",
-        "kind": "env",
-    },
-    {
-        # Andrius 2026-08-27: pertraukimai LAIKINAI išjungti — testuojam ciklo
-        # šerdį be duck/cut triukšmo; įjungsim atskirai pertraukimų bangai
-        # (B dizainas). Off = agentas visada pabaigia sakinį.
-        "key": "BARGE_IN",
-        "label": "Pertraukimai (barge-in / duck)",
-        "options": ["off", "on"],
         "scope": "immediate",
         "kind": "env",
     },

@@ -186,32 +186,6 @@ class TestT3AWordNeverStartsARegistration:
         assert extra == "" and state.ticket.stage is None
 
 
-class TestT4OurOwnSentenceIsEcho:
-    AGENT = (
-        "Suprantu. Sąskaitų detalių aš nematau, bet galiu užregistruoti jūsų klausimą — "
-        "atsakingas žmogus su jumis susisieks ir aptars skolą. Ar registruoti?"
-    )
-
-    @pytest.mark.parametrize(
-        ("heard", "echo"),
-        [
-            ("Atsakingas žmogus su jumis susisieks ir aptars skolą.", True),  # live 2026-10-07
-            ("Taip, registruokite.", False),  # a real short answer is never swallowed
-            ("Taip.", False),
-            ("Ne, aš noriu sužinoti, kiek tiksliai skolingas.", False),
-        ],
-    )
-    def test_echo_needs_a_sentence_of_our_own_words(self, heard, echo):
-        from agent.barge_in import is_echo
-
-        assert is_echo(heard, self.AGENT) is echo
-
-    def test_no_reference_no_echo(self):
-        from agent.barge_in import is_echo
-
-        assert not is_echo("Atsakingas žmogus su jumis susisieks", "")
-
-
 class TestT5HowMuchIsNotADispute:
     @pytest.mark.parametrize(
         ("said", "dispute"),
@@ -247,41 +221,3 @@ def test_scenario_reset_is_wired_in_the_dashboard():
     app = (js / "app.js").read_text(encoding="utf-8")
     assert "Scenarios.current()" in app and "/admin/db/reset" in app
     assert "current: () => current" in (js / "scenarios.js").read_text(encoding="utf-8")
-
-
-def test_a_normal_voice_turn_checks_for_our_own_echo(monkeypatch):
-    """T4 wiring: without a barge-in the pipeline still gets an echo check — and only that
-    (a plain „taip" is never read as consent-to-swallow)."""
-    import threading
-    from types import SimpleNamespace
-
-    from app import voice
-
-    seen = {}
-
-    class _Pipeline:
-        prev_cancelled = False
-        last_turn_aligned = True
-        last_turn_sentences: list = []
-
-        def stream_turn(self, audio, **kwargs):
-            check = kwargs["interruption"]
-            seen["echo"] = check("Atsakingas žmogus su jumis susisieks ir aptars skolą.")
-            seen["yes"] = check("Taip.")
-            yield b"REAL"
-
-    ms = SimpleNamespace(
-        voice=_Pipeline(),
-        cancel=threading.Event(),
-        turn_count=0,
-        session=SimpleNamespace(
-            session_id="t",
-            is_complete=False,
-            tracer=SimpleNamespace(emit=lambda *a, **k: None),
-            last_spoken_text=lambda: TestT4OurOwnSentenceIsEcho.AGENT,
-        ),
-    )
-    monkeypatch.setenv("API_RECORD_AUDIO", "0")
-    voice.run_voice_turn_stream(ms, b"RIFF-fake", lambda chunk: None)
-
-    assert seen == {"echo": "echo", "yes": None}

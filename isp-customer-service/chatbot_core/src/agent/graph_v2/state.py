@@ -353,8 +353,6 @@ class VoiceState(BaseModel):
     # This call has a background window (a voice transport): the analyst reads there and
     # no reply waits for it (F-24).
     background_reads: bool = False
-    # Words the caller said OVER the agent's voice, for a one-shot narrator note.
-    overlay_heard: list[str] | None = None
     # After a barge-in: the reply tail the caller did not hear / an unheard question.
     undelivered_tail: str | None = None
     unheard_question: str | None = None

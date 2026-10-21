@@ -72,7 +72,7 @@ Folders:
 | Folder | What |
 |---|---|
 | `chatbot_core/src/agent/` | the agent: graph, engine, knowledge, prompts, locale |
-| `chatbot_core/src/app/` | FastAPI service, WebSocket voice, dashboard, archive, admin |
+| `chatbot_core/src/app/` | FastAPI service, Pipecat voice (WebRTC), dashboard, archive, admin |
 | `chatbot_core/src/adapters/` | ASR, TTS, retrieval (Qdrant, embeddings), tracing |
 | `chatbot_core/src/services/llm/` | the one LLM client (litellm), providers, fallback, rate limit, stats |
 | `chatbot_core/src/rag/knowledge_base/` | Markdown documents the agent can read to the caller |
@@ -104,7 +104,7 @@ Folders:
 - **`agent/session.py`** — owns one call. Builds the graph with a checkpointer
   (`graph_v2/checkpoint.py`: one SqliteSaver per process at `logs/graph_checkpoints.sqlite`;
   in-memory for tests and eval), `thread_id` = session id. Between turns it writes through
-  `graph.update_state` (barge-in overlay, delivered sentences, background inbox).
+  `graph.update_state` (delivered sentences, background inbox).
 - **`agent/runtime.py`** — `AgentRuntime`, the per-call context passed to every node: config,
   tracer, tool gateway, cancel event (barge-in), ended event, LLM stats, clock.
 - **`call_record/finalizer.py`** — runs exactly once however the call ends. It registers a promised
@@ -150,7 +150,7 @@ part (decide + execute) takes ~2–10 ms; the time is in the LLM, ASR and TTS (�
 | `ticket` | contact dialogue (phone, hours) and the ticket context |
 | `dialog` | active question, repeat guard, phase (shadow), turn count |
 | `closing` | closing flags (written only by `closing.py`) |
-| `voice` | analyst tone signals, background mode, barge-in overlay |
+| `voice` | analyst tone signals, background mode, what was said and what is still owed |
 | `tools` | per-call tool counters |
 | `resolution` | mostly legacy counters (see §13) |
 | `turn` | scratch for this turn only: plan, perception, tool failure |
@@ -414,20 +414,23 @@ plan.action = tool ──► ToolGateway (tooling/gateway.py)
 ## 11. Voice
 
 ```
-browser mic ──WS /ws/call/{id}──► audio front (VAD, cut decision, DUPLEX)
-                                   │ semantic endpointing (agent/endpoint.py)
+browser mic ──WebRTC (POST /sessions/{id}/webrtc)──► Pipecat pipeline (app/pipecat_call.py)
+   Silero VAD → Smart Turn v3 (end of turn) → ASR (Groq Whisper)
                                    ▼
-                                  ASR ──► AgentSession.handle_turn_stream
-                                                 │ sentences as they stream
-                                                 ▼
-                                  TTS per sentence (Piper; fixed phrases pre-rendered in logs/tts_cache)
+                     EngineProcessor ──► AgentSession.handle_turn_stream
+                                   │ sentences as they stream
+                                   ▼
+                     TTS per phrase (Piper in worker processes; scripted lines from the PCM cache)
                                    │
-browser speaker ◄──────────────────┘   barge-in: agent/barge_in.py (stop / consent / echo / substantive)
+browser speaker ◄──────────────────┘   barge-in: finish the phrase, then decide (agent/barge_in.py)
 ```
 
-Files: `app/main.py` (WebSocket), `app/voice.py`, `app/audio_front.py`, `agent/voice_pipeline.py`
-(transport-agnostic), `agent/delivery.py` (what the caller actually heard). **There is no telephony
-yet** — the browser is the phone.
+The WebSocket `/ws/call/{id}` carries only the dashboard's events and typed (text) turns.
+Files: `app/pipecat_call.py` (the call: transport, turn taking, check-in, closing silence,
+hang-up, recording), `app/voice.py` (builds ASR/TTS, prewarm), `agent/voice_pipeline.py`
+(the spoken form of a reply), `agent/delivery.py` (what the caller actually heard; required
+information said again once). **There is no telephony yet** — the browser is the phone.
+The old own-WebSocket voice path was deleted (A5, 2026-10-20).
 
 ---
 

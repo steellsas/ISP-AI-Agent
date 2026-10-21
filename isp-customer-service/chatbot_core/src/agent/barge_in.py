@@ -1,20 +1,15 @@
 """
-Smart barge-in (VOICE_PLAN L3a) — what an interruption MEANS.
+Barge-in — what the caller's words mean when they speak over the agent (PERZIURA §6 I-3).
 
-The transport kills playback on any speech; this module decides what to do
-with the interrupting utterance once transcribed:
+The Pipecat call (`app/pipecat_call.py`) lets the agent finish its phrase and hold; once the
+caller's words are transcribed, `overlap_decision` says "yield" (the caller takes the turn)
+or "continue" (the agent goes on from where it stopped):
 
-    "stop"        — a negation/halt word: a REAL interruption, process it.
-    "consent"     — a bare backchannel ("taip", "gerai", "mhm"): the caller is
-                    agreeing along, not taking the turn — do not derail.
-    "echo"        — the transcript is the AGENT'S OWN words leaking back from a
-                    speakerphone (fuzzy token overlap with what was just being
-                    said — Whisper garbles 1–2 endings, so no exact match).
-    "substantive" — anything else: real content, process it as a normal turn.
-
-DEFAULT-DENY (sutarta 2026-08-14): anything unclear is "substantive" — the
-worst case is today's behaviour, never a swallowed real request. Negation
-beats consent at any length ("ne!" stops the agent, always).
+    a halt word („ne", „stop", „palaukit")  → yield, at any length
+    our own words heard back (echo)          → continue
+    an answer to the question being asked    → yield
+    a bare backchannel („aha", „mhm")        → continue
+    anything else                            → yield (default-deny: never swallow a request)
 """
 
 from __future__ import annotations
@@ -46,47 +41,6 @@ def token_overlap(utterance: str, reference: str) -> float:
         1 for t in toks if (t[:4] if len(t) >= 4 else t) and (t[:4] if len(t) >= 4 else t) in ref
     )
     return hit / len(toks)
-
-
-def classify_interruption(transcript: str, agent_text: str | None) -> str:
-    """See the module docstring. `agent_text` is what the agent was SAYING when
-    interrupted (its own last spoken words) — the echo reference."""
-    toks = _tokens(transcript)
-    if not toks:
-        return "substantive"  # unreadable — default-deny
-    # Negation wins at any length — an urgent halt must never be swallowed.
-    if any(
-        t in vocab("barge_stop_tokens") or t.startswith(vocab("barge_stop_prefixes")) for t in toks
-    ):
-        return "stop"
-    if (
-        agent_text
-        and len(toks) >= 2
-        and token_overlap(transcript, agent_text) >= limits.get("echo_overlap_threshold")
-    ):
-        return "echo"
-    if len(toks) <= limits.get("barge_consent_max_words") and all(
-        t in vocab("barge_consent_tokens") for t in toks
-    ):
-        return "consent"
-    return "substantive"
-
-
-def is_echo(transcript: str, agent_text: str | None) -> bool:
-    """Our own words heard back WITHOUT an interruption (wave 9, T4).
-
-    The barge-in check above only runs on the utterance that cut the agent off. Live
-    2026-10-07 the reply had finished, the speaker's tail reached the microphone, and
-    „Atsakingas žmogus su jumis susisieks ir aptars skolą." became a caller turn — read as
-    „no" to the registration offer. With no interruption a short „taip, gerai" must never be
-    swallowed, so only a sentence-length utterance (`echo_min_words`) can be echo here.
-    """
-    toks = _tokens(transcript)
-    return bool(
-        agent_text
-        and len(toks) >= limits.get("echo_min_words")
-        and token_overlap(transcript, agent_text) >= limits.get("echo_overlap_threshold")
-    )
 
 
 def overlap_decision(

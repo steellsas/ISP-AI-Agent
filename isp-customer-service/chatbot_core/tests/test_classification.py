@@ -5,8 +5,6 @@ Klasifikacijos kaskada ir kompetencijų politika (DIALOGO_ETALONAS diskusija,
 „neaiškaus gedimo" tiketo tipas.
 """
 
-from types import SimpleNamespace
-
 
 def _agent():
     from tests.calls import make_agent
@@ -191,59 +189,6 @@ class TestAccumulatedContext:
         scripted_words(agent.state, agent.runtime, "gal dėl to neturiu interneto?")
         assert got and "netoks" in got[0] and "neturiu interneto" in got[0]
         assert agent.state.intake.problem_type == "internet_down"
-
-    def test_story_window_while_problem_unknown(self, db_connection):
-        from agent.endpoint import classify_endpoint, story_ms
-
-        agent = _agent()
-        # užbaigtas sakinys, bet problema dar nežinoma -> laukiam ilgiau
-        assert classify_endpoint(agent.state, agent.runtime, "Oras šiandien kažkoks netoks.") == (
-            "slow",
-            story_ms(),
-        )
-        # atsisveikinimas kerpamas greitai net ir vartuose
-        assert classify_endpoint(agent.state, agent.runtime, "Ačiū, viso gero")[0] == "fast"
-        # problema jau žinoma -> normalus langas
-        agent.state.intake.problem_type = "internet_down"
-        assert classify_endpoint(agent.state, agent.runtime, "Oras šiandien kažkoks netoks.") == (
-            "normal",
-            None,
-        )
-
-    def test_final_flush_hands_open_segment_to_engine(self, db_connection, monkeypatch):
-        from app.main import _final_flush
-
-        monkeypatch.setenv("FINAL_FLUSH", "on")
-        got: list = []
-        front = SimpleNamespace(export_open=lambda: b"\x01\x02" * 20_000, _rate=16_000)
-        ms = SimpleNamespace(
-            front=front,
-            overlay_front=None,
-            voice=SimpleNamespace(transcribe_partial=lambda wav: "gal dėl to neturiu interneto"),
-            session=SimpleNamespace(
-                tracer=SimpleNamespace(emit=lambda *a, **k: None),
-                apply_overlay=lambda texts: got.append(texts),
-            ),
-        )
-        _final_flush(ms)
-        assert got == [["gal dėl to neturiu interneto"]]
-
-    def test_final_flush_skips_noise_and_empty(self, db_connection, monkeypatch):
-        from app.main import _final_flush
-
-        monkeypatch.setenv("FINAL_FLUSH", "on")
-        got: list = []
-        ms = SimpleNamespace(
-            front=SimpleNamespace(export_open=lambda: b"\x01" * 100, _rate=16_000),
-            overlay_front=SimpleNamespace(export_open=lambda: None, _rate=16_000),
-            voice=SimpleNamespace(transcribe_partial=lambda wav: "kažkas"),
-            session=SimpleNamespace(
-                tracer=SimpleNamespace(emit=lambda *a, **k: None),
-                apply_overlay=lambda texts: got.append(texts),
-            ),
-        )
-        _final_flush(ms)
-        assert got == []
 
 
 class TestPendingFallback:

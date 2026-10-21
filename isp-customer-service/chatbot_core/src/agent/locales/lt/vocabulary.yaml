@@ -1160,13 +1160,6 @@ stuck_filler:
   - "sakykite"
   - "pasakykite"
 
-# --- agent/endpoint.py (E2 semantic turn-taking) ------------------------------
-
-# An utterance whose LAST word is in this list is an unfinished thought
-# ("nedega, bet…", "patikrinau ir…") — the endpointer waits longer, never cuts
-# the caller mid-sentence.
-continuation_words: ["bet", "ir", "o", "tai", "nes", "kad", "kai", "arba", "tada", "dar", "gal", "nu", "na", "taigi", "vadinasi", "pavyzdžiui", "į", "iš", "su", "prie", "ant", "per", "apie"]
-
 # --- agent/resolution.py: words inside the readers -----------------------------
 
 # A standalone "ne" — a denial in almost every reader.

@@ -27,7 +27,7 @@ from typing import Any
 
 from .call_record.finalizer import finalize
 from .config import AgentConfig
-from .delivery import apply_delivery, apply_overlay
+from .delivery import apply_delivery
 from .graph_v2 import GraphState, TurnScratch, build_graph
 from .runtime import new_call
 
@@ -216,26 +216,10 @@ class AgentSession:
         except Exception:  # pragma: no cover - biasing must never break a turn
             return None
 
-    def apply_overlay(self, texts: list[str]) -> None:
-        """Duplex-hearing 2: hand the caller's over-the-voice words to the
-        engine (deterministic ingest + one-shot narrator note)."""
-        self._write_between_turns(lambda state, rt: apply_overlay(state, rt, texts))
-
     def apply_delivery(self, sentences: list[str], delivered: int) -> None:
         """D1: after a barge-in, keep in history only the sentences the caller
         actually heard; the unheard tail resurfaces via the narrator next turn."""
         self._write_between_turns(lambda state, rt: apply_delivery(state, rt, sentences, delivered))
-
-    def endpoint_hint(self, partial_text: str) -> tuple[str, int | None]:
-        """E2 duplex: how much trailing silence the utterance-so-far deserves —
-        ("slow", ms) mid-thought, ("fast", ms) when it already IS the expected
-        answer, ("normal", None) otherwise. Best-effort, deterministic."""
-        try:
-            from .endpoint import classify_endpoint
-
-            return classify_endpoint(self._state, self._runtime, partial_text)
-        except Exception:  # pragma: no cover - a hint must never break a turn
-            return ("normal", None)
 
     def use_background_analyst(self) -> None:
         """The transport has a background window (voice): the analyst reads there, so no
@@ -276,19 +260,6 @@ class AgentSession:
         with self._inbox_lock:
             self._inbox["bg_diagnosis"] = result.observation
 
-    def is_pending_answer(self, text: str) -> bool:
-        """Does `text` answer the evidence question that is currently out? (The
-        deterministic reader — used to tell a caller's answer from an echo.)"""
-        s = self._state
-        key = s.diagnosis.pending_evidence_key
-        if not key:
-            return False
-        from .evidence import read_pending_answer, spec_for
-
-        spec = spec_for(None) or {}
-        item = (spec.get("client") or {}).get(key)
-        return read_pending_answer(str(key), text, item) is not None
-
     def awaiting_caller(self) -> bool:
         """True while the call is open and a question/instruction is standing —
         the gate for the silence check-in (G3): 'Kaip sekasi?' only makes sense
@@ -298,26 +269,6 @@ class AgentSession:
             return not s.closing.case_closed and bool((s.dialog.last_question or "").strip())
         except Exception:  # pragma: no cover
             return False
-
-    def last_spoken_text(self) -> str:
-        """The agent's most recent spoken reply (echo reference for L3a) —
-        falls back to the standing question when no reply is recorded yet."""
-        try:
-            for m in reversed(self._state.messages):
-                if m.get("role") == "assistant" and (m.get("content") or "").strip():
-                    return str(m["content"])
-            return self._state.dialog.last_question or ""
-        except Exception:  # pragma: no cover
-            return ""
-
-    def anchor_text(self) -> str:
-        """The exact question to re-say after a swallowed backchannel turn."""
-        from .dialog_utils import anchor_text
-
-        try:
-            return anchor_text(self._state, self._runtime)
-        except Exception:  # pragma: no cover
-            return ""
 
     def greeting(self) -> str:
         """

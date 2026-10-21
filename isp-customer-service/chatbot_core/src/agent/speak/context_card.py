@@ -470,14 +470,6 @@ def _delivery(state, rt) -> list[str]:
             f"NOT HEARD (the caller cut in): „{tail[:160]}“ — if it matters, say it again "
             "briefly in your own words."
         )
-    overlay = state.voice.overlay_heard
-    if overlay:
-        state.voice.overlay_heard = None
-        quoted = " / ".join(f"„{t[:120]}“" for t in overlay)
-        out.append(
-            f"SPOKEN OVER YOU: {quoted} — take it into account; if it answers your "
-            "question, do not ask it again."
-        )
     unheard = state.voice.unheard_question
     if unheard:
         state.voice.unheard_question = None
