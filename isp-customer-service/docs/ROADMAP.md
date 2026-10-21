@@ -88,7 +88,7 @@ engineer watch it. One record feeds every view:
 
 | # | Step | Result |
 |---|---|---|
-| 3.1 | **Turn "why" view** (heard, read, decided, tools, knowledge, prompt, said, latency strip, state change) + **version tags** on every call (git commit, knowledge and prompt hashes, models). Full LLM input is written in development. Old logs cleared — start from zero | how the engine works, every turn |
+| 3.1 | **Turn "why" view** (heard, read, decided, tools, knowledge, prompt, said, latency strip, state change) + **version tags** on every call (git commit, knowledge and prompt hashes, models). Full LLM input is written in development. Old logs cleared — start from zero. **3.1b** (2026-10-21): live = the flow (turns as steps by engine part), archive = analysis (step detail; an LLM step as goal → input → output) | how the engine works, every turn |
 | 3.2 | **Tests by function, pilot: identification** — `tests/identification/` (address understanding, street, house, flat, account code, owner name, dialogue), variants as tables with readable names, phase fixtures (`identified_call`, …) so a later phase never re-runs identification, a report Area → Function → ✓/✗ | a failing test names the broken function |
 | 3.3 | **Call summary + monitoring page** (P2): outcomes, where calls break by phase, cards used, what was not understood, latency and cost trends, a review queue | the whole picture |
 | 3.4 | Tests by function for the other phases (problem, analysis, solving, ticket, closing); LLM reading tests apart (N runs, threshold) | the full test structure |

@@ -10,7 +10,6 @@ const Layout = (() => {
   function apply() {
     if (state.leftW) root.style.setProperty("--left-w", state.leftW);
     if (state.scenarioH) root.style.setProperty("--scenario-h", state.scenarioH);
-    if (state.cardsH) root.style.setProperty("--cards-h", state.cardsH);
     for (const b of document.querySelectorAll(".block[data-block]"))
       b.classList.toggle("folded", !!(state.folded || {})[b.dataset.block]);
   }
@@ -58,10 +57,9 @@ const Layout = (() => {
         state[key] = Math.round(h) + "px"; root.style.setProperty(prop, state[key]);
       });
     vertical("scenario", "blk-scenario", "--scenario-h", "scenarioH", 60);
-    vertical("cards", "blk-cards", "--cards-h", "cardsH", 80);
     document.getElementById("layoutReset").onclick = () => {
-      for (const k of ["leftW", "scenarioH", "cardsH", "folded"]) delete state[k];
-      for (const p of ["--left-w", "--scenario-h", "--cards-h"]) root.style.removeProperty(p);
+      for (const k of ["leftW", "scenarioH", "folded"]) delete state[k];
+      for (const p of ["--left-w", "--scenario-h"]) root.style.removeProperty(p);
       save(state); apply();
     };
     if (state.tab && state.tab !== "test") showTab(state.tab);

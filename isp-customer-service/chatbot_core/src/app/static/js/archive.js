@@ -4,7 +4,7 @@
 const Archive = (() => {
   const $ = id => document.getElementById(id);
   const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
-  const brain = makeBrain($("callDetail"), { name: "arch", noFollow: true });
+  const brain = makeBrain($("callDetail"), { name: "arch", noFollow: true, select: true });
   let turn = 0;
 
   async function load() {

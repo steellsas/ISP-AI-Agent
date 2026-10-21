@@ -138,7 +138,7 @@ def stream_reply(state: Any, rt: Any, owner: str):
             trace_note(rt.tracer, state, "llm_stream", str(e), level="error")
             yield rt.config.error_message
             return
-        record_llm_stats(state, rt)
+        record_llm_stats(state, rt, content)
 
         if not content:
             # Empty reply (already yielded nothing) -> nudge and retry.
@@ -252,8 +252,10 @@ def on_turn_cancelled(state: Any, rt: Any, spoken_text: str) -> None:
     rt.tracer.emit("turn_cancelled", spoken=spoken[:160])
 
 
-def record_llm_stats(state: Any, rt: Any) -> None:
-    """Fold the last LLM call's stats into the running totals + trace."""
+def record_llm_stats(state: Any, rt: Any, output: str | None = None) -> None:
+    """Fold the last LLM call's stats into the running totals + trace. With
+    DEBUG_LLM=full the trace keeps the model's raw words too — before the reply guards
+    trimmed them (the archive shows goal → input → output, ROADMAP 3.1b)."""
     s = get_last_call_stats()
     rt.llm_stats.add_call(
         input_tokens=s.get("input_tokens", 0),
@@ -273,4 +275,5 @@ def record_llm_stats(state: Any, rt: Any) -> None:
         cached=s.get("cached", False),
         # a reply cut short (reply guard) never got the provider's usage: counted locally
         **({"estimated": True} if s.get("estimated") else {}),
+        **({"output": output} if output is not None and capture_level() == "full" else {}),
     )

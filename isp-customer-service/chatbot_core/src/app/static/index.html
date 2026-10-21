@@ -59,31 +59,21 @@
       </div>
       <div class="block-b vv-body"><canvas id="vvCanvas"></canvas></div>
     </div>
-    <div class="block" id="blk-graph" data-block="graph">
-      <div class="block-h"><span>Agento vidus — fazės ir ėjimo kelias</span><span class="muted b-totals" id="totals"></span><button class="fold" title="Suskleisti">▾</button></div>
-      <div class="block-b"><div class="b-phases" id="phases"></div><div class="b-graph" id="graph"></div></div>
-    </div>
-    <div class="block" id="blk-cards" data-block="cards">
-      <div class="block-h"><span>Ėjimo planas ir būsena</span><button class="fold" title="Suskleisti">▾</button></div>
-      <div class="block-b cards">
-        <div class="card b-plan" id="planCard"><div class="muted">Ėjimo planas atsiras po pirmo kliento sakinio.</div></div>
-        <div class="card b-state" id="stateCard"><div class="muted">Būsena — kas žinoma apie skambutį.</div></div>
-      </div>
-    </div>
-    <div class="hsplit" data-split="cards"></div>
-    <div class="block grow" id="blk-timeline" data-block="timeline">
+    <div class="block grow" id="blk-flow" data-block="flow">
       <div class="block-h">
-        <span class="b-views"><button class="vbtn" data-v="why" title="Vieno ėjimo išklotinė: ką girdėjo, suprato, nusprendė, kvietė, pasakė ir kiek truko">Kodėl taip</button><button class="vbtn" data-v="events" title="Visi įvykiai laiko tvarka">Įvykiai</button></span>
-        <span class="filters b-filters" id="filters">
+        <span class="b-views"><button class="vbtn" data-v="main" title="Ką agentas daro — ėjimai žingsniais; spustelėkite žingsnį, kad pamatytumėte detales">Eiga</button><button class="vbtn" data-v="events" title="Visi įvykiai laiko tvarka">Įvykiai</button></span>
+        <span class="fl-legend"><i class="p-read"></i>supranta <i class="p-decide"></i>sprendžia <i class="p-tool"></i>įrankis <i class="p-know"></i>žinios <i class="p-say"></i>sako</span>
+        <span class="muted b-totals" id="totals"></span>
+        <span class="filters b-filters">
           <label><input type="checkbox" data-f="decide" checked> sprendimai</label>
           <label><input type="checkbox" data-f="llm" checked> LLM</label>
           <label><input type="checkbox" data-f="tool" checked> įrankiai</label>
           <label><input type="checkbox" data-f="voice" checked> ASR/TTS</label>
           <label><input type="checkbox" data-f="graph"> grafas</label>
         </span>
-        <button class="fold" title="Suskleisti">▾</button>
       </div>
-      <div class="block-b b-viewbox"><div class="b-why"></div><div class="b-timeline" id="timeline"></div></div>
+      <div class="flow-top"><div class="b-phases" id="phases"></div><div class="b-facts"></div></div>
+      <div class="block-b b-viewbox"><div class="b-flow"></div><div class="b-timeline" id="timeline"></div></div>
     </div>
   </section>
 </main>
@@ -120,34 +110,28 @@
         <button id="turnNext" class="ghost" title="Kitas ėjimas (→)">▶</button>
         <a id="detExport" class="linkish" download>⬇ JSON</a>
       </div>
+      <div class="arch-sum"><div class="b-phases"></div><div class="b-facts"></div><span class="muted b-totals"></span></div>
       <div class="arch-grid">
         <div class="block">
-          <div class="block-h"><span>Transkriptas ir garso įrašai</span></div>
+          <div class="block-h"><span>Pokalbis ir garso įrašai</span></div>
           <div class="block-b"><div id="detTranscript"></div><div id="detAudio"></div></div>
         </div>
-        <div class="arch-right">
-          <div class="block">
-            <div class="block-h"><span>Fazės ir ėjimo kelias</span><span class="muted b-totals"></span></div>
-            <div class="block-b"><div class="b-phases"></div><div class="b-graph"></div></div>
+        <div class="block">
+          <div class="block-h"><span>Eiga</span><span class="fl-legend"><i class="p-read"></i>supranta <i class="p-decide"></i>sprendžia <i class="p-tool"></i>įrankis <i class="p-know"></i>žinios <i class="p-say"></i>sako</span></div>
+          <div class="block-b"><div class="b-flow"></div></div>
+        </div>
+        <div class="block">
+          <div class="block-h">
+            <span class="b-views"><button class="vbtn" data-v="main" title="Pasirinkto ėjimo ar žingsnio detalės: tikslas, įvestis, išvestis">Detalės</button><button class="vbtn" data-v="events" title="Visi įvykiai laiko tvarka">Įvykiai</button></span>
+            <span class="filters b-filters">
+          <label><input type="checkbox" data-f="decide" checked> sprendimai</label>
+          <label><input type="checkbox" data-f="llm" checked> LLM</label>
+          <label><input type="checkbox" data-f="tool" checked> įrankiai</label>
+          <label><input type="checkbox" data-f="voice" checked> ASR/TTS</label>
+          <label><input type="checkbox" data-f="graph"> grafas</label>
+        </span>
           </div>
-          <div class="block">
-            <div class="block-b cards">
-              <div class="card b-plan"></div>
-              <div class="card b-state"></div>
-            </div>
-          </div>
-          <div class="block grow">
-            <div class="block-h"><span class="b-views"><button class="vbtn" data-v="why" title="Vieno ėjimo išklotinė: ką girdėjo, suprato, nusprendė, kvietė, pasakė ir kiek truko">Kodėl taip</button><button class="vbtn" data-v="events" title="Visi įvykiai laiko tvarka">Įvykiai</button></span>
-              <span class="filters b-filters">
-                <label><input type="checkbox" data-f="decide" checked> sprendimai</label>
-                <label><input type="checkbox" data-f="llm" checked> LLM</label>
-                <label><input type="checkbox" data-f="tool" checked> įrankiai</label>
-                <label><input type="checkbox" data-f="voice" checked> ASR/TTS</label>
-                <label><input type="checkbox" data-f="graph"> grafas</label>
-              </span>
-            </div>
-            <div class="block-b b-viewbox"><div class="b-why"></div><div class="b-timeline"></div></div>
-          </div>
+          <div class="block-b b-viewbox"><div class="b-detail"></div><div class="b-timeline"></div></div>
         </div>
       </div>
     </div>
@@ -170,10 +154,11 @@
     </div>
   </div>
 </div>
-<!-- layout.js skirtukai ir skydeliai · why.js ėjimo išklotinė · brain.js agento vidus · scenarios.js · archive.js · app.js skambutis ir balsas -->
+<!-- layout.js skirtukai ir skydeliai · flow.js eiga žingsniais · why.js ėjimo išklotinė · brain.js agento vidus · scenarios.js · archive.js · app.js skambutis ir balsas -->
 <script src="/static/js/layout.js?v={{v}}"></script>
 <script src="/static/js/voiceviz.js?v={{v}}"></script>
 <script src="/static/js/why.js?v={{v}}"></script>
+<script src="/static/js/flow.js?v={{v}}"></script>
 <script src="/static/js/brain.js?v={{v}}"></script>
 <script src="/static/js/scenarios.js?v={{v}}"></script>
 <script src="/static/js/archive.js?v={{v}}"></script>
