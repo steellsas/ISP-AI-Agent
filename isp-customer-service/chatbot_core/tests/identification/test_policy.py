@@ -1,15 +1,14 @@
-"""
-Tests for the declarative identification policy (Phase 3.8 step 5d).
-
-The policy KNOBS (offer the phone address, require an apartment, extra verification
-questions) live in agent/knowledge/identification.yaml; these guard that the loader reads
-them, fails loudly on a missing file, and that an extra question turns into injected guidance.
-"""
+"""Nustatymai — the identification knobs in agent/knowledge/identification.yaml."""
 
 import agent.identification as ident
 import pytest
 from agent.contract import loader
 from agent.contract.schema import KnowledgeError
+
+FUNCTION = "Nustatymai"
+
+
+# --- from test_identification_policy.py ---
 
 
 def _reload_with(tmp_path, monkeypatch, text):

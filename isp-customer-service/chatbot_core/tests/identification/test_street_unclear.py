@@ -1,94 +1,18 @@
+"""Neaiški gatvė — a street the registry does not recognise (decide/rules/identification.py).
+
+No automatic spelling questions: fuzzy suggestions first; the caller's own spelling („V kaip
+Vilnius") is understood; the same word repeated means "heard right, no such street" — an
+honest limit, then the account code.
 """
-NLU banga (2026-09-09, gyvi P2/kodo-režimo/paraidžiui defektai): žodžių
-inkarai skiria namą nuo buto, pilna diktacija prabudina kodo režimą, šio
-turn'o diktacija permuša senus slotus, paraidžiui pakopa siaurina registrą.
-"""
+
+import pytest
+
+from .helpers import _agent
+
+FUNCTION = "Neaiški gatvė"
 
 
-def _agent(phone="unknown"):
-    from tests.calls import make_agent
-
-    return make_agent(phone)
-
-
-def _read(text):
-    from agent.perceive.nlu import extract_address
-    from agent.tooling import LocalToolProvider
-
-    registry = LocalToolProvider().address_registry()
-    return extract_address(text, registry.streets, registry.localities)
-
-
-class TestWordAnchors:
-    """Blokas 1: „namo/butas" žodis prie skaičiaus sprendžia slotą."""
-
-    def test_namo_numeris_goes_to_house(self, db_connection):
-        r = _read("Ne. Tai but... but namo numeris yra 60")
-        assert r.house == "60"
-        assert r.apartment is None  # nukirptas „but" (3 raidės) — ne žymeklis
-
-    def test_number_before_namas_is_house(self, db_connection):
-        r = _read("Tilžės 60 būtų namas, o butas 3")
-        assert r.house == "60" and r.apartment == "3"
-
-    def test_glued_single_digits(self, db_connection):
-        """„6 0" (šeši nulis) = 60, ne namas 6."""
-        r = _read("Tildžės 6 0 būtų namas, o butas 3")
-        assert r.house == "60" and r.apartment == "3"
-
-    def test_regular_reading_unchanged(self, db_connection):
-        r = _read("Šiauliai, Tilžės gatvė 60, butas 3")
-        assert r.street and "Tilž" in r.street
-        assert r.house == "60" and r.apartment == "3"
-
-    def test_two_digit_numbers_never_glue(self, db_connection):
-        r = _read("Vilniaus gatvė 33 butas 2")
-        assert r.house == "33" and r.apartment == "2"
-
-
-class TestCodeModeDictation:
-    """Blokas 2: pilna diktacija kodo režime prabudina adresų skaitytuvą."""
-
-    def test_full_dictation_wakes_reader(self, db_connection):
-        from agent.perceive.slots import prefill_slots_from_text
-
-        agent = _agent()
-        agent.state.intake.problem_type = "internet_down"
-        agent.state.identity.account_code_mode = True
-        prefill_slots_from_text(
-            agent.state, agent.runtime, "Negaliu pasakyti kodo. Šiauliai, Tilžės gatvė 60, butas 3"
-        )
-        p = agent.state.identity.profile
-        assert p.street.value and "Tilž" in p.street.value
-        assert p.house.value == "60" and p.apartment.value == "3"
-
-    def test_bare_digits_stay_silenced(self, db_connection):
-        from agent.perceive.slots import prefill_slots_from_text
-
-        agent = _agent()
-        agent.state.intake.problem_type = "internet_down"
-        agent.state.identity.account_code_mode = True
-        prefill_slots_from_text(agent.state, agent.runtime, "10104")
-        assert agent.state.identity.profile.street.value is None
-
-
-class TestFreshDictationWins:
-    """Blokas 3: ŠIO turn'o pilna diktacija permuša senus fragmentus."""
-
-    def test_full_dictation_overrides_stale_house(self, db_connection):
-        from agent.perceive.slots import prefill_slots_from_text
-        from agent.slots import SlotStatus
-
-        agent = _agent()
-        agent.state.intake.problem_type = "internet_down"
-        agent.state.identity.profile.street.propose("Tilžės g.", 0.92, SlotStatus.HEARD)
-        agent.state.identity.profile.house.propose("6", 0.92, SlotStatus.HEARD)
-        agent.state.identity.profile.apartment.propose("60", 0.92, SlotStatus.HEARD)
-        prefill_slots_from_text(
-            agent.state, agent.runtime, "Sakau — Šiauliai, Tilžės gatvė 60, butas 3"
-        )
-        p = agent.state.identity.profile
-        assert p.house.value == "60" and p.apartment.value == "3"
+# --- from test_nlu_wave.py ---
 
 
 class TestSpellingRung:
@@ -143,35 +67,6 @@ class TestSpellingRung:
         agent.state.identity.address_resolve_failures = 3
         r = scripted_words(agent.state, agent.runtime, "Tilžiatkas gatvė 6")
         assert r and "abonento kodą" in r
-
-    def test_denied_street_dropped_and_not_reread(self, db_connection):
-        """D1 (gyva 2026-09-10): „apie Žeimių gatvę nieko NESAKIAU" — slotas
-        išmetamas ir iš paties neigimo sakinio gatvė NEgrįžta."""
-        from agent.perceive.slots import prefill_slots_from_text
-        from agent.slots import SlotStatus
-
-        agent = _agent()
-        agent.state.intake.problem_type = "internet_down"
-        agent.state.identity.profile.street.propose("Žeimių g.", 1.0, SlotStatus.HEARD)
-        agent.state.identity.profile.house.propose("60", 1.0, SlotStatus.HEARD)
-        prefill_slots_from_text(agent.state, agent.runtime, "Aš apie Žeimių gatvę nieko nesakiau")
-        assert agent.state.identity.profile.street.value is None
-        assert agent.state.identity.address_resolve_failures >= 1  # žingsnis link paraidžiui
-
-    def test_denial_with_correction_keeps_new_street(self, db_connection):
-        """D1: „nesakiau Žeimių — Tilžės gatvė 60" — pataisymas išgyvena."""
-        from agent.perceive.slots import prefill_slots_from_text
-        from agent.slots import SlotStatus
-
-        agent = _agent()
-        agent.state.intake.problem_type = "internet_down"
-        agent.state.identity.profile.street.propose("Žeimių g.", 1.0, SlotStatus.HEARD)
-        prefill_slots_from_text(agent.state, agent.runtime, "Nesakiau Žeimių — Tilžės gatvė 60")
-        assert (
-            agent.state.identity.profile.street.value
-            and "Tilž" in agent.state.identity.profile.street.value
-        )
-        assert agent.state.identity.profile.house.value == "60"
 
     def test_spell_prefix_client_form(self):
         """Kliento spontaniška forma: inkaras PO „kaip" (gyva: „Taip kaip
