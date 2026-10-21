@@ -42,7 +42,8 @@ SCHEMA_VERSION = 1
 _DISABLED_VALUES = {"0", "false", "no", "off"}
 # Structural fields are never redacted — their digit runs (session_id, ts) can
 # coincidentally match the phone regex and would otherwise be corrupted.
-_STRUCTURAL_KEYS = {"v", "ts", "session_id", "type"}
+# `versions`: commit and file hashes are digit runs a phone pattern could match (ROADMAP 3.1).
+_STRUCTURAL_KEYS = {"v", "ts", "session_id", "type", "versions"}
 
 # Per-process counter disambiguates ids created in the same microsecond
 # (e.g. concurrent voice sessions or back-to-back starts).

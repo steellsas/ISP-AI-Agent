@@ -73,7 +73,7 @@
     <div class="hsplit" data-split="cards"></div>
     <div class="block grow" id="blk-timeline" data-block="timeline">
       <div class="block-h">
-        <span>Įvykiai</span>
+        <span class="b-views"><button class="vbtn" data-v="why" title="Vieno ėjimo išklotinė: ką girdėjo, suprato, nusprendė, kvietė, pasakė ir kiek truko">Kodėl taip</button><button class="vbtn" data-v="events" title="Visi įvykiai laiko tvarka">Įvykiai</button></span>
         <span class="filters b-filters" id="filters">
           <label><input type="checkbox" data-f="decide" checked> sprendimai</label>
           <label><input type="checkbox" data-f="llm" checked> LLM</label>
@@ -83,7 +83,7 @@
         </span>
         <button class="fold" title="Suskleisti">▾</button>
       </div>
-      <div class="block-b"><div class="b-timeline" id="timeline"></div></div>
+      <div class="block-b b-viewbox"><div class="b-why"></div><div class="b-timeline" id="timeline"></div></div>
     </div>
   </section>
 </main>
@@ -137,7 +137,7 @@
             </div>
           </div>
           <div class="block grow">
-            <div class="block-h"><span>Įvykiai</span>
+            <div class="block-h"><span class="b-views"><button class="vbtn" data-v="why" title="Vieno ėjimo išklotinė: ką girdėjo, suprato, nusprendė, kvietė, pasakė ir kiek truko">Kodėl taip</button><button class="vbtn" data-v="events" title="Visi įvykiai laiko tvarka">Įvykiai</button></span>
               <span class="filters b-filters">
                 <label><input type="checkbox" data-f="decide" checked> sprendimai</label>
                 <label><input type="checkbox" data-f="llm" checked> LLM</label>
@@ -146,7 +146,7 @@
                 <label><input type="checkbox" data-f="graph"> grafas</label>
               </span>
             </div>
-            <div class="block-b"><div class="b-timeline"></div></div>
+            <div class="block-b b-viewbox"><div class="b-why"></div><div class="b-timeline"></div></div>
           </div>
         </div>
       </div>
@@ -170,9 +170,10 @@
     </div>
   </div>
 </div>
-<!-- layout.js skirtukai ir skydeliai · brain.js agento vidus · scenarios.js · archive.js · app.js skambutis ir balsas -->
+<!-- layout.js skirtukai ir skydeliai · why.js ėjimo išklotinė · brain.js agento vidus · scenarios.js · archive.js · app.js skambutis ir balsas -->
 <script src="/static/js/layout.js?v={{v}}"></script>
 <script src="/static/js/voiceviz.js?v={{v}}"></script>
+<script src="/static/js/why.js?v={{v}}"></script>
 <script src="/static/js/brain.js?v={{v}}"></script>
 <script src="/static/js/scenarios.js?v={{v}}"></script>
 <script src="/static/js/archive.js?v={{v}}"></script>

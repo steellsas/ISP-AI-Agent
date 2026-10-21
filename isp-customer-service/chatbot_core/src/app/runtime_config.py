@@ -226,6 +226,15 @@ SCHEMA: list[dict[str, Any]] = [
         "scope": "immediate",
         "kind": "env",
     },
+    {
+        # ROADMAP 3.1: what the trace keeps of every LLM call — full (kūrimas: promptas ir
+        # atsakymas), card (tik konteksto kortelė), off (tik skaičiai; produkcijai).
+        "key": "DEBUG_LLM",
+        "label": "LLM įvestis žurnale (full / card / off)",
+        "options": ["full", "card", "off"],
+        "scope": "immediate",
+        "kind": "env",
+    },
 ]
 
 _BY_KEY = {item["key"]: item for item in SCHEMA}

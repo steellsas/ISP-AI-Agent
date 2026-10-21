@@ -89,7 +89,7 @@ Naršyklėje http://localhost:8080 → skirtukas **„Testavimas"** (numeris →
 |---|---|---|
 | `LOG_LEVEL=DEBUG` | konsolėje realiu laiku: taisyklės, įrankiai, fallback'ai (be PII) | `INFO` |
 | `SIMULATE_REBOOT=on` / `SIMULATE_BRIDGE=on` | leidžia mygtukų imitacijas (prod = off) | eval'e įjungta; demo — per mygtukus |
-| `DEBUG_LLM=1` | į trace'ą prideda, ką LLM gauna (kortelė, faktai) | išjungta |
+| `DEBUG_LLM=full` / `card` / `off` | kiek LLM kvietimo lieka trace'e: `full` — visos žinutės ir atsakymas (rodoma „Kodėl taip“), `card` — tik konteksto kortelė, `off` — tik skaičiai | `full` (kūrimas) |
 | `KB_BACKEND=qdrant` | žinios imamos iš Qdrant indekso (gamybinė forma) | `files` |
 | `EMBED_URL=http://127.0.0.1:6380` | embedding'ai per TEI servisą, ne procese | modelis procese |
 

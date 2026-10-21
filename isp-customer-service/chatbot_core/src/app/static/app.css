@@ -171,6 +171,37 @@ header h1{font-size:15px; font-weight:600; margin-right:6px}
 .filters{display:flex; gap:8px; font-weight:400; text-transform:none; letter-spacing:0}
 .filters label{display:flex; align-items:center; gap:3px}
 
+/* --- Kodėl taip: one turn's breakdown (why.js, ROADMAP 3.1) --- */
+.b-views{display:flex; gap:2px; text-transform:none; letter-spacing:0}
+.vbtn{border:0; background:transparent; color:var(--dim); padding:1px 9px; font-size:12px; font-weight:600; border-radius:99px}
+.vbtn.on{background:var(--accent-bg); color:var(--accent)}
+.b-viewbox .b-why{display:none}
+.b-viewbox.show-why .b-why{display:block}
+.b-viewbox.show-why .b-timeline{display:none}
+.b-why{font-size:13px; line-height:1.5}
+.w-nav{float:right; display:flex; gap:2px}
+.w-nav button{padding:0 7px; font-size:12px}
+.w-ver{font-size:11px; margin-bottom:4px}
+.w-ver code,.w-row code{font-family:Consolas,monospace; font-size:12px; background:var(--panel2); padding:0 4px; border-radius:4px}
+.w-title{font-weight:600; margin-bottom:6px}
+.w-sec{border-left:3px solid var(--line); padding:2px 0 4px 8px; margin:6px 0}
+.w-sec.w-bad{border-left-color:var(--err); background:var(--err-bg); border-radius:0 6px 6px 0}
+.w-h{font-weight:600; font-size:12px; color:var(--dim); text-transform:uppercase; letter-spacing:.04em}
+.w-row{padding:1px 0; overflow-wrap:anywhere}
+.w-kv{white-space:nowrap}
+.w-kv .k,.w-row .k{color:var(--dim); font-size:12px}
+.w-chip{display:inline-block; padding:0 7px; margin:1px 3px 1px 0; border-radius:99px; font-size:11px; border:1px solid var(--line)}
+.w-chip.off{color:var(--dim); text-decoration:line-through; text-decoration-color:var(--line)}
+.w-chip.on{background:var(--accent); border-color:var(--accent); color:#fff; font-weight:600}
+.w-det{margin:2px 0 2px 2px}
+.w-det summary{cursor:pointer; color:var(--accent); font-size:12px}
+.w-det pre{white-space:pre-wrap; font-family:Consolas,monospace; font-size:11.5px; background:var(--panel2);
+  border-radius:6px; padding:6px 8px; max-height:420px; overflow:auto; margin-top:3px}
+.w-bar{display:flex; height:16px; border-radius:4px; overflow:hidden; margin:3px 0 1px}
+.w-seg{min-width:2px; font-size:10px; line-height:16px; color:#fff; padding:0 4px; white-space:nowrap; overflow:hidden}
+.w-seg.s0{background:var(--dim)} .w-seg.s1{background:var(--warn)} .w-seg.s2{background:var(--accent)}
+.w-seg.s3{background:var(--llm)} .w-seg.s4{background:var(--tool)} .w-seg.s5{background:var(--ok)}
+
 /* --- pages: scenarios, archive --- */
 .page{flex:1; overflow:auto; padding:14px 18px}
 .page-h{display:flex; align-items:center; gap:12px; margin-bottom:10px; flex-wrap:wrap}

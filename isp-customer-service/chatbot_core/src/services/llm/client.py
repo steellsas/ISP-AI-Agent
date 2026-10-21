@@ -72,6 +72,14 @@ def get_last_call_stats() -> dict:
 _observer: ContextVar[Callable[[str, dict], None] | None] = ContextVar("llm_observer", default=None)
 
 
+def capture_level() -> str:
+    """How much of each LLM call the trace keeps (ROADMAP 3.1): `full` — the messages
+    and the answer (the development default: "why did it say that" lives there), `card` —
+    the speaker's context card only, `off` — numbers only (production, by default later)."""
+    level = os.getenv("DEBUG_LLM", "full").strip().lower()
+    return {"1": "card", "0": "off", "": "off"}.get(level, level)
+
+
 @contextmanager
 def observe_llm_calls(callback: Callable[[str, dict], None]):
     """Report every completed llm_completion / llm_json_completion call made inside
@@ -83,12 +91,18 @@ def observe_llm_calls(callback: Callable[[str, dict], None]):
         _observer.reset(token)
 
 
-def _notify(role: str | None, call_stats: dict) -> None:
+def _notify(role: str | None, call_stats: dict, request: dict | None = None, response=None) -> None:
     callback = _observer.get()
     if callback is None:
         return
+    report = dict(call_stats)
+    if request is not None and capture_level() == "full":
+        # What the model saw and what it answered — the trace's "why" (ROADMAP 3.1).
+        report["messages"] = request.get("messages")
+        with suppress(Exception):
+            report["output"] = response.choices[0].message.content
     try:
-        callback(role or "other", dict(call_stats))
+        callback(role or "other", report)
     except Exception:  # pragma: no cover - observability must never break a call
         logger.debug("llm observer failed", exc_info=True)
 
@@ -329,7 +343,7 @@ def _execute_completion(
                 f"LLM call: {model}, {input_tokens}+{output_tokens} tokens, ${cost:.4f}, {latency_ms:.0f}ms"
             )
 
-            _notify(role, _last_call_stats)
+            _notify(role, _last_call_stats, kwargs, response)
             return response
 
         except Exception as e:
@@ -372,7 +386,7 @@ def _execute_completion(
         error=str(last_error),
     )
 
-    _notify(role, _last_call_stats)
+    _notify(role, _last_call_stats, kwargs)
     raise Exception(f"LLM call failed after {attempts} retries: {last_error}")
 
 

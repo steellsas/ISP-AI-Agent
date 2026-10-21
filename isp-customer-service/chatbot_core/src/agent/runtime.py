@@ -93,6 +93,8 @@ class AgentRuntime:
     clock: Callable[[], datetime] = field(default=_utc_now)
     # When the call started (the contact record's duration).
     started_at: datetime = field(default_factory=_utc_now)
+    # What the call runs on (agent/versions.py) — also sent to a dashboard that connects late.
+    versions: dict | None = None
 
 
 def new_call(
@@ -111,8 +113,18 @@ def new_call(
     config = config or create_config(language=language)
     session_id = new_session_id()
     tracer = tracer if tracer is not None else get_tracer(session_id)
+    from .versions import call_versions
+
+    try:
+        versions = call_versions(config)
+    except Exception:  # pragma: no cover - a tag must never stop a call
+        versions = None
     tracer.emit(
-        "session_start", caller_phone=caller_phone, language=config.language, model=config.model
+        "session_start",
+        caller_phone=caller_phone,
+        language=config.language,
+        model=config.model,
+        versions=versions,
     )
     state = GraphState(
         identity=IdentityState(caller_phone=caller_phone),
@@ -123,5 +135,6 @@ def new_call(
         config=config,
         tracer=tracer,
         tools=tools if tools is not None else ToolGateway(LocalToolProvider()),
+        versions=versions,
     )
     return state, runtime
