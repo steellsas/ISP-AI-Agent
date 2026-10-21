@@ -49,8 +49,20 @@ def plan_turn(state: Any, rt: Any) -> TurnPlan | None:
     label, what the call is ABOUT is a decision.
     """
     intake.apply_readings(state, rt)
-    for _row, _family, rule in RULES:
+    declined: list[str] = []
+    for _row, family, rule in RULES:
         plan = rule(state, rt)
         if plan is not None:
+            _trace(rt, declined, family, plan.rule)
             return plan
+        declined.append(family)
+    _trace(rt, declined, None, None)
     return None
+
+
+def _trace(rt: Any, declined: list[str], family: str | None, rule: str | None) -> None:
+    """Why THIS rule (ROADMAP 3.1): the families asked before it, in order, said "not
+    mine". No winner = the stage nodes plan the turn."""
+    tracer = getattr(rt, "tracer", None)
+    if tracer is not None:
+        tracer.emit("policy", declined=declined, family=family, rule=rule)

@@ -157,6 +157,8 @@ class AgentSession:
             latency_ms=round(stats.get("latency_ms", 0)),
             cached=stats.get("cached", False),
             success=stats.get("success", True),
+            # DEBUG_LLM=full (the development default): what the model saw and answered.
+            **{k: stats[k] for k in ("messages", "output", "error") if stats.get(k) is not None},
         )
 
     @contextlib.contextmanager
@@ -194,6 +196,11 @@ class AgentSession:
     def session_id(self) -> str:
         """The conversation's trace id (also the JSONL filename stem)."""
         return self._runtime.session_id
+
+    @property
+    def versions(self) -> dict | None:
+        """What this call runs on: code, knowledge and prompt hashes, models."""
+        return self._runtime.versions
 
     @property
     def tracer(self):

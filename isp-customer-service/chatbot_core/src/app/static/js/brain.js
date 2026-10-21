@@ -5,7 +5,7 @@
 "use strict";
 function makeBrain(root, opts = {}) {
   const q = cls => root.querySelector("." + cls);
-  const el = { phases: q("b-phases"), graph: q("b-graph"), plan: q("b-plan"), state: q("b-state"), timeline: q("b-timeline"), totals: q("b-totals"), filters: q("b-filters") };
+  const el = { phases: q("b-phases"), graph: q("b-graph"), plan: q("b-plan"), state: q("b-state"), timeline: q("b-timeline"), totals: q("b-totals"), filters: q("b-filters"), why: q("b-why"), views: q("b-views") };
   const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
   const PATH = [
     ["asr", "ASR", "kalba → tekstas"],
@@ -39,21 +39,22 @@ function makeBrain(root, opts = {}) {
   const PLAN_HINT = '<div class="muted">Ėjimo planas atsiras po pirmo kliento sakinio.</div>';
   const STATE_HINT = '<div class="muted">Būsena — kas žinoma apie skambutį.</div>';
 
-  let turns, cur, last, t0, lastTurnHeader, state, totals, pivot, pinned, phases;
+  let turns, cur, last, t0, lastTurnHeader, state, totals, pivot, pinned, phases, caseSnap, call;
   const listeners = [];
 
   function reset() {
     turns = []; cur = null; last = null; t0 = null; lastTurnHeader = -1;
     state = {}; totals = { in: 0, out: 0, cost: 0, turns: 0 }; pivot = null; pinned = null;
     phases = { seen: {}, now: null, ending: null, endedIn: null };
+    caseSnap = {}; call = {};
     el.timeline.innerHTML = "";
     el.plan.innerHTML = PLAN_HINT; el.state.innerHTML = STATE_HINT;
     if (el.totals) el.totals.textContent = "";
-    renderGraph(); renderPhases(phases);
+    renderGraph(); renderPhases(phases); renderWhy();
   }
 
   function newTurn() {
-    cur = { index: turns.length, nodes: {}, tools: [], llm: [], plan: null, asr: null, tts: null, ttfa: null, state: null };
+    cur = { index: turns.length, nodes: {}, tools: [], llm: [], plan: null, asr: null, tts: null, ttfa: null, state: null, ev: [] };
     turns.push(cur);
     return cur;
   }
@@ -63,10 +64,14 @@ function makeBrain(root, opts = {}) {
   function onEvent(e) {
     if (e.ts && t0 === null) t0 = Date.parse(e.ts);
     for (const fn of listeners) fn(e);
+    if (e.type === "call_info") { call.versions = e.versions; scheduleWhy(); return; } // sent on connect
     if (!AFTER_TURN.has(e.type) && e.type !== "turn_plan" && e.type !== "session_start") open();
+    // Kodėl taip (why.js): every event belongs to the turn it explains.
+    if (e.type === "session_start") call.versions = e.versions;
+    else (AFTER_TURN.has(e.type) ? (last || open()) : open()).ev.push(e);
     switch (e.type) {
       case "turn_plan": {
-        const t = open(); t.plan = e; t.state = { ...state }; t.pivot = pivot; last = t; cur = null;
+        const t = open(); t.plan = e; t.state = { ...state }; t.pivot = pivot; t.caseAfter = { ...caseSnap }; last = t; cur = null;
         if (t.header) t.header.textContent = turnTitle(t);
         if (pinned === null) renderPlan(t);
         break;
@@ -81,10 +86,14 @@ function makeBrain(root, opts = {}) {
       case "asr": open().asr = e; break;
       case "tool_call": open().tools.push(e.name); break;
       case "llm": open().llm.push(e); break;
-      case "case": Object.assign(state, {
-        problem: e.problem, customer: e.customer_id, address: e.address, diagnosis: e.diagnosis,
-        step: e.step, awaiting: e.awaiting, symptoms: e.symptoms, hypothesis: e.hypothesis,
-      }); break;
+      case "case":
+        if (e.move) break; // a card move (case_rule), not the call's snapshot
+        caseSnap = { problem: e.problem, customer_id: e.customer_id, address: e.address, symptoms: e.symptoms,
+          diagnosis: e.diagnosis, awaiting: e.awaiting, clarity: e.clarity, hypothesis: e.hypothesis };
+        Object.assign(state, {
+          problem: e.problem, customer: e.customer_id, address: e.address, diagnosis: e.diagnosis,
+          step: e.step, awaiting: e.awaiting, symptoms: e.symptoms, hypothesis: e.hypothesis,
+        }); break;
       case "caller_intro": state.caller = e.name; state.relation = e.relation; break;
       case "verdict": state.verdict = e.reason; break;
       case "phase": {
@@ -107,7 +116,7 @@ function makeBrain(root, opts = {}) {
     }
     if (["case", "caller_intro", "verdict", "call_summary"].includes(e.type) && pinned === null) renderState(state);
     row(e);
-    if (pinned === null) renderGraph();
+    if (pinned === null) { renderGraph(); scheduleWhy(); }
   }
 
   function turnStart() { if (cur && !cur.plan && Object.keys(cur.nodes).length === 0) return; newTurn(); renderGraph(); }
@@ -322,12 +331,51 @@ function makeBrain(root, opts = {}) {
     if (stick && !opts.noFollow) box.scrollTop = box.scrollHeight;
   }
 
+  /* --- Kodėl taip: one turn's breakdown (why.js) --- */
+  // Live, a turn opens on the caller's words; the analyst's background call after a reply
+  // must not swap the view to an empty turn.
+  const caller = t => t && t.ev.some(e => ["user_turn", "asr", "turn_start", "turn_plan"].includes(e.type));
+  const whyTurn = () => pinned !== null ? turns[pinned] : (caller(cur) ? cur : last || cur);
+  let whyQueued = false;
+  function scheduleWhy() {
+    if (!el.why || whyQueued) return;
+    whyQueued = true;
+    setTimeout(() => { whyQueued = false; renderWhy(); }, 60);  // not rAF: a background tab never paints
+  }
+  function renderWhy() {
+    if (!el.why || !turns) return;
+    const t = whyTurn();
+    // Keep the details the reader opened (a prompt, a model's answer) across live re-renders.
+    const opened = new Set([...el.why.querySelectorAll("details[open]")].map(d => d.dataset.k));
+    const nav = opts.name === "live" && turns.length > 1
+      ? `<div class="w-nav"><button class="ghost" data-nav="-1" title="Ankstesnis ėjimas">◀</button>` +
+        `<button class="ghost" data-nav="1" title="Kitas ėjimas">▶</button>` +
+        (pinned !== null ? '<button class="ghost" data-nav="live" title="Rodyti dabartinį ėjimą">● gyvai</button>' : "") + "</div>"
+      : "";
+    el.why.innerHTML = nav + WhyView.render(t, t ? turns[turns.indexOf(t) - 1] : null, call);
+    [...el.why.querySelectorAll("details")].forEach((d, i) => {
+      d.dataset.k = i + ":" + d.querySelector("summary").textContent;
+      if (opened.has(d.dataset.k)) d.open = true;
+    });
+    for (const b of el.why.querySelectorAll("[data-nav]")) b.onclick = () => {
+      if (b.dataset.nav === "live") return unpin();
+      const at = turns.indexOf(whyTurn());
+      view(Math.max(0, Math.min(turns.length - 1, at + parseInt(b.dataset.nav, 10))));
+    };
+  }
+  function unpin() {
+    pinned = null;
+    const t = viewed();
+    renderGraph(); renderWhy(); renderPhases(phases); renderState(state);
+    if (t && t.plan) renderPlan(t);
+  }
+
   /* --- archive: show one turn --- */
   function view(index) {
     const t = turns[index];
     if (!t) return;
     pinned = index;
-    renderGraph(); renderPlan(t); renderState(t.state || state); renderPhases(t.phases || phases);
+    renderGraph(); renderPlan(t); renderState(t.state || state); renderPhases(t.phases || phases); renderWhy();
     const h = el.timeline.querySelector(`.tl-turn[data-turn="${index}"]`);
     if (h) h.scrollIntoView({ block: "start" });
     for (const x of el.timeline.querySelectorAll(".tl-turn")) x.classList.toggle("current", x === h);
@@ -338,6 +386,23 @@ function makeBrain(root, opts = {}) {
     ? `Ėjimas ${t.plan.turn_index}${t.plan.rule === "dialog.greeting" ? " · pasisveikinimas" : ""} · ${t.plan.rule}`
     : "Ėjimas …";
   const fmtMs = ms => ms >= 1000 ? (ms / 1000).toFixed(1) + " s" : ms + " ms";
+
+  // The bottom block shows either the turn's breakdown or the raw event list.
+  if (el.views) {
+    const key = "brainView." + (opts.name || "live");
+    let v = "why";
+    try { v = localStorage.getItem(key) || "why"; } catch (err) {}
+    const show = name => {
+      v = name;
+      root.querySelectorAll(".b-viewbox").forEach(b => b.classList.toggle("show-why", v === "why"));
+      for (const b of el.views.querySelectorAll("button[data-v]")) b.classList.toggle("on", b.dataset.v === v);
+      if (el.filters) el.filters.style.display = v === "why" ? "none" : "";
+      try { localStorage.setItem(key, v); } catch (err) {}
+      if (v === "why") renderWhy();
+    };
+    for (const b of el.views.querySelectorAll("button[data-v]")) b.onclick = () => show(b.dataset.v);
+    show(v);
+  }
 
   if (el.filters) {
     for (const cb of el.filters.querySelectorAll("input[data-f]")) {

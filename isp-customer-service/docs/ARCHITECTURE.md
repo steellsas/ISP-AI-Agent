@@ -458,6 +458,16 @@ directives, a local GPU model, streaming ASR.
   `tool_call`, `verdict`, `llm_input`, `skill`, `reply_guard`, `barge_in`, `voice_latency`, …), PII
   redacted (`adapters/tracing/jsonl_tracer.py`). Streamed live to the dashboard and replayed in the
   archive.
+- **Versions on every call** (`agent/versions.py`): `session_start` carries the git commit
+  (`+changes` when edited), hashes of the knowledge, locale, prompts and documents, and the
+  models — so a call after a change can be compared with one before it.
+- **What the LLM saw**: `DEBUG_LLM=full` (the development default; config page) writes every
+  call's messages and answer into its `llm` event and the speaker's context card and messages
+  into `llm_input`; `card` keeps the card only, `off` numbers only (production).
+- **Turn "why" view** (`app/static/js/why.js`, block „Kodėl taip“ in Testing and Archive): one
+  turn from its events — heard, read, the rule chain (`policy` event: the families that said
+  "not mine" and the one that planned), tools, knowledge and the card, the prompt, what was said,
+  the latency strip and the state change.
 - **Dashboard** (`app/static/`): Testing (live call + brain panel), Scenarios (19 demo calls,
   `app/scenarios.yaml`), Archive (calls turn by turn, audio, review filter).
 - **Tests**: ~1 390 unit/integration tests in `chatbot_core/tests/`, most without an LLM.

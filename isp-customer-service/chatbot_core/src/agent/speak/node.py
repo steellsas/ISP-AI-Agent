@@ -10,12 +10,11 @@ into the prefix (concatenating would bust the cache every turn — the real cost
 from __future__ import annotations
 
 import logging
-import os
 from contextlib import suppress
 from functools import lru_cache
 from typing import Any
 
-from src.services.llm.client import get_last_call_stats, stream_tool_completion
+from src.services.llm.client import capture_level, get_last_call_stats, stream_tool_completion
 
 from ..contract import limits
 from ..trace import trace_note
@@ -86,17 +85,18 @@ def build_messages(state: Any, rt: Any, owner: str) -> list[dict]:
 
 
 def _debug(state: Any, rt: Any, card: str | None, messages: list[dict]) -> None:
-    """What the LLM actually SEES this turn — where "why did it say that" lives. Off by
-    default (it would bloat the trace); DEBUG_LLM=1 turns it on, =full adds the
-    messages."""
-    if not os.environ.get("DEBUG_LLM"):
+    """What the LLM actually SEES this turn — where "why did it say that" lives.
+    DEBUG_LLM=full (the development default) writes the messages too, =card only the
+    context card, =off nothing (services/llm/client.py `capture_level`)."""
+    level = capture_level()
+    if level == "off":
         return
     payload: dict[str, Any] = {
         "node": state.turn.active_node,
         "card": card,
         "history_msgs": len(messages) - 1,
     }
-    if os.environ.get("DEBUG_LLM") == "full":
+    if level == "full":
         payload["messages"] = messages
     rt.tracer.emit("llm_input", **payload)
 

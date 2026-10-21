@@ -96,6 +96,11 @@ async def lifespan(app: FastAPI):
     from agent.contract import loader
 
     loader.startup()
+    # The version tag every call carries (agent/versions.py): the code version asks git
+    # once (~1 s on Windows) — here, not in the first call.
+    from agent.versions import call_versions
+
+    ops_log.event("app", "versions", logging.INFO, **call_versions(get_config()))
     # Scripted lines are rendered into the TTS cache in the background (review
     # finding AL) — the first calls may still synthesize some of them live.
     import threading
@@ -474,6 +479,9 @@ async def ws_call(ws: WebSocket, session_id: str):
     await ws.accept()
     q = hub.subscribe(session_id)
     manager.socket_opened(session_id)
+    # `session_start` went out before any socket: the dashboard learns what the call runs
+    # on from this one (the "why" view's version line, ROADMAP 3.1).
+    await ws.send_json({"type": "call_info", "versions": manager.get(session_id).session.versions})
 
     async def _pump_events() -> None:
         while True:
