@@ -69,6 +69,7 @@ def pytest_collection_modifyitems(config, items):
 
 def pytest_configure(config):
     config.addinivalue_line("markers", "identification: Identifikacijos sritis (ROADMAP 3.2)")
+    config.addinivalue_line("markers", "monitoring: Stebėsena (ROADMAP 3.3)")
 
 
 def pytest_runtest_logreport(report):

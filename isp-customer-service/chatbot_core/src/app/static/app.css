@@ -252,6 +252,27 @@ table.grid tbody tr:hover{background:var(--panel2)}
 .tl-turn.current{color:var(--accent); border-bottom-color:var(--accent)}
 @media (max-width: 900px){ .arch-grid{grid-template-columns:1fr; height:auto} }
 
+/* --- Stebėsena (monitoring.js, ROADMAP 3.3) --- */
+.m-tiles{display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:8px; margin-bottom:10px}
+.m-tile{background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:8px 12px}
+.m-l{font-size:12px; color:var(--dim)} .m-v{font-size:22px; font-weight:600} .m-n{font-size:11px; color:var(--dim)}
+.m-grid{display:grid; grid-template-columns:repeat(auto-fit,minmax(380px,1fr)); gap:10px}
+.m-card{margin:0} .m-card .block-b{max-height:340px} .m-wide{grid-column:1/-1} .m-wide .block-b{max-height:none}
+.m-bar{display:grid; grid-template-columns:150px minmax(0,1fr) 40px 80px; gap:8px; align-items:center; font-size:13px; padding:2px 0}
+.m-bl{white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
+.m-bt{height:12px; background:var(--panel2); border-radius:3px; overflow:hidden}
+.m-bt i{display:block; height:100%; background:var(--dim)}
+.m-bt i.ok{background:var(--ok)} .m-bt i.hand{background:var(--warn)} .m-bt i.bad{background:var(--err)}
+.m-end{font-size:12px; color:var(--err)}
+.m-t{font-size:12.5px} .m-t td{padding:4px 8px} .m-t tbody tr{cursor:default}
+.m-t tr[data-sid],.m-t tr[data-version]{cursor:pointer}
+.m-lat{position:relative; height:8px; background:var(--panel2); border-radius:3px; margin-bottom:2px; width:140px}
+.m-lat i,.m-lat u{position:absolute; left:0; top:0; height:100%; border-radius:3px}
+.m-lat u{background:var(--warn); opacity:.35} .m-lat i{background:var(--accent)}
+.m-sub{margin-top:8px; font-size:12.5px} .m-err{font-size:12.5px; padding:2px 0}
+.m-callcard{font-size:13px; display:flex; flex-wrap:wrap; gap:4px 12px; align-items:center}
+.m-callcard .pill{font-weight:500}
+
 /* --- config modal --- */
 #cfgOverlay{display:none; position:fixed; inset:0; background:rgba(0,0,0,.45); z-index:20}
 #cfgOverlay.open{display:flex; align-items:center; justify-content:center}

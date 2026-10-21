@@ -185,7 +185,21 @@ def call_detail(session_id: str) -> dict[str, Any] | None:
         "events": events,
         "audio": _audio_files(session_id),
         "stats": _stats_from_events(events),
+        # The call in a few fields and why it may need a look (monitoring.py, ROADMAP 3.3).
+        "card": _card(events, session_id),
     }
+
+
+def _card(events: list[dict[str, Any]], session_id: str) -> dict[str, Any] | None:
+    if not events:
+        return None
+    from .monitoring import call_card
+
+    try:
+        return call_card(events, session_id)
+    except Exception:  # pragma: no cover - a summary must never hide the call
+        logger.warning(f"call card failed for {session_id}", exc_info=True)
+        return None
 
 
 def audio_path(session_id: str, filename: str) -> Path | None:

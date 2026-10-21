@@ -472,6 +472,12 @@ directives, a local GPU model, streaming ASR.
   LLM step: goal → input → output; for a tool: arguments → result; for the plan: the rule chain
   from the `policy` event) or a turn's whole breakdown (`why.js`: heard, read, decided, tools,
   knowledge, prompt, said, latency strip, state change).
+- **Monitoring** (`app/monitoring.py`, tab „Stebėsena“, `GET /monitoring?days=&source=&version=`):
+  one call in a few fields (`call_card`: outcome, phases, cards, not understood, guards,
+  interruptions, latency, cost, errors, versions, and the reasons to look at it) and a period in
+  numbers — outcomes, where calls break off, identification, cards, what no reader understood,
+  latency and cost by day, the versions side by side, the review queue. Read from the traces
+  (`logs/sessions`, or `logs/eval` for eval runs), cached per trace file.
 - **Tests**: ~1 390 unit/integration tests in `chatbot_core/tests/`, most without an LLM.
 - **Eval**: `agent/eval/run_eval.py` — 48 scripted calls with the real LLM, scored on verdict,
   outcome, identification, tools, contact record and reply rules (`--voice`, `--runs N`);

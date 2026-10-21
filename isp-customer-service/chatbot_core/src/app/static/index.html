@@ -13,6 +13,7 @@
     <button class="tab active" data-tab="test">Testavimas</button>
     <button class="tab" data-tab="scen">Scenarijai</button>
     <button class="tab" data-tab="arch">Archyvas</button>
+    <button class="tab" data-tab="mon">Stebėsena</button>
   </nav>
   <span class="grow"></span>
   <select id="scenPick" title="Scenarijus"><option value="">— scenarijus —</option></select>
@@ -110,7 +111,7 @@
         <button id="turnNext" class="ghost" title="Kitas ėjimas (→)">▶</button>
         <a id="detExport" class="linkish" download>⬇ JSON</a>
       </div>
-      <div class="arch-sum"><div class="b-phases"></div><div class="b-facts"></div><span class="muted b-totals"></span></div>
+      <div class="arch-sum"><div id="detCard" class="m-callcard"></div><div class="b-phases"></div><div class="b-facts"></div><span class="muted b-totals"></span></div>
       <div class="arch-grid">
         <div class="block">
           <div class="block-h"><span>Pokalbis ir garso įrašai</span></div>
@@ -138,6 +139,24 @@
   </div>
 </main>
 
+<main id="pane-mon" class="pane">
+  <div class="page">
+    <div class="page-h">
+      <h2>Stebėsena</h2>
+      <select id="monDays" title="Laikotarpis">
+        <option value="1">šiandien</option><option value="7" selected>7 dienos</option>
+        <option value="30">30 dienų</option><option value="0">visi</option>
+      </select>
+      <select id="monSource" title="Kurie skambučiai">
+        <option value="live">gyvi skambučiai</option><option value="eval">eval paleidimai</option>
+      </select>
+      <select id="monVersion" title="Versija (kodas · žinios · promptai)"><option value="">visos versijos</option></select>
+      <button id="monRefresh" class="ghost">atnaujinti</button>
+    </div>
+    <div id="monBody"><div class="muted">Kraunama…</div></div>
+  </div>
+</main>
+
 <div id="cfgOverlay">
   <div id="cfgBox">
     <h2>Nustatymai</h2>
@@ -154,7 +173,7 @@
     </div>
   </div>
 </div>
-<!-- layout.js skirtukai ir skydeliai · flow.js eiga žingsniais · why.js ėjimo išklotinė · brain.js agento vidus · scenarios.js · archive.js · app.js skambutis ir balsas -->
+<!-- layout.js skirtukai ir skydeliai · flow.js eiga žingsniais · why.js ėjimo išklotinė · brain.js agento vidus · scenarios.js · archive.js · monitoring.js stebėsena · app.js skambutis ir balsas -->
 <script src="/static/js/layout.js?v={{v}}"></script>
 <script src="/static/js/voiceviz.js?v={{v}}"></script>
 <script src="/static/js/why.js?v={{v}}"></script>
@@ -162,6 +181,7 @@
 <script src="/static/js/brain.js?v={{v}}"></script>
 <script src="/static/js/scenarios.js?v={{v}}"></script>
 <script src="/static/js/archive.js?v={{v}}"></script>
+<script src="/static/js/monitoring.js?v={{v}}"></script>
 <script src="/static/js/app.js?v={{v}}"></script>
 </body>
 </html>

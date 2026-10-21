@@ -383,6 +383,16 @@ async def calls_list(limit: int = 50, needs_review: bool = False):
     return {"calls": await asyncio.to_thread(archive.list_calls, limit, needs_review)}
 
 
+@app.get("/monitoring")
+async def monitoring_overview(days: int = 7, source: str = "live", version: str | None = None):
+    """Stebėsena (ROADMAP 3.3): the period's calls in numbers — outcomes, where calls end,
+    cards, what was not understood, latency and cost by day, versions, the review queue.
+    `days=0` = every call; `source=eval` reads the eval runs."""
+    from . import monitoring
+
+    return await asyncio.to_thread(monitoring.overview, days or None, source, version)
+
+
 @app.get("/calls/{session_id}")
 async def calls_detail(session_id: str):
     """One call: record + transcript + full event trace + audio list + stats.
