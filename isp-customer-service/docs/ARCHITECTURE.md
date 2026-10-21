@@ -464,12 +464,14 @@ directives, a local GPU model, streaming ASR.
 - **What the LLM saw**: `DEBUG_LLM=full` (the development default; config page) writes every
   call's messages and answer into its `llm` event and the speaker's context card and messages
   into `llm_input`; `card` keeps the card only, `off` numbers only (production).
-- **Turn "why" view** (`app/static/js/why.js`, block „Kodėl taip“ in Testing and Archive): one
-  turn from its events — heard, read, the rule chain (`policy` event: the families that said
-  "not mine" and the one that planned), tools, knowledge and the card, the prompt, what was said,
-  the latency strip and the state change.
-- **Dashboard** (`app/static/`): Testing (live call + brain panel), Scenarios (19 demo calls,
-  `app/scenarios.yaml`), Archive (calls turn by turn, audio, review filter).
+- **Dashboard** (`app/static/`): Testing, Scenarios (19 demo calls, `app/scenarios.yaml`) and
+  Archive. Live (Testing) shows the **flow** (`flow.js`): phases, one line of what is known, and
+  every turn as short steps tagged by the engine part doing them (klientas → supranta →
+  sprendžia → įrankis → žinios → sako); a step opens in place. After the call the Archive
+  analyses it: transcript and audio, the same flow, and a detail panel — a step in full (for an
+  LLM step: goal → input → output; for a tool: arguments → result; for the plan: the rule chain
+  from the `policy` event) or a turn's whole breakdown (`why.js`: heard, read, decided, tools,
+  knowledge, prompt, said, latency strip, state change).
 - **Tests**: ~1 390 unit/integration tests in `chatbot_core/tests/`, most without an LLM.
 - **Eval**: `agent/eval/run_eval.py` — 48 scripted calls with the real LLM, scored on verdict,
   outcome, identification, tools, contact record and reply rules (`--voice`, `--runs N`);

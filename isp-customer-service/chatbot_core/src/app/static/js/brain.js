@@ -1,22 +1,19 @@
-/* Agento vidus: one turn at a time — the path through the graph, the turn plan, the call
-   state and the event timeline. `makeBrain(root)` draws into any container holding the
-   .b-graph / .b-plan / .b-state / .b-timeline / .b-totals / .b-filters elements: the live
-   call (Testavimas) and a replayed call (Archyvas) use the same view. */
+/* Agento vidus: the call's phases, a one-line picture of what is known, the flow of turns
+   (flow.js — what the agent does, step by step) and the raw event list. `makeBrain(root)`
+   draws into any container holding the .b-phases / .b-facts / .b-totals / .b-flow / .b-detail /
+   .b-timeline / .b-filters / .b-views elements: the live call (Testavimas) shows the flow with
+   steps opening in place; a replayed call (Archyvas, opts.select) opens a step or a turn in the
+   detail panel (a turn as the full breakdown, why.js). */
 "use strict";
 function makeBrain(root, opts = {}) {
   const q = cls => root.querySelector("." + cls);
-  const el = { phases: q("b-phases"), graph: q("b-graph"), plan: q("b-plan"), state: q("b-state"), timeline: q("b-timeline"), totals: q("b-totals"), filters: q("b-filters"), why: q("b-why"), views: q("b-views") };
+  const el = {
+    phases: q("b-phases"), facts: q("b-facts"), totals: q("b-totals"), flow: q("b-flow"), detail: q("b-detail"),
+    timeline: q("b-timeline"), filters: q("b-filters"), views: q("b-views"),
+  };
   const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
-  const PATH = [
-    ["asr", "ASR", "kalba → tekstas"],
-    ["perceive", "perceive", "supranta"],
-    ["decide", "decide", "planuoja"],
-    ["execute", "execute", "veiksmai"],
-    ["narrate", "narrate", "kalba"],
-    ["tts", "TTS", "tekstas → balsas"],
-  ];
-  // Pokalbio fazės (STRUKTURA_V3, 2 etapas — šešėlis): variklis jų dar nevaldo, tik rodo, kur
-  // skambutis yra. Užsidega dabartinė; raudona — neleistinas perėjimas; geltona — per ilgai fazėje.
+  // Pokalbio fazės (STRUKTURA_V3, šešėlis): užsidega dabartinė; raudona — neleistinas perėjimas;
+  // geltona — per ilgai fazėje.
   const PHASES = [
     ["greeting", "Pasisveikinimas"], ["intake", "Kodėl skambina"], ["identify", "Identifikacija"],
     ["investigate", "Tyrimas"], ["ticket", "Tiketas"], ["closing", "Pabaiga"],
@@ -30,71 +27,58 @@ function makeBrain(root, opts = {}) {
     callback: "perskambinimas", declined: "klientas atsisakė", closed: "baigta",
     abandoned: "nutraukta", unidentified: "neidentifikuotas", error: "techninė klaida",
   };
-  const H_STATUS = {
-    testing: ["h-testing", "tikrinama"], active: ["h-testing", "aktyvi"],
-    doubt: ["h-doubt", "abejojama"], confirming: ["h-confirming", "tikslinama"],
-    confirmed: ["h-confirmed", "patvirtinta"], changed: ["h-changed", "pakeista"],
-  };
+  const PROBLEM_LT = { internet_down: "internetas neveikia", internet_slow: "lėtas internetas", tv_down: "TV neveikia", billing: "sąskaitos" };
   const AFTER_TURN = new Set(["turn_summary", "voice_latency", "pipecat_latency", "checkin", "tts", "analyst_signals", "call_summary", "session_end", "delivery", "telemetry_refresh"]);
-  const PLAN_HINT = '<div class="muted">Ėjimo planas atsiras po pirmo kliento sakinio.</div>';
-  const STATE_HINT = '<div class="muted">Būsena — kas žinoma apie skambutį.</div>';
 
-  let turns, cur, last, t0, lastTurnHeader, state, totals, pivot, pinned, phases, caseSnap, call;
+  let turns, cur, last, t0, lastTurnHeader, state, totals, pinned, phases, caseSnap, call, selected, opened, ttfa;
   const listeners = [];
 
   function reset() {
     turns = []; cur = null; last = null; t0 = null; lastTurnHeader = -1;
-    state = {}; totals = { in: 0, out: 0, cost: 0, turns: 0 }; pivot = null; pinned = null;
+    state = {}; totals = { in: 0, out: 0, cost: 0, turns: 0 }; pinned = null; ttfa = null;
     phases = { seen: {}, now: null, ending: null, endedIn: null };
-    caseSnap = {}; call = {};
-    el.timeline.innerHTML = "";
-    el.plan.innerHTML = PLAN_HINT; el.state.innerHTML = STATE_HINT;
+    caseSnap = {}; call = {}; selected = null; opened = new Set();
+    if (el.timeline) el.timeline.innerHTML = "";
     if (el.totals) el.totals.textContent = "";
-    renderGraph(); renderPhases(phases); renderWhy();
+    if (el.flow) el.flow.innerHTML = '<div class="muted fl-empty">Eiga atsiras, kai agentas pradės kalbėti.</div>';
+    if (el.detail) el.detail.innerHTML = '<div class="muted">Pasirinkite ėjimą arba žingsnį eigoje.</div>';
+    renderPhases(phases); renderFacts();
   }
 
   function newTurn() {
-    cur = { index: turns.length, nodes: {}, tools: [], llm: [], plan: null, asr: null, tts: null, ttfa: null, state: null, ev: [] };
+    cur = { index: turns.length, plan: null, state: null, ev: [] };
     turns.push(cur);
     return cur;
   }
   const open = () => cur || newTurn();
-  const viewed = () => (pinned !== null && turns[pinned]) || cur || last;
 
   function onEvent(e) {
     if (e.ts && t0 === null) t0 = Date.parse(e.ts);
     for (const fn of listeners) fn(e);
-    if (e.type === "call_info") { call.versions = e.versions; scheduleWhy(); return; } // sent on connect
+    if (e.type === "call_info") { call.versions = e.versions; return; } // sent on connect
     if (!AFTER_TURN.has(e.type) && e.type !== "turn_plan" && e.type !== "session_start") open();
-    // Kodėl taip (why.js): every event belongs to the turn it explains.
+    // Every event belongs to the turn it explains (flow.js, why.js).
+    let owner = null;
     if (e.type === "session_start") call.versions = e.versions;
-    else (AFTER_TURN.has(e.type) ? (last || open()) : open()).ev.push(e);
+    else { owner = AFTER_TURN.has(e.type) ? (last || open()) : open(); owner.ev.push(e); }
     switch (e.type) {
       case "turn_plan": {
-        const t = open(); t.plan = e; t.state = { ...state }; t.pivot = pivot; t.caseAfter = { ...caseSnap }; last = t; cur = null;
+        const t = open(); t.plan = e; t.state = { ...state }; t.caseAfter = { ...caseSnap }; last = t; cur = null;
         if (t.header) t.header.textContent = turnTitle(t);
-        if (pinned === null) renderPlan(t);
         break;
       }
       case "turn_summary":
         totals.in += e.input_tokens || 0; totals.out += e.output_tokens || 0;
         totals.cost += e.cost_usd || 0; totals.turns += 1;
         renderTotals(); break;
-      case "voice_latency": { const t = last || open(); t.tts = e.tts_ms; break; }
-      case "dialogue": open().dialogue = e; break; // before this turn's plan is traced
-      case "graph_node": open().nodes[e.node] = e.ms; break;
-      case "asr": open().asr = e; break;
-      case "tool_call": open().tools.push(e.name); break;
-      case "llm": open().llm.push(e); break;
+      case "pipecat_latency": if (!e.suspect && e.user_turn_ms) ttfa = e.total_ms; break;
       case "case":
         if (e.move) break; // a card move (case_rule), not the call's snapshot
         caseSnap = { problem: e.problem, customer_id: e.customer_id, address: e.address, symptoms: e.symptoms,
           diagnosis: e.diagnosis, awaiting: e.awaiting, clarity: e.clarity, hypothesis: e.hypothesis };
-        Object.assign(state, {
-          problem: e.problem, customer: e.customer_id, address: e.address, diagnosis: e.diagnosis,
-          step: e.step, awaiting: e.awaiting, symptoms: e.symptoms, hypothesis: e.hypothesis,
-        }); break;
-      case "caller_intro": state.caller = e.name; state.relation = e.relation; break;
+        Object.assign(state, { problem: e.problem, customer: e.customer_id, address: e.address, diagnosis: e.diagnosis });
+        break;
+      case "caller_intro": if (e.name && !e.refused) state.caller = e.name; break;
       case "verdict": state.verdict = e.reason; break;
       case "phase": {
         const t = open(), ph = phases.seen[e.phase] || (phases.seen[e.phase] = { turns: 0, bad: false, slow: false });
@@ -109,49 +93,15 @@ function makeBrain(root, opts = {}) {
       case "call_summary":
         phases.ending = e.outcome; phases.endedIn = phases.now;
         if (pinned === null) renderPhases(phases);
-        state.outcome = e.outcome; state.review = e.needs_review ? e.review_reason : null; state.ticket = e.ticket_id; break;
-      case "decision":
-        if (e.action === "pivot" || e.intent === "hypothesis_changed") pivot = { from: e.from_step || e.from, to: e.to };
-        break;
+        state.outcome = e.outcome; state.ticket = e.ticket_id; break;
     }
-    if (["case", "caller_intro", "verdict", "call_summary"].includes(e.type) && pinned === null) renderState(state);
     row(e);
-    if (pinned === null) { renderGraph(); scheduleWhy(); }
+    if (owner) touch(owner);
+    if (pinned === null) renderFacts();
   }
 
-  function turnStart() { if (cur && !cur.plan && Object.keys(cur.nodes).length === 0) return; newTurn(); renderGraph(); }
-  function voiceDone(msg) { if (last && msg.ttfa_ms != null) { last.ttfa = msg.ttfa_ms; renderGraph(); } }
-
-  /* --- ėjimo kelias --- */
-  function renderGraph() {
-    const t = viewed();
-    if (!t) {
-      el.graph.innerHTML = PATH.map(([, n, d], i) => (i ? '<span class="garrow">→</span>' : "") +
-        `<div class="gnode idle"><div class="n">${n}</div><div class="d">${d}</div></div>`).join("");
-      return;
-    }
-    const llmMs = t.llm.map(l => l.latency_ms || 0).reduce((a, b) => a + b, 0);
-    const detail = {
-      asr: t.asr ? `„${esc((t.asr.raw || "").slice(0, 40))}“${t.asr.dropped ? " (atmesta)" : ""}` : "tekstas",
-      perceive: "supranta sakinį",
-      decide: t.plan ? esc(t.plan.rule) : "…",
-      execute: t.tools.length ? esc(t.tools.join(", ")) : "be įrankių",
-      narrate: t.llm.length ? `LLM ${llmMs} ms` : (t.plan && t.plan.say && t.plan.say.kind === "phrase" ? "variklio frazė" : "…"),
-      tts: t.ttfa != null ? `TTFA ${t.ttfa} ms` : "—",
-    };
-    const ms = { asr: t.asr ? t.asr.ms : null, perceive: t.nodes.perceive, decide: t.nodes.decide, execute: t.nodes.execute, narrate: t.nodes.narrate, tts: t.tts };
-    let activeSet = false;
-    el.graph.innerHTML = PATH.map(([k, n], i) => {
-      let cls = "gnode";
-      const has = ms[k] != null;
-      if (has) cls += " done";
-      else if (["perceive", "decide", "execute", "narrate"].includes(k) && !t.plan && !activeSet) { cls += " active"; activeSet = true; }
-      else cls += " idle";
-      return (i ? '<span class="garrow">→</span>' : "") +
-        `<div class="${cls}"><div class="n">${n}</div><div class="ms">${has ? fmtMs(ms[k]) : "&nbsp;"}</div>` +
-        `<div class="d" title="${detail[k]}">${detail[k]}</div></div>`;
-    }).join("");
-  }
+  function turnStart() { if (cur && !cur.plan && cur.ev.length === 0) return; newTurn(); touch(cur); }
+  function voiceDone(msg) { if (msg.ttfa_ms != null) { ttfa = msg.ttfa_ms; renderFacts(); } }
 
   /* --- fazės --- */
   function renderPhases(p) {
@@ -182,135 +132,151 @@ function makeBrain(root, opts = {}) {
     }).join("");
   }
 
-  /* --- ėjimo planas --- */
-  function renderPlan(t) {
-    const p = t.plan || {};
-    const say = (p.say || {}).kind;
-    const who = say === "phrase" ? '<span class="pill engine">variklis</span>'
-      : say === "directive" ? '<span class="pill llm">LLM</span>' : '<span class="pill">—</span>';
-    const action = p.action && p.action.type && p.action.type !== "none"
-      ? `<code>${esc(p.action.type)}${p.action.name ? ":" + esc(p.action.name) : ""}</code>` : "—";
-    const s = t.state || state;
-    el.plan.innerHTML =
-      `<div class="k">Ėjimas ${p.turn_index ?? t.index}</div>` +
-      `<div><b>${esc(p.owner || "—")}</b> · <code>${esc(p.rule || "—")}</code></div>` +
-      `<div><span class="k">Kalba:</span> ${who}${dialoguePill(t.dialogue)}</div>` +
-      `<div><span class="k">Hipotezė:</span> ${hypothesisPill(p.hypothesis || s.hypothesis, t.pivot)}</div>` +
-      `<div><span class="k">Veiksmas:</span> ${action} · <span class="k">laukia:</span> ${esc(p.awaiting || s.awaiting || "—")}</div>`;
-  }
-
-  // Pokalbio sluoksnis (v3 5 etapas): patvirtinimas + VIENAS pokalbio veiksmas.
-  const MOVE_LT = { return: "grąžina", answer: "atsako", wait: "laukia", explain: "paaiškina", clarify: "persiklausia", check_in: "pasiteirauja" };
-  const ACK_LT = { plain: "patvirtina", confirm: "patikslina, ką suprato" };
-  function dialoguePill(d) {
-    if (!d) return "";
-    const parts = [ACK_LT[d.ack], MOVE_LT[d.move]].filter(Boolean);
-    if (!parts.length) return "";
-    return ` · <span class="pill" title="${esc(d.why || "")}">${esc(parts.join(" + "))}</span>`;
-  }
-
-  function hypothesisPill(h, pv) {
-    if (!h) return "—";
-    let cause = h, status = "testing";
-    if (typeof h === "object") { cause = h.cause; status = h.status || "testing"; }
-    else if (String(h).includes(":")) [cause, status] = String(h).split(":");
-    if (pv && pv.to && String(cause) === String(pv.to)) status = "changed";
-    const [cls, label] = H_STATUS[status] || ["h-testing", status];
-    const from = status === "changed" && pv.from ? `${esc(pv.from)} → ` : "";
-    return `<span class="pill ${cls}">${from}${esc(cause)} · ${label}</span>`;
-  }
-
-  /* --- būsena --- */
-  function renderState(s) {
-    const line = (k, v) => v ? `<div><span class="k">${k}:</span> ${v}</div>` : "";
-    el.state.innerHTML =
-      line("Klientas", s.customer ? `${esc(s.customer)}${s.caller ? " · " + esc(s.caller) + (s.relation && s.relation !== "unknown" ? " (" + esc(s.relation) + ")" : "") : ""}` : '<span class="pill warn">neidentifikuotas</span>') +
-      line("Adresas", s.address ? esc(s.address) + " ✓" : "") +
-      line("Problema", esc(s.problem)) +
-      line("Diagnozė", esc(s.diagnosis || s.verdict)) +
-      line("Žingsnis", s.step ? `<code>${esc(s.step)}</code>` : "") +
-      line("Faktai", esc(s.symptoms)) +
-      line("Baigtis", s.outcome ? `<b>${esc(s.outcome)}</b>${s.ticket ? " · " + esc(s.ticket) : ""}${s.review ? ' <span class="pill warn">peržiūrai: ' + esc(s.review) + "</span>" : ""}` : "");
+  /* --- one line: what is known about the call --- */
+  function renderFacts() {
+    if (!el.facts) return;
+    const s = pinned !== null && turns[pinned] && turns[pinned].state ? turns[pinned].state : state;
+    const bits = [
+      s.customer ? `klientas <b>${esc(s.customer)}</b>${s.caller ? " · " + esc(s.caller) : ""}` : '<span class="pill warn">neidentifikuotas</span>',
+      s.address ? esc(s.address) : "",
+      s.problem ? esc(PROBLEM_LT[s.problem] || s.problem) : "",
+      s.diagnosis || s.verdict ? `diagnozė ${esc(s.diagnosis || s.verdict)}` : "",
+      s.outcome ? `baigtis <b>${esc(ENDING_LT[s.outcome] || s.outcome)}</b>${s.ticket ? " · " + esc(s.ticket) : ""}` : "",
+      ttfa != null && pinned === null ? `atsakė per <b>${(ttfa / 1000).toFixed(1).replace(".", ",")} s</b>` : "",
+    ].filter(Boolean);
+    el.facts.innerHTML = bits.join(' <span class="sep">·</span> ');
   }
 
   function renderTotals() {
     if (el.totals) el.totals.textContent = `${totals.turns} ėj. · ${(totals.in / 1000).toFixed(1)}k/${totals.out} tok · $${totals.cost.toFixed(4)}`;
   }
 
-  /* --- įvykių laiko juosta --- */
+  /* --- eiga: every turn as steps (flow.js) --- */
+  const dirty = new Set();
+  let flowQueued = false;
+  function touch(t) {
+    if (!el.flow) return;
+    dirty.add(t);
+    if (flowQueued) return;
+    flowQueued = true;
+    setTimeout(() => { flowQueued = false; renderFlow(); }, 60); // not rAF: a background tab never paints
+  }
+  function renderFlow() {
+    if (!el.flow) return;
+    if (el.flow.querySelector(".fl-empty") && turns.length) el.flow.innerHTML = "";
+    const box = el.flow.parentElement;
+    const stick = box.scrollTop + box.clientHeight >= box.scrollHeight - 40;
+    for (const t of dirty) {
+      if (!t.ev.length && !t.plan) continue;
+      const i = turns.indexOf(t);
+      const html = Flow.turnHtml(t, i, { live: !opts.select, open: opened, selected: selected && selected.turn === i ? selected.step : null });
+      const old = el.flow.querySelector(`.fl-turn-wrap[data-turn="${i}"]`);
+      if (old) old.innerHTML = html;
+      else {
+        const div = document.createElement("div");
+        div.className = "fl-turn-wrap"; div.dataset.turn = i; div.innerHTML = html;
+        // turns stay in order even when an older one is re-rendered late
+        const next = [...el.flow.querySelectorAll(".fl-turn-wrap")].find(w => +w.dataset.turn > i);
+        el.flow.insertBefore(div, next || null);
+      }
+    }
+    dirty.clear();
+    if (stick && !opts.select) box.scrollTop = box.scrollHeight;
+  }
+  if (el.flow) el.flow.addEventListener("click", ev => {
+    const st = ev.target.closest(".fl-step"), head = ev.target.closest(".fl-head");
+    if (st) {
+      const ti = +st.dataset.turn, si = +st.dataset.step;
+      if (opts.select) { selectStep(ti, si); return; }
+      const k = `${ti}:${si}`;
+      opened.has(k) ? opened.delete(k) : opened.add(k);
+      touch(turns[ti]);
+    } else if (head && opts.select) {
+      view(+head.dataset.turn);
+    }
+  });
+
+  function selectStep(ti, si) {
+    const prev = selected && turns[selected.turn];
+    selected = { turn: ti, step: si };
+    if (prev) touch(prev);
+    touch(turns[ti]);
+    pinned = ti; renderPhases(turns[ti].phases || phases); renderFacts();
+    if (el.detail) { el.detail.innerHTML = Flow.detail(Flow.steps(turns[ti])[si]); el.detail.parentElement.scrollTop = 0; }
+    showMain();
+  }
+
+  /* --- archive: one turn — its full breakdown in the detail panel --- */
+  function view(index) {
+    const t = turns[index];
+    if (!t) return;
+    pinned = index;
+    const prev = selected && turns[selected.turn];
+    selected = null;
+    if (prev) touch(prev);
+    renderPhases(t.phases || phases); renderFacts();
+    if (el.detail) { el.detail.innerHTML = WhyView.render(t, turns[index - 1], call); el.detail.parentElement.scrollTop = 0; }
+    for (const w of el.flow ? el.flow.querySelectorAll(".fl-turn-wrap") : []) w.classList.toggle("current", +w.dataset.turn === index);
+    const w = el.flow && el.flow.querySelector(`.fl-turn-wrap[data-turn="${index}"]`);
+    if (w) w.scrollIntoView({ block: "nearest" });
+    const h = el.timeline && el.timeline.querySelector(`.tl-turn[data-turn="${index}"]`);
+    for (const x of el.timeline ? el.timeline.querySelectorAll(".tl-turn") : []) x.classList.toggle("current", x === h);
+    showMain();
+  }
+
+  /* --- įvykių laiko juosta (raw events) --- */
+  const MOVE_LT = { return: "grąžina", answer: "atsako", wait: "laukia", explain: "paaiškina", clarify: "persiklausia", check_in: "pasiteirauja" };
   function describe(e) {
     const kv = o => Object.entries(o || {}).filter(([, v]) => v !== null && v !== "" && v !== undefined)
       .map(([k, v]) => `${k}=${typeof v === "object" ? JSON.stringify(v) : v}`).join(" ").slice(0, 160);
-    const rest = o => kv(Object.fromEntries(Object.entries(o).filter(([k]) => !["v", "ts", "session_id", "type"].includes(k))));
+    const rest = o => kv(Object.fromEntries(Object.entries(o).filter(([k]) => !["v", "ts", "session_id", "type", "messages", "output"].includes(k))));
     switch (e.type) {
       case "phase":
         if (e.prev === e.phase) return null;
-        return [e.ok ? "decide" : "err", "fazė",
-          `${PHASE_LT[e.prev] || "—"} → ${PHASE_LT[e.phase] || e.phase}${e.ok ? "" : " — neleistinas perėjimas"}`];
+        return [e.ok ? "decide" : "err", "fazė", `${PHASE_LT[e.prev] || "—"} → ${PHASE_LT[e.phase] || e.phase}${e.ok ? "" : " — neleistinas perėjimas"}`];
       case "dialogue": return e.move && e.move !== "none" ? ["decide", "pokalbis", `${MOVE_LT[e.move] || e.move} · ${e.why}`] : null;
       case "turn_plan": return ["decide", "planas", `${e.owner} · ${e.rule} · ${(e.say || {}).kind || ""}`];
+      case "policy": return ["decide", "grandinė", `${e.family || "etapo mazgai"} (praleido ${(e.declined || []).length})`];
       case "decision": return ["decide", "sprendimas", [e.intent, e.action, e.from_step && e.to ? `${e.from_step}→${e.to}` : (e.to || ""), e.reason || e.value || e.key || ""].filter(Boolean).join(" ")];
       case "verdict": return ["decide", "verdiktas", `${e.reason || ""} ${e.group || ""} ${e.side || ""}`];
-      case "classify": return ["decide", "klasė", `${e.detector}→${e.label} „${(e.text || "").slice(0, 60)}“`];
       case "evidence": return ["decide", "faktas", `${e.action} ${e.key || ""}=${e.value ?? ""}`];
-      case "caller_intro": return ["decide", "vardas", `${e.name} (${e.relation})${e.refused ? " — atsisakė" : ""}`];
       case "question": return ["decide", "klausimas", `${e.owner}.${e.key}${e.action ? " " + e.action : ""}${e.asks ? " ×" + e.asks : ""}`];
-      case "answer": return ["decide", "suvokė", e.understood || kv(e.facts)];
-      case "confusion": return ["decide", "neaišku", `${e.understood} — ${e.confusion}`];
-      case "contradiction": return ["decide", "prieštara", e.understood];
-      case "deviation": return ["decide", "nukrypo", e.understood];
       case "stuck": return e.count || e.repeated ? ["err", "užstrigo", `kartų ${e.count}${e.repeated ? " · kartojasi" : ""}`] : null;
-      case "analyst_signals": return (e.signals || []).length ? ["decide", "analitikas", (e.signals || []).map(s => s.type || s.kind).join(", ")] : null;
-      case "scripted": return ["decide", "variklis", "atsakymą sudarė variklis"];
-      case "held_outage": return ["decide", "avarija", `${e.action} ${e.street || ""}`];
       case "rag": return ["decide", "žingsnis iš žinių", `${e.doc} §${e.section}`];
-      // Žinių paieška (RAG E1–E4): arba atsisakymas su priežastimi, arba kas rasta ir ar tvirtai.
-      // Be šios eilutės įvykis nukrisdavo į `default` ir rodydavo žalius laukus — o būtent čia
-      // matosi, KAIP agentas mąsto: ar klausė kortelė, ar klientas, ir kuo jis nepasitiki.
-      case "knowledge": {
-        if (e.refused) return ["decide", "žinios", `neieškojo (${e.refused}) — „${e.said || ""}“`];
-        // `found` yra dalių sąrašas, o dvi dalys dažnai yra iš TO PAČIO dokumento — rodom failą
-        // vieną kartą su dalių skaičiumi, kad eilutė sakytų „iš kur", o ne kartotų save.
-        const docs = String(e.found || "-").split(",").filter(Boolean);
-        const uniq = [...new Set(docs)].map(d => d + (docs.filter(x => x === d).length > 1 ? ` ×${docs.filter(x => x === d).length}` : ""));
-        const who = e.asked_by === "card" ? "kortelė" : "klientas";
-        const how = docs.length === 0 || e.found === "-" ? "nerado" : (e.sure ? "tvirtai" : "spėjimas");
-        return ["decide", "žinios", `${uniq.join(" · ")} · ${how} · klausė ${who}: „${e.words || ""}“`];
-      }
-      case "nlu": return ["decide", "NLU", kv({ problema: e.problem, miestas: e.city, gatvė: e.street, namas: e.house, butas: e.apartment })];
       case "session_start": return ["decide", "pradžia", `skambina ${e.caller_phone}`];
       case "session_end": return ["decide", "pabaiga", `${e.outcome} · ${e.transport_end || ""}`];
       case "user_turn": return opts.transcriptRows ? ["decide", "klientas", `„${e.text}“`] : null;
       case "agent_reply": return opts.transcriptRows ? ["decide", "agentas", `„${e.text}“`] : null;
-      case "llm": return ["llm", "LLM", `${e.model} ${e.input_tokens}/${e.output_tokens} tok`, e.latency_ms];
+      case "llm": return ["llm", "LLM", `${e.role || ""} ${e.model} ${e.input_tokens}/${e.output_tokens} tok`, e.latency_ms];
+      case "llm_input": return ["llm", "LLM įvestis", `${e.node || ""} · istorija ${e.history_msgs}`];
       case "tool_call": return ["tool", "įrankis", `${e.name}(${kv(e.args)})`];
       case "tool_result": return ["tool", "↳ atsakas", `${e.name || ""} ok=${e.ok} ${kv(e.summary)}`, e.ms];
       case "telemetry_refresh": return ["tool", "telemetrija", `fono atnaujinimas: ${e.action}${e.fresh ? " " + e.fresh : ""}`];
       case "preflight": return ["tool", "preflight", e.found ? `rastas ${e.customer_id}` : "nerastas"];
       case "asr": return ["voice", "ASR", `„${e.raw || ""}“${e.dropped ? " — atmesta" : ""}`, e.ms];
       case "tts": return ["voice", "TTS", `${e.chars} simb.`, e.ms];
-      case "voice_latency": return ["voice", "balsas", `asr ${e.asr_ms} · agentas ${e.agent_ms} · tts ${e.tts_ms}`, e.total_ms];
       case "pipecat_latency": {
-        if (e.suspect || !e.user_turn_ms) return null;  // greeting, or a measurement lost in a barge-in
+        if (e.suspect || !e.user_turn_ms) return null;
         const p = e.parts || {};
         return ["voice", "balsas", `tyla ${p.endpointing_wait ?? "–"} · asr ${p.transcription ?? "–"} · agentas ${p.pipeline ?? "–"} · tts ${p.speech_synthesis ?? "–"}`, e.total_ms];
       }
-      case "overlay": return ["voice", "ant balso", `„${e.text}“${e.echo ? " (aidas)" : ""}`];
-      case "barge_in": return ["voice", "pertrauka", "klientas pertraukė agentą"];
+      case "barge_in": return ["voice", "pertrauka", `„${e.transcript || ""}“ → ${e.verdict}`];
       case "graph_node": return ["graph", "mazgas", e.node, e.ms];
       case "node": return ["graph", "etapas", e.node];
       case "error": return ["err", e.level === "warn" ? "įspėjimas" : "klaida", `${e.where}: ${e.detail}`];
-      case "case": case "turn_summary": case "call_summary": case "partial": return null;
+      case "case": return e.move ? ["decide", "kortelė", `${e.move} ${e.fault || ""} ${e.module || ""}`] : null;
+      case "turn_summary": case "call_summary": case "partial": return null;
       default: return ["decide", e.type, rest(e)];
     }
   }
 
   function row(e) {
+    if (!el.timeline) return;
     const d = describe(e);
     if (!d) return;
     const tl = el.timeline;
-    const t = viewed();
-    if (t && pinned === null && t.index !== lastTurnHeader) {
+    const t = cur || last;
+    if (t && t.index !== lastTurnHeader) {
       lastTurnHeader = t.index;
       const h = document.createElement("div");
       h.className = "tl-turn"; h.dataset.turn = t.index; t.header = h; h.textContent = turnTitle(t);
@@ -331,78 +297,10 @@ function makeBrain(root, opts = {}) {
     if (stick && !opts.noFollow) box.scrollTop = box.scrollHeight;
   }
 
-  /* --- Kodėl taip: one turn's breakdown (why.js) --- */
-  // Live, a turn opens on the caller's words; the analyst's background call after a reply
-  // must not swap the view to an empty turn.
-  const caller = t => t && t.ev.some(e => ["user_turn", "asr", "turn_start", "turn_plan"].includes(e.type));
-  const whyTurn = () => pinned !== null ? turns[pinned] : (caller(cur) ? cur : last || cur);
-  let whyQueued = false;
-  function scheduleWhy() {
-    if (!el.why || whyQueued) return;
-    whyQueued = true;
-    setTimeout(() => { whyQueued = false; renderWhy(); }, 60);  // not rAF: a background tab never paints
-  }
-  function renderWhy() {
-    if (!el.why || !turns) return;
-    const t = whyTurn();
-    // Keep the details the reader opened (a prompt, a model's answer) across live re-renders.
-    const opened = new Set([...el.why.querySelectorAll("details[open]")].map(d => d.dataset.k));
-    const nav = opts.name === "live" && turns.length > 1
-      ? `<div class="w-nav"><button class="ghost" data-nav="-1" title="Ankstesnis ėjimas">◀</button>` +
-        `<button class="ghost" data-nav="1" title="Kitas ėjimas">▶</button>` +
-        (pinned !== null ? '<button class="ghost" data-nav="live" title="Rodyti dabartinį ėjimą">● gyvai</button>' : "") + "</div>"
-      : "";
-    el.why.innerHTML = nav + WhyView.render(t, t ? turns[turns.indexOf(t) - 1] : null, call);
-    [...el.why.querySelectorAll("details")].forEach((d, i) => {
-      d.dataset.k = i + ":" + d.querySelector("summary").textContent;
-      if (opened.has(d.dataset.k)) d.open = true;
-    });
-    for (const b of el.why.querySelectorAll("[data-nav]")) b.onclick = () => {
-      if (b.dataset.nav === "live") return unpin();
-      const at = turns.indexOf(whyTurn());
-      view(Math.max(0, Math.min(turns.length - 1, at + parseInt(b.dataset.nav, 10))));
-    };
-  }
-  function unpin() {
-    pinned = null;
-    const t = viewed();
-    renderGraph(); renderWhy(); renderPhases(phases); renderState(state);
-    if (t && t.plan) renderPlan(t);
-  }
-
-  /* --- archive: show one turn --- */
-  function view(index) {
-    const t = turns[index];
-    if (!t) return;
-    pinned = index;
-    renderGraph(); renderPlan(t); renderState(t.state || state); renderPhases(t.phases || phases); renderWhy();
-    const h = el.timeline.querySelector(`.tl-turn[data-turn="${index}"]`);
-    if (h) h.scrollIntoView({ block: "start" });
-    for (const x of el.timeline.querySelectorAll(".tl-turn")) x.classList.toggle("current", x === h);
-  }
-
   // The server's number when the plan has come (the greeting is turn 0), else a placeholder.
   const turnTitle = t => t.plan && t.plan.turn_index != null
     ? `Ėjimas ${t.plan.turn_index}${t.plan.rule === "dialog.greeting" ? " · pasisveikinimas" : ""} · ${t.plan.rule}`
     : "Ėjimas …";
-  const fmtMs = ms => ms >= 1000 ? (ms / 1000).toFixed(1) + " s" : ms + " ms";
-
-  // The bottom block shows either the turn's breakdown or the raw event list.
-  if (el.views) {
-    const key = "brainView." + (opts.name || "live");
-    let v = "why";
-    try { v = localStorage.getItem(key) || "why"; } catch (err) {}
-    const show = name => {
-      v = name;
-      root.querySelectorAll(".b-viewbox").forEach(b => b.classList.toggle("show-why", v === "why"));
-      for (const b of el.views.querySelectorAll("button[data-v]")) b.classList.toggle("on", b.dataset.v === v);
-      if (el.filters) el.filters.style.display = v === "why" ? "none" : "";
-      try { localStorage.setItem(key, v); } catch (err) {}
-      if (v === "why") renderWhy();
-    };
-    for (const b of el.views.querySelectorAll("button[data-v]")) b.onclick = () => show(b.dataset.v);
-    show(v);
-  }
 
   if (el.filters) {
     for (const cb of el.filters.querySelectorAll("input[data-f]")) {
@@ -412,6 +310,24 @@ function makeBrain(root, opts = {}) {
       cb.onchange = () => { apply(); try { localStorage.setItem(key, cb.checked ? "1" : "0"); } catch (err) {} };
       apply();
     }
+  }
+
+  // The view box shows the main view (live: the flow; archive: the detail) or the raw events.
+  let showMain = () => {};
+  if (el.views) {
+    const key = "brainView2." + (opts.name || "live");
+    let v = "main";
+    try { v = localStorage.getItem(key) || "main"; } catch (err) {}
+    const show = name => {
+      v = name;
+      root.querySelectorAll(".b-viewbox").forEach(b => b.classList.toggle("show-main", v === "main"));
+      for (const b of el.views.querySelectorAll("button[data-v]")) b.classList.toggle("on", b.dataset.v === v);
+      if (el.filters) el.filters.style.display = v === "main" ? "none" : "";
+      try { localStorage.setItem(key, v); } catch (err) {}
+    };
+    for (const b of el.views.querySelectorAll("button[data-v]")) b.onclick = () => show(b.dataset.v);
+    show(v);
+    showMain = () => show("main");
   }
   reset();
 

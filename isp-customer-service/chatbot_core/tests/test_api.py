@@ -237,9 +237,10 @@ class TestDashboard:
     def test_dashboard_served(self, client):
         resp = client.get("/")
         assert resp.status_code == 200
-        assert "Agento vidus" in resp.text
+        assert "b-flow" in resp.text  # the live flow (3.1b)
         assert "{{v}}" not in resp.text  # the cache buster is filled in
         assert client.get("/static/js/brain.js").status_code == 200
+        assert client.get("/static/js/flow.js").status_code == 200
 
     def test_demo_scenarios_are_complete(self, client):
         scenarios = client.get("/demo/scenarios").json()["scenarios"]

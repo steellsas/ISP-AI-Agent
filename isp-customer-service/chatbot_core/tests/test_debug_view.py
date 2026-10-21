@@ -128,11 +128,37 @@ class TestLLMCapture:
         assert item["options"][0] == "full"
 
 
-def test_the_dashboard_loads_the_why_view():
+def test_the_dashboard_loads_the_flow_and_the_breakdown():
+    """3.1b: live — the flow of turns; archive — the flow, and a step or a turn in detail."""
     from pathlib import Path
 
     static = Path(__file__).resolve().parents[1] / "src" / "app" / "static"
     html = (static / "index.html").read_text(encoding="utf-8")
     assert html.index("js/why.js") < html.index("js/brain.js")
-    assert html.count('class="b-why"') == 2  # the live call and the archive
-    assert "WhyView.render" in (static / "js" / "brain.js").read_text(encoding="utf-8")
+    assert html.index("js/flow.js") < html.index("js/brain.js")
+    assert html.count('class="b-flow"') == 2  # the live call and the archive
+    assert html.count('class="b-detail"') == 1  # the archive's detail panel
+    brain = (static / "js" / "brain.js").read_text(encoding="utf-8")
+    assert "Flow.turnHtml" in brain and "Flow.detail" in brain and "WhyView.render" in brain
+    assert "select: true" in (static / "js" / "archive.js").read_text(encoding="utf-8")
+
+
+def test_the_speaker_keeps_its_raw_words(monkeypatch):
+    """The archive shows goal → input → output; the output is the model's own words, before
+    the reply guards trimmed them."""
+    from agent.speak import node
+
+    tracer = _CaptureTracer()
+    rt = SimpleNamespace(
+        tracer=tracer,
+        config=SimpleNamespace(model="m"),
+        llm_stats=SimpleNamespace(add_call=lambda **k: None),
+    )
+    monkeypatch.setattr(node, "get_last_call_stats", lambda: {"input_tokens": 5})
+    monkeypatch.delenv("DEBUG_LLM", raising=False)
+    node.record_llm_stats(None, rt, "Labas. Kaip sekasi? Ar dega lemputė?")
+    monkeypatch.setenv("DEBUG_LLM", "off")
+    node.record_llm_stats(None, rt, "Labas.")
+    full, off = tracer.of("llm")
+    assert full["role"] == "speak" and full["output"] == "Labas. Kaip sekasi? Ar dega lemputė?"
+    assert "output" not in off
