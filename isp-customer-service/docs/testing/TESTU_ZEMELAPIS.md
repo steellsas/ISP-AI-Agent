@@ -36,7 +36,7 @@ palieka kontakto įrašą (`agent/call_record/`).
 | `diagnosis/` | **Tyrimas** | `-m diagnosis` | 408 | Telemetrija kaip faktai, Linijos skaitymas, Kortelės, Galimi gedimai, Kitas žingsnis, Gedimo kelias, Moduliai, Įranga, Konkretūs gedimai, Paslaugų profilis, Atsisakytas žingsnis, Kantrus vedimas, Nuotoliniai veiksmai, Žingsnių serveris, Informavimas (skola, avarija), Klientas ne namie, Atsakymai žingsniuose, Visa fazė |
 | `knowledge/` | **Žinios** | `-m knowledge` | 118 | Žinių poreikis, Žinių priminimas, Žinių bazė, Paieškos sąsaja, Qdrant indeksas |
 | `ticket/` | **Tiketas** | `-m ticket` | 88 | Kontaktų dialogas, Registracijos priežastys, Prašymai, Atviri tiketai, Visa fazė |
-| `closing/` | **Pabaiga** | `-m closing` | 119 | Uždarymas, Uždarymo taisyklės, Viena uždarymo vieta, Pabaiga balse, Kontakto įrašas, Skambučio santrauka, Atsisveikinimo ir sutikimo skaitymas |
+| `closing/` | **Pabaiga** | `-m closing` | 145 | Uždarymas, Uždarymo taisyklės, Viena uždarymo vieta, Pabaiga balse, Kontakto įrašas, Skambučio santrauka, Atsisveikinimo ir sutikimo skaitymas, Baigiamasis klausimas, Visa fazė |
 | `speaking/` | **Kalba** | `-m speaking` | 165 | Kalbėtojas, Atsakymo sargai, Promptai, Vienas skill per atsakymą, Istorija, Kartojimo sargas, Pokalbio kokybė, Pokalbio sluoksnis, Promptas pagal fazę, Kalbos klaidos, Adreso tarimas, Rašyti žodžiai be modelio |
 | `voice/` | **Balsas** | `-m voice` | 161 | ASR šališkumas, Balso adapteriai, Pertraukimai, Ką išgirdo klientas, Piper, Piper procesai, Paruoštos frazės, ASR teksto normalizavimas, Privaloma informacija, Generavimo stabdymas |
 | `engine/` | **Variklis** | `-m engine` | 58 | Grafas, Būsena, Decide ciklas, Taisyklių tvarka, Plano vartai, Fazės, Ėjimo įvykiai, Konfigūracija |
@@ -53,7 +53,7 @@ ir žinomas spragas.
 | Sluoksnis | Kas garantuojama | Kur gyvena |
 |---|---|---|
 | EVAL (pokalbio lygis) | pilni pokalbiai su tikru LLM: supratimas, identifikacija, sprendimas, tiketas, užbaigimas, kontakto įrašas | `eval/scenarios.json` (S/I/D/R/T/U/G/A/X serijos) |
-| Fazė | visa fazė per tikrą grafą, kalbantis LLM imituotas (`call` / `identified` fiktyvai) | `identification/test_phase.py`, `problem/test_phase.py`, `diagnosis/test_phase.py`, `ticket/test_phase.py`; kitoms fazėms — 3.4b |
+| Fazė | visa fazė per tikrą grafą, kalbantis LLM imituotas (`call` / `identified` fiktyvai) | `identification/test_phase.py`, `problem/test_phase.py`, `diagnosis/test_phase.py`, `ticket/test_phase.py`, `closing/test_phase.py` — visos skambučio fazės |
 | Funkcija | vienas gebėjimas, variantai lentele | srities aplankai (žr. aukščiau) |
 
 ## Taisyklės

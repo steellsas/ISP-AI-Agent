@@ -21,6 +21,8 @@ identification tests, not every test after it. The commit uses the engine's own 
 
 from __future__ import annotations
 
+import sqlite3
+import uuid
 from types import SimpleNamespace
 from typing import Any
 from unittest.mock import patch
@@ -97,7 +99,8 @@ class CallDriver:
         ]
         for p in self._patches:
             p.start()
-        self.tracer = CaptureTracer()
+        # A call's id keys its contact record (conversations row): one per call.
+        self.tracer = CaptureTracer(f"test-{uuid.uuid4().hex[:12]}")
         self.session = AgentSession(caller_phone=phone, tracer=self.tracer)
         self.replies: list[str] = []
         if greet:
@@ -155,6 +158,20 @@ class CallDriver:
     def llm_cards(self) -> list[str]:
         """The context cards the speaking LLM was given (DEBUG_LLM=full in tests)."""
         return [e.get("card") or "" for e in self.of("llm_input")]
+
+    def record(self) -> dict[str, Any] | None:
+        """The call's contact record (the conversations row), once the call has ended."""
+        from agent.db_path import database_path
+
+        conn = sqlite3.connect(database_path())
+        conn.row_factory = sqlite3.Row
+        try:
+            row = conn.execute(
+                "SELECT * FROM conversations WHERE session_id = ?", (self.tracer.session_id,)
+            ).fetchone()
+        finally:
+            conn.close()
+        return dict(row) if row else None
 
     def heard_everything(self) -> str:
         """All the agent said and all the model was told — for "never said X" checks."""

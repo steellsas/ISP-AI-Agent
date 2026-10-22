@@ -3,7 +3,7 @@
 Tikslas: testas iš karto pasako, **kuri funkcija** sugedo, žmonių kalba, dar prieš skaitant
 traceback'ą. Nuo 3.4a (2026-10-22) **visi** testai yra srities aplanke, failas = funkcija — sričių
 žemėlapis [TESTU_ZEMELAPIS.md](TESTU_ZEMELAPIS.md). Pilnai (variantų lentelės, visa fazė, žinomos
-spragos) padaryta **identifikacija**, **problema**, **tyrimas** ir **tiketas** (3.4b, 2026-10-22); kitos sritys pildomos
+spragos) padaryta visos skambučio fazės — **identifikacija**, **problema**, **tyrimas**, **tiketas** ir **pabaiga** (3.4b, 2026-10-22); kitos sritys pildomos
 pagal tą patį šabloną.
 
 ## Kaip atrodo
@@ -194,3 +194,23 @@ Skambinsime …“, tiketas DB su tipu ir priežastimi („Registruota, nes: …
   `klientas_nenori` (su sutikimu).
 - „Nenoriu nieko daryti, atsiųskite meistrą“ → „Ar tikrai norite baigti pokalbį?“ — prašymas
   skaitomas kaip atsisveikinimas (tas pats raštas kaip „nutraukti sutartį“ Problemoje).
+
+## Pabaigos radiniai (3.4b, 2026-10-22, netaisyta)
+
+`CallDriver.record()` — skambučio kontakto įrašas (conversations eilutė); kiekvienas skambutis
+teste turi savo id. Veikia: išspręsta, tiketas, skola, avarija, perskambins, padėjus ragelį po
+sprendimo — tiketas; neidentifikuoti — įrašas peržiūrai; tyla po baigiamojo klausimo —
+atsisveikinimas.
+
+- **Svarbiausia: ragelio tinklas įrašo „išspręsta“, kai klientas padeda ragelį vidury
+  taisymo.** `call_record/finalizer.py` patikrina liniją ir ieško `verdict`, kurio telemetrija
+  nebegrąžina (pašalintas 4 bangoje) — todėl `reason is None` → „išspręsta“, be tiketo ir be
+  peržiūros žymos, nesvarbu, kokia linija. Tas pats, kai klientas vidury taisymo patvirtina
+  pabaigą. Gyvuose skambučiuose: 4 iš 94 (pvz., miręs routeris `no_mac_observed` įrašytas kaip
+  išspręstas). Tai iškreipia ir stebėsenos skaičius.
+- Po sutvarkymo „Taip, turiu dar klausimą“ į „Ar dar kuo galiu padėti?“ — agentas atsisveikina
+  ir baigia (pažeidžia pabaigos taisyklę).
+- Po žinios (skola) „Ne“ į „Ar dar kuo galiu padėti?“ pokalbio nebaigia, o po sutvarkymo —
+  baigia; „Aha“ ir „Ačiū“ irgi skaitomi skirtingai priklausomai nuo kelio.
+- Problemos nepasakiusio skambintojo įrašas — `not_a_customer` (ar tai tinkama priežastis —
+  aptarti).
