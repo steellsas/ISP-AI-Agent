@@ -23,6 +23,59 @@ from tests.engine_fakes import as_call
 FUNCTION = "Kontaktų dialogas"
 
 
+# Ar tiks numeris, iš kurio skambinate?  →  what the dialogue does next
+PHONES = [
+    pytest.param("Taip", "+37060012345", "ticket.hours", id="taip → šis numeris"),
+    pytest.param(
+        "Ne, kitu numeriu: 861234567", "861234567", "ticket.hours", id="kitas numeris skaitmenimis"
+    ),
+    pytest.param("Hmm", None, "ticket.retry_phone", id="neaišku → paklausia dar kartą"),
+    pytest.param(
+        "Tiks šis",
+        "+37060012345",
+        "ticket.hours",
+        id="„tiks šis“ (agento pasiūlyta forma)",
+        marks=pytest.mark.xfail(
+            strict=True, reason="„tiks šis“ neperskaitomas, nors agentas pats jį siūlo"
+        ),
+    ),
+]
+
+
+@pytest.mark.parametrize(("said", "phone", "then"), PHONES)
+def test_the_contact_phone(at_contacts, said, phone, then):
+    """Kontaktinis telefonas"""
+    c = at_contacts()
+    c.say(said)
+    assert c.rule == then and c.state.ticket.contact_phone == phone
+
+
+# O kada patogiausia jums skambinti?  →  what goes on the ticket
+HOURS = [
+    pytest.param("Po pietų", "Po pietų", id="po pietų"),
+    pytest.param("Bet kada", "bet kada", id="bet kada"),
+    pytest.param("Ryte iki dešimtos", "iki 10 val.", id="ryte iki dešimtos"),
+    pytest.param("Nuo dvylikos iki trylikos", "nuo 12 iki 13 val.", id="nuo dvylikos iki trylikos"),
+    pytest.param(
+        "Nuo dvylikos iki pirmos",
+        "nuo 12 iki 13 val.",
+        id="nuo dvylikos iki pirmos (val. šnekamąja)",
+        marks=pytest.mark.xfail(strict=True, reason="„iki pirmos“ pametama — lieka „apie 12 val.“"),
+    ),
+    pytest.param("Vakare", "Vakare", id="vakare"),
+]
+
+
+@pytest.mark.parametrize(("said", "hours"), HOURS)
+def test_the_contact_hours(at_contacts, said, hours):
+    """Kada skambinti"""
+    c = at_contacts()
+    c.say("Taip")
+    reply = c.say(said)
+    assert c.rule == "ticket.register" and c.state.ticket.ticket_id
+    assert c.state.ticket.contact_hours == hours and "Užregistravau" in reply
+
+
 def _state(make_state, stage, text, **ctx):
     context = TicketContext(phone_asked=True, hours_asked=True, intro_done=True, **ctx)
     state = make_state(

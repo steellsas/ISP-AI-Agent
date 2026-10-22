@@ -3,7 +3,7 @@
 Tikslas: testas iš karto pasako, **kuri funkcija** sugedo, žmonių kalba, dar prieš skaitant
 traceback'ą. Nuo 3.4a (2026-10-22) **visi** testai yra srities aplanke, failas = funkcija — sričių
 žemėlapis [TESTU_ZEMELAPIS.md](TESTU_ZEMELAPIS.md). Pilnai (variantų lentelės, visa fazė, žinomos
-spragos) padaryta **identifikacija**, **problema** ir **tyrimas** (3.4b, 2026-10-22); kitos sritys pildomos
+spragos) padaryta **identifikacija**, **problema**, **tyrimas** ir **tiketas** (3.4b, 2026-10-22); kitos sritys pildomos
 pagal tą patį šabloną.
 
 ## Kaip atrodo
@@ -179,3 +179,18 @@ Perskaitoma neteisingai:
 
 Veikia kaip aprašyta: perkrovimas, kurio linija nematė, prašomas pakartoti vieną kartą; nepadėjus —
 išvada ir tiketas; sprendimui nepadėjus du kartus Case ieško kitos kortelės.
+
+## Tiketo radiniai (3.4b, 2026-10-22, netaisyta)
+
+Fiktyvas `at_contacts()` (`tests/ticket/conftest.py`) — skambutis jau kontaktų dialoge (miręs
+routeris, variklis nusprendė registruoti). Veikia: telefonas → valandos → „Užregistravau.
+Skambinsime …“, tiketas DB su tipu ir priežastimi („Registruota, nes: …“); kiekvienas kelias
+įrašo savo priežastį iš `registracija.yaml`; padėjus ragelį po sprendimo tiketas registruojamas.
+
+- **„Tiks šis“ neperskaitomas**, nors agentas pats siūlo taip atsakyti („Pasakykite
+  skaitmenimis arba „tiks šis““) — po to kitas atsakymas susimaišo.
+- „Nuo dvylikos iki pirmos“ → „apie 12 val.“ (valanda šnekamąja „pirma“ pametama).
+- Atsisakius vedimo („Ne, geriau meistrą“) įrašoma `sprendimas_baigtas`, o sąraše tai
+  `klientas_nenori` (su sutikimu).
+- „Nenoriu nieko daryti, atsiųskite meistrą“ → „Ar tikrai norite baigti pokalbį?“ — prašymas
+  skaitomas kaip atsisveikinimas (tas pats raštas kaip „nutraukti sutartį“ Problemoje).
