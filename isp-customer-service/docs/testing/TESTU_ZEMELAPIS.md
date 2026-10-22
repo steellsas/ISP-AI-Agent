@@ -33,7 +33,7 @@ palieka kontakto įrašą (`agent/call_record/`).
 | `identification/` | **Identifikacija** | `-m identification` | 269 | Paieška pagal numerį, Adreso supratimas, Adreso atmintis, Vietovės paieška, Gatvės paieška, Neaiški gatvė, Namo paieška, Buto paieška, Kelios sutartys name, Abonento kodas, Patvirtinimas, Kas skambina, Kai adreso nėra, Adreso keitimas, Nustatymai, Visa fazė |
 | `problem/` | **Problema** | `-m problem` | 131 | Problemos klasifikavimas, Problemos ir simptomų skaitymas, Ketinimai, Pagrindinė problema, Anamnezė, Visa fazė |
 | `understanding/` | **Supratimas** | `-m understanding` | 240 | Supratimas per modelį, Vienas skaitymas per ėjimą, Suvokimo sujungimas, Skaitymas be modelio, Atsakymų skaitymas, Atsakymų detektoriai, Detektorių glosos, Analitiko signalai, Patikslinti, ne spėti |
-| `diagnosis/` | **Tyrimas** | `-m diagnosis` | 333 | Telemetrija kaip faktai, Linijos skaitymas, Kortelės, Galimi gedimai, Kitas žingsnis, Gedimo kelias, Moduliai, Įranga, Konkretūs gedimai, Paslaugų profilis, Atsisakytas žingsnis, Kantrus vedimas, Nuotoliniai veiksmai, Žingsnių serveris, Informavimas (skola, avarija), Klientas ne namie |
+| `diagnosis/` | **Tyrimas** | `-m diagnosis` | 357 | Telemetrija kaip faktai, Linijos skaitymas, Kortelės, Galimi gedimai, Kitas žingsnis, Gedimo kelias, Moduliai, Įranga, Konkretūs gedimai, Paslaugų profilis, Atsisakytas žingsnis, Kantrus vedimas, Nuotoliniai veiksmai, Žingsnių serveris, Informavimas (skola, avarija), Klientas ne namie, Visa fazė |
 | `knowledge/` | **Žinios** | `-m knowledge` | 118 | Žinių poreikis, Žinių priminimas, Žinių bazė, Paieškos sąsaja, Qdrant indeksas |
 | `ticket/` | **Tiketas** | `-m ticket` | 63 | Kontaktų dialogas, Registracijos priežastys, Prašymai, Atviri tiketai |
 | `closing/` | **Pabaiga** | `-m closing` | 119 | Uždarymas, Uždarymo taisyklės, Viena uždarymo vieta, Pabaiga balse, Kontakto įrašas, Skambučio santrauka, Atsisveikinimo ir sutikimo skaitymas |
@@ -53,7 +53,7 @@ ir žinomas spragas.
 | Sluoksnis | Kas garantuojama | Kur gyvena |
 |---|---|---|
 | EVAL (pokalbio lygis) | pilni pokalbiai su tikru LLM: supratimas, identifikacija, sprendimas, tiketas, užbaigimas, kontakto įrašas | `eval/scenarios.json` (S/I/D/R/T/U/G/A/X serijos) |
-| Fazė | visa fazė per tikrą grafą, kalbantis LLM imituotas (`call` / `identified` fiktyvai) | `identification/test_phase.py`, `problem/test_phase.py`; kitoms fazėms — 3.4b |
+| Fazė | visa fazė per tikrą grafą, kalbantis LLM imituotas (`call` / `identified` fiktyvai) | `identification/test_phase.py`, `problem/test_phase.py`, `diagnosis/test_phase.py`; kitoms fazėms — 3.4b |
 | Funkcija | vienas gebėjimas, variantai lentele | srities aplankai (žr. aukščiau) |
 
 ## Taisyklės

@@ -47,6 +47,29 @@ CUSTOMERS: dict[str, dict[str, str]] = {
         "phone": "+37060020109",
     },
     "CUST110": {"street": "Aušros g.", "house": "8", "city": "Bubiai", "phone": "+37060020110"},
+    # one per diagnosis card (tests/diagnosis): the line each one's telemetry shows
+    "CUST001": {"street": "Tilžės g.", "house": "12", "apartment": "5", "phone": "+37060012345"},
+    "CUST007": {"street": "Dainų g.", "house": "9", "phone": "+37060012351"},
+    "CUST102": {"street": "Dainų g.", "house": "5", "apartment": "5", "phone": "+37060020102"},
+    "CUST103": {"street": "Žemaitės g.", "house": "14", "apartment": "2", "phone": "+37060020103"},
+    "CUST106": {"street": "Vilniaus g.", "house": "31", "apartment": "2", "phone": "+37060020106"},
+    "CUST305": {"street": "Tilžės g.", "house": "62", "phone": "+37060030305"},
+    "CUST306": {"street": "Vilties g.", "house": "17", "apartment": "2", "phone": "+37060030306"},
+}
+
+# The demo customer whose line shows each card (the seeded network data).
+CARD_CUSTOMER = {
+    "router_hung": "CUST112",
+    "no_mac_observed": "CUST001",
+    "foreign_mac": "CUST105",
+    "link_down_local": "CUST104",
+    "dhcp_silent": "CUST106",
+    "crc_errors": "CUST305",
+    "healthy_to_router": "CUST109",
+    "billing_suspended": "CUST101",
+    "active_outage": "CUST102",
+    "switch_unreachable": "CUST103",
+    "node_fault_unregistered": "CUST306",
 }
 
 
@@ -162,6 +185,8 @@ class CallDriver:
             if caller_name:
                 state.identity.caller_name = caller_name
                 state.identity.caller_relation = "holder"
+                # The findings go out on the next turn, as after a real name answer.
+                state.identity.result_pending = True
 
         self.session._write_between_turns(write)
         assert self.identity.customer_id == customer_id

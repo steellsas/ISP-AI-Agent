@@ -3,7 +3,7 @@
 Tikslas: testas iš karto pasako, **kuri funkcija** sugedo, žmonių kalba, dar prieš skaitant
 traceback'ą. Nuo 3.4a (2026-10-22) **visi** testai yra srities aplanke, failas = funkcija — sričių
 žemėlapis [TESTU_ZEMELAPIS.md](TESTU_ZEMELAPIS.md). Pilnai (variantų lentelės, visa fazė, žinomos
-spragos) padaryta **identifikacija** ir **problema** (3.4b, 2026-10-22); kitos sritys pildomos
+spragos) padaryta **identifikacija**, **problema** ir **tyrimo 1 dalis** (3.4b, 2026-10-22); kitos sritys pildomos
 pagal tą patį šabloną.
 
 ## Kaip atrodo
@@ -70,8 +70,12 @@ def test_kazkas_po_identifikacijos(identified):
 ```
 
 `identified` priskiria klientą tuo pačiu variklio veiksmu, kaip po kliento „taip“
-(`engine_resolve_from_slots`), bet be identifikacijos dialogo. Kitoms fazėms (diagnozė,
-tiketas, pabaiga) tokie fiktyvai bus pridėti 3.4 etape.
+(`engine_resolve_from_slots`, kartu perskaitoma linija), bet be identifikacijos dialogo; kitas
+ėjimas išgirsta radinį, kaip po tikro vardo atsakymo.
+
+`diagnosing("router_hung")` — tas pats, bet demo klientui, kurio linija rodo nurodytą kortelę
+(`tests/phases.py` `CARD_CUSTOMER`); įjungtos demo imitacijos (perkrovimas, tiltas), o po testo DB
+atstatoma (imitacija pakeičia liniją). Tiketo ir pabaigos fiktyvai — 3.4b toliau.
 
 ## Visas skambutis teste (`call`)
 
@@ -145,3 +149,14 @@ Visa fazė:
 - lėtam internetui nėra kortelės — jis iškart eina į „neaiškaus gedimo“ tiketą su keista
   formuluote („gedimo tipas neaiškus — priežastis telefonu nenustatyta, perduota analizei“);
   tai Tyrimo srities klausimas.
+
+## Tyrimo radiniai (3.4b 1 dalis, 2026-10-22, netaisyta)
+
+- **Atsakymas į pirmą klausimą po radinio skaitomas tik modelio.** Radinį ir pirmą klausimą
+  („Ar galite dabar prieiti prie routerio?“) pasako `identification.result_to_procedure` ėjimas,
+  o variklis klausimą laiko nuskambėjusiu tik `case.*` ėjime — todėl jo paties skaitytuvas
+  atsakymo nepaima ir klausimą užduoda dar kartą. Gyvuose rugsėjo skambučiuose tai buvo girdėti
+  („Galiu, tuoj nueisiu“ → „Ar galite dabar prieiti prie routerio?“); spalio skambučiuose atsakymą
+  paima modelio skaitymas, bet tai papildomas LLM kvietimas.
+- DHCP vedimas (`dhcp_silent`) eina per ilgą dokumentą — visa eiga bus 2 dalyje (moduliai).
+- Lėtam internetui kortelės nėra (žr. Problemos radinius).

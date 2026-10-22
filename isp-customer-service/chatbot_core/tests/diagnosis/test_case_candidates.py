@@ -39,6 +39,39 @@ TREE = [
 ]
 
 
+# Every demo customer's line, read end to end (the seeded network data → diagnose_connection →
+# facts → cards → the Case's first move): what the demo shows when each of them calls.
+DEMO_LINES = [
+    pytest.param("CUST112", "router_hung", "solve", id="sustingęs routeris → sprendžia"),
+    pytest.param("CUST001", "no_mac_observed", "solve", id="įrenginio nematyti → sprendžia"),
+    pytest.param("CUST105", "foreign_mac", "learn", id="svetimas routeris → klausia, ar keitė"),
+    pytest.param("CUST104", "link_down_local", "solve", id="linija neaktyvi → sprendžia"),
+    pytest.param("CUST106", "dhcp_silent", "solve", id="routeris neprašo adreso → sprendžia"),
+    pytest.param("CUST305", "crc_errors", "solve", id="klaidos linijoje → sprendžia"),
+    pytest.param(
+        "CUST109", "healthy_to_router", "learn", id="sveika iki routerio → klausia, kur neveikia"
+    ),
+    pytest.param("CUST101", "billing_suspended", "inform", id="skola → informuoja"),
+    pytest.param("CUST102", "active_outage", "inform", id="avarija → informuoja"),
+    pytest.param("CUST103", "switch_unreachable", "inform", id="mazgas nepasiekiamas → informuoja"),
+    pytest.param("CUST306", "node_fault_unregistered", "inform", id="gedimas tinkle → informuoja"),
+]
+
+
+@pytest.mark.parametrize(("customer", "card", "move"), DEMO_LINES)
+def test_each_demo_line_reaches_its_card(db_connection, customer, card, move):
+    """Demo kliento linija → kortelė → pirmas veiksmas"""
+    import json
+
+    from agent.case import next_move
+    from agent.tools import execute_tool
+
+    signals = json.loads(execute_tool("diagnose_connection", {"customer_id": customer}))["signals"]
+    facts = facts_from_signals(signals)
+    assert _matched(facts) == {card}
+    assert next_move(facts).kind == move
+
+
 @pytest.mark.parametrize("verdict, signals, card", TREE)
 def test_the_cards_reach_the_verdict_the_tree_reached(verdict, signals, card):
     """One card matches, and it is the one the tree named."""
