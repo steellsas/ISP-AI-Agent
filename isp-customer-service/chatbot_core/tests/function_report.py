@@ -67,9 +67,28 @@ def pytest_collection_modifyitems(config, items):
         _META[item.nodeid] = (area, function, _label(item))
 
 
+# The areas (each a folder under tests/ with AREA/MARK in its __init__.py).
+MARKS = {
+    "identification": "Identifikacija",
+    "problem": "Problema",
+    "understanding": "Supratimas",
+    "diagnosis": "Tyrimas",
+    "knowledge": "Žinios",
+    "ticket": "Tiketas",
+    "closing": "Pabaiga",
+    "speaking": "Kalba",
+    "voice": "Balsas",
+    "engine": "Variklis",
+    "tools": "Įrankiai",
+    "contract": "Žinių failai",
+    "llm": "LLM",
+    "observe": "Stebėsena",
+}
+
+
 def pytest_configure(config):
-    config.addinivalue_line("markers", "identification: Identifikacijos sritis (ROADMAP 3.2)")
-    config.addinivalue_line("markers", "monitoring: Stebėsena (ROADMAP 3.3)")
+    for mark, area in MARKS.items():
+        config.addinivalue_line("markers", f"{mark}: {area} (ROADMAP 3.2/3.4)")
 
 
 def pytest_runtest_logreport(report):
@@ -116,7 +135,12 @@ def pytest_terminal_summary(terminalreporter, exitstatus, config):
         tr.write_sep("=", "Funkcijų ataskaita")
     except UnicodeEncodeError:
         tr.write_sep("=", "Funkciju ataskaita")
-    for area, functions in by_area.items():
+    rank = list(MARKS.values())  # the areas in the order a call meets them
+    # an area run lists its known gaps; a run of several areas only counts them
+    list_gaps = len(by_area) == 1 and not _RAN_OTHERS[0]
+    for area, functions in sorted(
+        by_area.items(), key=lambda kv: rank.index(kv[0]) if kv[0] in rank else len(rank)
+    ):
         line(area, bold=True)
         width = max(len(f) for f in functions) + 2
         order = _ORDER.get(area, ())
@@ -143,8 +167,6 @@ def pytest_terminal_summary(terminalreporter, exitstatus, config):
                     line(f"      ! spraga sutaisyta — nuimkite xfail: {label}", yellow=True)
                 else:
                     line(f"      ✗ {label}{' — ' + detail if detail else ''}", red=True)
-            for i in (
-                [] if _RAN_OTHERS[0] else ids
-            ):  # a full run counts gaps; an area run lists them
+            for i in ids if list_gaps else []:
                 if _OUTCOME[i][0] == "gap":
                     line(f"      · spraga: {_META[i][2]} — {_OUTCOME[i][1]}", yellow=True)

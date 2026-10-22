@@ -2,7 +2,12 @@
 said first; a mismatch is clarified without naming the holder.
 """
 
+import json
+
 import pytest
+
+from tests.diagnosis.test_facts import BASE
+from tests.diagnosis.test_step_refusal import _hear, _Tracer
 
 from .helpers import _agent
 
@@ -218,3 +223,161 @@ class TestNameConfirm:
         assert owns is False  # the question is answered by the rest of the turn
         assert agent.state.identity.caller_name == "Darius"
         assert agent.state.identity.holder_clarify_open is True
+
+
+# --- from test_live_1012.py ---
+
+
+@pytest.mark.parametrize(
+    ("said", "name"),
+    [
+        ("Labą dieną, esu Paulius, mane veikia internetas. Vilniaus gatvė, 33", "Paulius"),
+        ("Labas, čia Jonas, neveikia internetas", "Jonas"),
+        ("Čia kalba Ona", "Ona"),
+        ("Aš esu darbe", None),
+        ("čia Vilniaus g. 29", None),
+        ("Panavardos sėra gėdras.", None),
+    ],
+)
+def test_a3_a_name_given_unasked(said, name):
+    from agent.perceive.caller import introduced_name
+
+    assert introduced_name(said) == name
+
+
+def test_a3_the_name_question_is_skipped(make_state, make_runtime):
+    from agent.decide.rules.reply import plan_reply
+
+    state, rt = make_state("+37060020112"), make_runtime()
+    state.identity.customer_id = "CUST112"
+    state.identity.result_pending = True
+    state.intake.heard_utterances = ["Labą dieną, esu Paulius, neveikia internetas"]
+    plan = plan_reply(state, rt, "Taip")
+
+    assert state.identity.caller_name == "Paulius"
+    assert plan is None or plan.rule != "identification.caller_name"
+
+
+def test_a4_a_garbled_name_is_asked_again_once(make_state, make_runtime):
+    from agent.decide.rules.head import caller_intro
+    from agent.decide.rules.reply import plan_reply
+
+    state, rt = make_state("+37060020112"), make_runtime()
+    state.identity.customer_id = "CUST112"
+    state.identity.result_pending = True
+    caller_intro(state, rt, "Panavardos sėra gėdras.")
+
+    assert state.identity.caller_name is None
+    plan = plan_reply(state, rt, "Panavardos sėra gėdras.")
+    assert plan.rule == "identification.caller_name" and "pakartoti" in plan.say.text
+
+    caller_intro(state, rt, "Ėėė, nu")  # still nothing readable — no third ask
+    assert state.identity.caller_name == "nenurodyta"
+
+
+# --- from test_live_call_1014b.py ---
+
+
+def test_tetas_is_family():
+    from agent.perceive.caller import detect_caller_relation
+
+    assert detect_caller_relation("Taip, Gedras vardu, tėtas mano.") == "family"
+
+
+def _identified(make_state, phone="+37060030307", customer="CUST307"):
+    state = make_state(phone)
+    state.identity.customer_id = customer
+    return state
+
+
+# --- from test_live_calls_m6.py ---
+
+
+class TestHolderClarifyIsNotTheResult:
+    """B — the holder-name question counted as the delivered news; the outage ETA and the
+    debt template never went out."""
+
+    def test_the_result_stays_pending_through_the_clarify(self, make_state, make_runtime):
+        from agent.execute.step import mark_step_presented
+
+        state = _identified(make_state, "+37060020102", "CUST102")
+        state.identity.result_pending = True
+        state.identity.caller_name = "Vilma"
+        state.identity.holder_clarify_open = True
+        state.identity.holder_clarify_asked = True
+
+        mark_step_presented(state, make_runtime())
+
+        assert state.identity.result_pending is True
+        assert state.diagnosis.news_delivered is False
+
+
+class TestCallerName:
+    """E — a refused name was re-asked, and a garbled one went on the record verbatim."""
+
+    def _owed(self, make_state):
+        state = _identified(make_state, "+37060020101", "CUST101")
+        state.identity.result_pending = True
+        return state
+
+    def test_a_refused_name_is_not_re_asked(self, make_state, make_runtime):
+        from agent.decide.rules.head import caller_intro
+
+        state = self._owed(make_state)
+        assert caller_intro(state, make_runtime(), "Nesvarbu, koks mano vardas. Sakyk, ką turiu.")
+        assert state.identity.caller_name == "nenurodyta"
+
+    def test_an_unreadable_name_is_not_the_sentence(self, make_state, make_runtime):
+        from agent.decide.rules.head import caller_intro
+
+        state = self._owed(make_state)
+        caller_intro(state, make_runtime(), "po anas mano vardas.")
+        assert state.identity.caller_name is None  # asked once more (A4, 2026-10-12)
+        caller_intro(state, make_runtime(), "po anas mano vardas.")
+        assert state.identity.caller_name == "nenurodyta"
+        assert state.identity.caller_name_heard is False
+
+
+class _Tracer:
+    session_id = "wave10"
+
+    def __init__(self):
+        self.events = []
+
+    def emit(self, event_type, **fields):
+        self.events.append({"type": event_type, **fields})
+
+
+@pytest.fixture
+def case_call(make_state, make_runtime):
+    """A v2 Case call on a fault, the caller identified."""
+    state, rt = make_state("+37060012353"), make_runtime(tracer=_Tracer())
+    state.identity.customer_id = "CUST009"
+    state.diagnosis.verdicts["network"] = {"reason": "no_mac_observed"}
+    state.case.fault, state.case.solution = "no_mac_observed", 0
+    return state, rt
+
+
+# --- from test_wave10_quick.py ---
+
+
+class TestV5OnlyTheCallersOwnNameCorrects:
+    def _answer(self, case_call, heard):
+        from agent.decide.rules.intake import _apply_caller_relation
+
+        state, rt = case_call
+        state.identity.caller_name = "Andrius"
+        state.dialog.last_heard = heard
+        state.turn.caller_relation_reading = "family"
+        _apply_caller_relation(state, rt)
+        return state.identity.caller_name
+
+    def test_the_holders_name_is_not_the_caller(self, case_call):
+        # live 2026-10-07: the caller became „Gedrius"
+        assert self._answer(case_call, "Taip, mano tėtis Gedrius yra vardu.") == "Andrius"
+
+    def test_a_garbled_word_is_not_a_name(self, case_call):
+        assert self._answer(case_call, "Aršku ačių lauksu.") == "Andrius"
+
+    def test_their_own_name_corrects(self, case_call):
+        assert self._answer(case_call, "Ne, mano vardas Giedrius.") == "Giedrius"

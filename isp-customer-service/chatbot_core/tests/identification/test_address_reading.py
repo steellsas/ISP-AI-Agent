@@ -235,3 +235,24 @@ def test_the_seed_registry_is_the_one_read(db_connection):
 def test_a_confident_street_scores_high():
     """Aiški gatvė — aukštas pasitikėjimas"""
     assert extract("Tilžės gatvė šešiasdešimt butas septintas").street_confidence >= 0.9
+
+
+# --- from test_wave10_quick.py ---
+
+
+class TestV7AddressReading:
+    STREETS = ["Aušros g.", "Tilžės g.", "Vilniaus g."]
+
+    @pytest.mark.parametrize(
+        ("said", "street"),
+        [
+            ("Vakar vakare, po audros", None),  # eval I1: became „Aušros gatvė"
+            ("Ausros 5", "Aušros g."),  # a number makes the near match an address
+            ("Aušros gatvė", "Aušros g."),  # an exact name
+            ("Tilžės 60 butas 3", "Tilžės g."),
+        ],
+    )
+    def test_a_near_street_needs_address_evidence(self, said, street):
+        from agent.perceive.nlu import extract_address
+
+        assert extract_address(said, self.STREETS, ["Šiauliai"]).street == street

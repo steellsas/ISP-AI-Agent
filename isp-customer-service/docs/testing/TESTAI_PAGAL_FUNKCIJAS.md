@@ -1,8 +1,9 @@
 # Testai pagal funkcijas (ROADMAP 3.2, 2026-10-21)
 
 Tikslas: testas iš karto pasako, **kuri funkcija** sugedo, žmonių kalba, dar prieš skaitant
-traceback'ą. Pirma sritis — **identifikacija** (`chatbot_core/tests/identification/`); kitos
-fazės seka 3.4 etape pagal tą patį šabloną.
+traceback'ą. Nuo 3.4a (2026-10-22) **visi** testai yra srities aplanke, failas = funkcija — sričių
+žemėlapis [TESTU_ZEMELAPIS.md](TESTU_ZEMELAPIS.md). Pilnai (variantų lentelės, visa fazė, žinomos
+spragos) kol kas padaryta **identifikacija**; kitos sritys pildomos 3.4b pagal tą patį šabloną.
 
 ## Kaip atrodo
 

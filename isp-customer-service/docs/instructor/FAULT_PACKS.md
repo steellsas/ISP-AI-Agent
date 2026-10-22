@@ -56,7 +56,7 @@ chatbot_core/src/agent/contract/schema.py                   # visų failų schem
   Pastaba: validacija naudoja paleidimo metu įkeltą lokalę, todėl jei į paketą
   įrašai NAUJĄ frazės raktą, kurį ką tik pridėjai į `phrases.yaml`, reload gali
   grąžinti 422 „phrase … is missing“ — tada perkrauk serverį.
-- Vienetų testas visiems tikriems failams: `uv run pytest chatbot_core/tests/test_knowledge_schema.py`.
+- Vienetų testas visiems tikriems failams: `uv run pytest chatbot_core/tests/contract/test_knowledge_schema.py`.
 
 ## Paketo failas (faults/<vardas>.yaml)
 
@@ -393,7 +393,7 @@ Paslaugos pavadinimas kilmininku — `phrases.yaml` `service_label:`.
 5. Verdiktas: jei telemetrija jį pasiekia — šaka `agent/verdict.py` `decide()`
    medyje (kodas!); grynai klientinės eigos verdiktui užtenka paketo.
 6. Patikra: paleisk programą arba `POST /admin/knowledge/reload` (validacija);
-   `uv run pytest chatbot_core/tests/test_knowledge_schema.py chatbot_core/tests/test_fault_packs.py`;
+   `uv run pytest chatbot_core/tests/contract/test_knowledge_schema.py chatbot_core/tests/diagnosis/test_cards.py`;
    naujas scenarijus `chatbot_core/src/agent/eval/scenarios.json` ir
    `cd chatbot_core && uv run python src/agent/eval/run_eval.py --only <ID>`.
 7. Jei keitei modulį — pilnas auksinis eval'as privalomas (paliečia visus naudotojus).

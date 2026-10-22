@@ -2,9 +2,17 @@
 outage, the line, the debt wait for the caller's „taip".
 """
 
+import json
+from types import SimpleNamespace
+from unittest.mock import patch
+
 import pytest
+from agent.call_record.finalizer import build_call_summary, finalize
 from agent.decide.rules.identification import release_held_outage
+from agent.graph_v2.state import TicketContext
 from agent.speak.context_card import context_card
+
+from tests.tool_fakes import install_fake_tools
 
 from .helpers import _agent
 
@@ -97,3 +105,60 @@ class TestNoAccountTalkBeforeConfirmation:
 
         assert state.dialog.active_question.key == "address_offer"
         assert "Tilžės g. 60" in (reply or "")  # the offer, not a question about the outage
+
+
+# --- from test_agent.py ---
+
+
+class TestAddressGuards:
+    """Round-3 live bugs: a garbled reply must not commit the offered address, and a
+    post-identification correction must reopen identification."""
+
+    def test_garbled_taip_nebija_is_not_a_confirm(self):
+        from agent.perceive.detectors import detect_address_confirm
+
+        assert detect_address_confirm("Taip, nebija") is None  # mixed -> re-ask
+        assert detect_address_confirm("Taip, tvirtinu") == "yes"
+        assert detect_address_confirm("Ne, dėl kito adreso") == "no"
+        # Problem words are not denials: "neveikia" alongside taip still confirms.
+        assert detect_address_confirm("Taip, neveikia internetas dėl to adreso") == "yes"
+
+    def test_pre_turn_guard_vetoes_commit(self, db_connection):
+        from agent.decide.rules.head import turn_head
+        from agent.speak.context_card import context_card
+
+        from tests.calls import make_agent
+
+        agent = make_agent("+37060020101")
+        agent.state.messages.append(
+            {"role": "assistant", "content": "Ar skambinate dėl Tilžės g. 60, butas 3?"}
+        )
+        turn_head(agent.state, agent.runtime, "Taip, nebija")
+        assert agent.state.turn.address_confirm_note is not None  # veto: do not resolve the offer
+        facts = context_card(agent.state, agent.runtime)
+        assert facts and "NEPATVIRTINTAS" in facts
+
+    def test_correction_asks_confirmation_then_reopens(self, db_connection):
+        from agent.decide.rules.head import turn_head
+        from agent.decide.rules.reply import scripted_words
+
+        # Etalonas №3 (2026-09-03): a correction no longer reopens INSTANTLY —
+        # one confirmation question first; a "taip" (or a named new address)
+        # then drops the identity.
+        from tests.calls import make_agent
+
+        agent = make_agent("+37060020101")
+        agent.state.identity.customer_id = "CUST101"
+        agent.state.identity.customer_address = "Šiauliai, Tilžės g. 60-3"
+        agent.state.diagnosis.verdicts["network"] = {"group": "B1", "reason": "billing_suspended"}
+        turn_head(agent.state, agent.runtime, "Tai ne dėl to adresų skambinu")
+        assert agent.state.identity.customer_id == "CUST101"  # NOT dropped yet
+        assert agent.state.identity.reopen_confirm_utterance
+        reply = scripted_words(agent.state, agent.runtime, "Tai ne dėl to adresų skambinu")
+        assert reply and "tikrai" in reply  # the confirmation question
+        # A-2 (2026-09-07): the ANSWER is read in pre_turn_guards (the turn head,
+        # before the solver/walker can consume it) — mirror the live sequence.
+        turn_head(agent.state, agent.runtime, "Taip, dėl kito adreso")
+        assert agent.state.identity.customer_id is None  # identity dropped after the yes
+        assert agent.state.diagnosis.verdicts == {}  # per-account conclusions dropped
+        assert agent.state.turn.reopen_note is True
