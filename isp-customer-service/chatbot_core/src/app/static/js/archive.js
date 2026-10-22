@@ -32,6 +32,7 @@ const Archive = (() => {
     const s = d.stats || {};
     $("detStats").textContent = `tokenai ${s.input_tokens || 0}/${s.output_tokens || 0} · $${(s.cost_usd || 0).toFixed(4)}` +
       (s.avg_voice_latency_ms ? ` · vid. vėlavimas ${s.avg_voice_latency_ms} ms` : "");
+    $("detCard").innerHTML = callCard(d.card);
     $("detExport").href = URL.createObjectURL(new Blob([JSON.stringify(d, null, 2)], { type: "application/json" }));
     $("detExport").setAttribute("download", `${sid}.json`);
     let n = 0;
@@ -47,6 +48,25 @@ const Archive = (() => {
     $("callDetail").classList.add("open");
     $("pane-arch").classList.add("detail");
     show(brain.turnCount() > 1 ? 1 : 0);
+  }
+
+  // The call in one line (monitoring.py call_card): how it ended, why it may need a look.
+  const OUT = { resolved: "išspręsta", informed: "informuota", informed_debt: "informuota: skola", informed_outage: "informuota: avarija",
+    callback: "perskambins", ticket: "tiketas", ticket_appended: "pastaba prie tiketo", declined: "atsisakė", closed: "baigta",
+    abandoned: "nutrūko", unidentified: "neidentifikuotas", error: "techninė klaida" };
+  function callCard(c) {
+    if (!c) return "";
+    const s = ms => ms == null ? "—" : (ms / 1000).toFixed(1).replace(".", ",") + " s";
+    const v = c.version || {};
+    return [
+      `<b>${esc(OUT[c.outcome] || c.outcome || "be pabaigos įrašo")}</b>${c.ticket_id ? " · " + esc(c.ticket_id) : ""}`,
+      `${esc(c.transport)} · ${c.turns} ėj. · ${c.duration_s != null ? Math.round(c.duration_s) + " s" : "—"}`,
+      c.latency_median_ms != null ? `atsakė per ${s(c.latency_median_ms)} (p90 ${s(c.latency_p90_ms)})` : "",
+      c.cards.length ? `kortelės: ${c.cards.map(f => `<code>${esc(f)}</code>`).join(", ")}` : "",
+      c.not_understood.length ? `nesuprato: ${c.not_understood.length}` : "",
+      v.code ? `<span class="muted">kodas ${esc(v.code)} · žinios ${esc(v.knowledge)}</span>` : "",
+      ...c.flags.map(f => `<span class="pill warn">${esc(f)}</span>`),
+    ].filter(Boolean).join(" ");
   }
 
   function show(i) {
