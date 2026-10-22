@@ -273,6 +273,10 @@ def diagnosing(db_connection, monkeypatch):
 
     monkeypatch.setenv("SIMULATE_REBOOT", "on")
     monkeypatch.setenv("SIMULATE_BRIDGE", "on")
+    # `data_version` moves when another connection writes: the DB is reset (~1 s) only after
+    # a test that changed it — a simulated reboot, a bind, a ticket — not after every read.
+    watch = sqlite3.connect(database_path())
+    version = watch.execute("PRAGMA data_version").fetchone()[0]
     drivers = []
 
     def _make(card, **kw):
@@ -282,5 +286,6 @@ def diagnosing(db_connection, monkeypatch):
     yield _make
     for d in drivers:
         d.close()
-    if drivers:
+    if watch.execute("PRAGMA data_version").fetchone()[0] != version:
         reset_db()
+    watch.close()

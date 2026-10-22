@@ -21,5 +21,6 @@ FUNCTIONS = (
     "Žingsnių serveris",
     "Informavimas (skola, avarija)",
     "Klientas ne namie",
+    "Atsakymai žingsniuose",
     "Visa fazė",
 )

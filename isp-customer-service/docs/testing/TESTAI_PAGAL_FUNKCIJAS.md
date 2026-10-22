@@ -3,7 +3,7 @@
 Tikslas: testas iš karto pasako, **kuri funkcija** sugedo, žmonių kalba, dar prieš skaitant
 traceback'ą. Nuo 3.4a (2026-10-22) **visi** testai yra srities aplanke, failas = funkcija — sričių
 žemėlapis [TESTU_ZEMELAPIS.md](TESTU_ZEMELAPIS.md). Pilnai (variantų lentelės, visa fazė, žinomos
-spragos) padaryta **identifikacija**, **problema** ir **tyrimo 1 dalis** (3.4b, 2026-10-22); kitos sritys pildomos
+spragos) padaryta **identifikacija**, **problema** ir **tyrimas** (3.4b, 2026-10-22); kitos sritys pildomos
 pagal tą patį šabloną.
 
 ## Kaip atrodo
@@ -158,5 +158,24 @@ Visa fazė:
   atsakymo nepaima ir klausimą užduoda dar kartą. Gyvuose rugsėjo skambučiuose tai buvo girdėti
   („Galiu, tuoj nueisiu“ → „Ar galite dabar prieiti prie routerio?“); spalio skambučiuose atsakymą
   paima modelio skaitymas, bet tai papildomas LLM kvietimas.
-- DHCP vedimas (`dhcp_silent`) eina per ilgą dokumentą — visa eiga bus 2 dalyje (moduliai).
 - Lėtam internetui kortelės nėra (žr. Problemos radinius).
+
+## Tyrimo radiniai (3.4b 2 dalis — atsakymai žingsniuose, 2026-10-22, netaisyta)
+
+Lentelė `diagnosis/test_steps.py`: žingsnis, kliento žodžiai → ką variklis daro kitame ėjime (visas
+ėjimas, be modelio skaitymo). Neperskaitoma ir klausimas kartojamas:
+
+- prieiti prie routerio: „Galiu, tuoj nueisiu“ (girdėta gyvai rugsėjį);
+- maitinimo laidas: „Įjungtas“, „Įkišau dabar“.
+
+Perskaitoma neteisingai:
+
+- perkrovimas: „Dar ne“ laikomas atliktu — pereinama prie patikros;
+- „Nežinau kada“ (kada galės prieiti) laikomas klausimu modeliui, ne „nežino kada“ (turėtų vesti
+  į meistrą);
+- lemputės užrašomos teisingai (dega / mirksi / nedega), bet degančios lemputės neatmeta kortelės
+  „įrenginio nematyti“ — Case lieka prie jos ir klausia apie maitinimą, nors kortelė sako, kad
+  dega = įrenginys gyvas, ieškom laido.
+
+Veikia kaip aprašyta: perkrovimas, kurio linija nematė, prašomas pakartoti vieną kartą; nepadėjus —
+išvada ir tiketas; sprendimui nepadėjus du kartus Case ieško kitos kortelės.
