@@ -1,5 +1,6 @@
 """Problema — Anamnezė."""
 
+import pytest
 from agent.call_record.finalizer import build_call_summary, finalize
 from agent.graph_v2.state import (
     ClosingState,
@@ -17,6 +18,45 @@ from agent.graph_v2.state import (
 from tests.engine_fakes import as_call
 
 FUNCTION = "Anamnezė"
+
+
+WHEN = [
+    pytest.param("vakar vakare", {"when": "yesterday"}, id="vakar"),
+    pytest.param("prieš valandą", {"when": "hour_ago"}, id="prieš valandą"),
+    pytest.param("šiandien", {"when": "today"}, id="šiandien"),
+    pytest.param("jau kelios dienos", {"when": "days_ago"}, id="kelios dienos"),
+    pytest.param("nežinau", {"when": "unknown"}, id="nežino"),
+    pytest.param("po audros", {"trigger": "storm"}, id="po audros"),
+    pytest.param("kai dingo elektra", {"trigger": "power_cut"}, id="dingus elektrai"),
+    pytest.param("po remonto", {"trigger": "renovation"}, id="po remonto"),
+    pytest.param(
+        "nuo vakar vakaro, po audros",
+        {"when": "yesterday", "trigger": "storm"},
+        id="kada ir po ko kartu",
+    ),
+    pytest.param(
+        "nuo ryto",
+        {"when": "today"},
+        id="nuo ryto",
+        marks=pytest.mark.xfail(strict=True, reason="„nuo ryto“ neatpažįstama kaip laikas"),
+    ),
+    pytest.param(
+        "kai perkėliau routerį",
+        {"trigger": "device_moved"},
+        id="perkėlus routerį",
+        marks=pytest.mark.xfail(strict=True, reason="routerio perkėlimas nėra tarp priežasčių"),
+    ),
+]
+
+
+@pytest.mark.parametrize(("said", "expect"), WHEN)
+def test_when_and_after_what(said, expect):
+    """Kada ir po ko dingo"""
+    from agent.perceive.nlu import extract_anamnesis
+
+    got = extract_anamnesis(said)
+    assert {k: got[k] for k in expect} == expect
+
 
 # --- from test_fault_packs.py ---
 
