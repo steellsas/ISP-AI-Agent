@@ -10,4 +10,5 @@ FUNCTIONS = (
     "Ketinimai",
     "Pagrindinė problema",
     "Anamnezė",
+    "Visa fazė",
 )

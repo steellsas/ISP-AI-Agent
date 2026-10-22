@@ -10,6 +10,26 @@ import pytest
 FUNCTION = "Problemos ir simptomų skaitymas"
 
 
+SYMPTOMS = [
+    pytest.param("lemputės nedega", {"lights": "off"}, id="lemputės nedega"),
+    pytest.param("lemputės dega", {"lights": "on"}, id="lemputės dega"),
+    pytest.param("ne dega lemputės", {"lights": "off"}, id="ASR: ne dega"),
+    pytest.param("mirksi raudona lemputė", {"lights": "blinking"}, id="mirksi"),
+    pytest.param("jungiuosi per wifi", {"connection": "wifi"}, id="per wifi"),
+    pytest.param("per laidą", {"connection": "wired"}, id="per laidą"),
+    pytest.param("viskas dega žaliai", {"lights": "on", "devices": "all"}, id="viskas dega žaliai"),
+    pytest.param("neveikia internetas", {}, id="be simptomų"),
+]
+
+
+@pytest.mark.parametrize(("said", "symptoms"), SYMPTOMS)
+def test_the_symptoms_are_read(said, symptoms):
+    """Simptomai perskaitomi"""
+    from agent.perceive.nlu import extract_symptoms
+
+    assert extract_symptoms(said) == symptoms
+
+
 class TestClassifyProblem:
     @pytest.mark.parametrize(
         "text,expected",

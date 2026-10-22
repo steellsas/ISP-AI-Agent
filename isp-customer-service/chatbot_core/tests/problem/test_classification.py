@@ -7,7 +7,103 @@ Klasifikacijos kaskada ir kompetencijų politika (DIALOGO_ETALONAS diskusija,
 
 import json
 
+import pytest
+
 FUNCTION = "Problemos klasifikavimas"
+
+
+def gap(text, expect, label, why):
+    return pytest.param(text, expect, id=label, marks=pytest.mark.xfail(strict=True, reason=why))
+
+
+# The engine's own reader (L1, intents.yaml triggers): the common phrasings, no model.
+PURPOSES = [
+    pytest.param("neveikia internetas", "internet_down", id="neveikia internetas"),
+    pytest.param("nėra interneto", "internet_down", id="nėra interneto"),
+    pytest.param("dingo internetas", "internet_down", id="dingo internetas"),
+    pytest.param("internetas nustojo veikti", "internet_down", id="nustojo veikti"),
+    pytest.param("negaliu prisijungti prie interneto", "internet_down", id="negaliu prisijungti"),
+    pytest.param("nėra ryšio", "internet_down", id="nėra ryšio"),
+    pytest.param("wifi neveikia", "internet_down", id="wifi neveikia"),
+    pytest.param("kompiuteris nerodo interneto", "internet_down", id="kompiuteris nerodo"),
+    pytest.param("neina internetas", "internet_down", id="neina"),
+    pytest.param("nera interneto", "internet_down", id="be diakritikų"),
+    pytest.param("internetas neveika", "internet_down", id="ASR: neveika"),
+    pytest.param("inter netas neveikia", "internet_down", id="ASR: inter netas"),
+    pytest.param("internetas labai lėtas", "internet_slow", id="lėtas"),
+    pytest.param("lėtai krauna puslapius", "internet_slow", id="lėtai krauna"),
+    pytest.param("video stringa", "internet_slow", id="video stringa"),
+    pytest.param("neveikia televizija", "tv", id="neveikia televizija"),
+    pytest.param("nerodo televizorius", "tv", id="nerodo televizorius"),
+    pytest.param("kai kurie kanalai nerodo", "tv", id="kanalai nerodo"),
+    pytest.param(
+        "internetas ir televizija neveikia", "internet_down", id="abu kartu — internetas pirma"
+    ),
+    pytest.param("dėl sąskaitos", "billing", id="sąskaita"),
+    pytest.param("noriu nutraukti sutartį", "disconnection", id="nutraukti sutartį"),
+    pytest.param("kraustausi į kitą butą", "relocation", id="kraustausi"),
+    pytest.param("kada atvyks meistras", "ticket_status", id="kada atvyks meistras"),
+    pytest.param("laba diena", None, id="pasisveikinimas — ne problema"),
+    pytest.param("alio, ar girdit", None, id="alio — ne problema"),
+    # --- known gaps: a WRONG class (a miss is the model's job, below) ---
+    gap("neveikia elektra", None, "elektra — ne mūsų", "bendras „neveikia“ paverčia internet_down"),
+    gap(
+        "telefonas neveikia",
+        None,
+        "telefonas — ne mūsų",
+        "bendras „neveikia“ paverčia internet_down",
+    ),
+    gap(
+        "vaizdas stringa per televizorių",
+        "tv",
+        "TV vaizdas stringa",
+        "„stringa“ paverčia internet_slow",
+    ),
+    gap(
+        "internetas vis nutrūksta",
+        "internet_slow",
+        "vis nutrūksta",
+        "katalogas: nutrūksta = internet_slow, skaitytuvas sako internet_down",
+    ),
+    gap(
+        "norėčiau nutraukti interneto sutartį",
+        "disconnection",
+        "nutraukti interneto sutartį",
+        "žodis „interneto“ paverčia internet_down",
+    ),
+    gap(
+        "interneto bėdų neturiu, tik dėl sąskaitos",
+        "billing",
+        "neigimas ir tikras tikslas",
+        "neigimas užgožia „dėl sąskaitos“",
+    ),
+]
+
+
+@pytest.mark.parametrize(("said", "purpose"), PURPOSES)
+def test_the_engine_reads_the_purpose(said, purpose):
+    """Variklis atpažįsta, dėl ko skambina"""
+    from agent.perceive.nlu import classify_problem
+
+    assert classify_problem(said) == purpose
+
+
+# Not the engine's lane: no trigger fires, and the model (L2) reads the context. A test here
+# fails the day a trigger starts to catch it — then move the row up.
+FOR_THE_MODEL = [
+    pytest.param("niekas nekrauna", id="niekas nekrauna"),
+    pytest.param("noriu sužinoti kiek esu skolingas", id="kiek skolingas"),
+    pytest.param("routeris mirksi raudonai", id="routeris mirksi"),
+    pytest.param("norėčiau greitesnio plano", id="greitesnis planas"),
+]
+
+
+@pytest.mark.parametrize("said", FOR_THE_MODEL)
+def test_what_the_engine_leaves_to_the_model(said):
+    """Ką variklis palieka modeliui"""
+    from agent.perceive.nlu import classify_problem
+
+    assert classify_problem(said) is None
 
 
 def _agent():

@@ -3,7 +3,8 @@
 Tikslas: testas iš karto pasako, **kuri funkcija** sugedo, žmonių kalba, dar prieš skaitant
 traceback'ą. Nuo 3.4a (2026-10-22) **visi** testai yra srities aplanke, failas = funkcija — sričių
 žemėlapis [TESTU_ZEMELAPIS.md](TESTU_ZEMELAPIS.md). Pilnai (variantų lentelės, visa fazė, žinomos
-spragos) kol kas padaryta **identifikacija**; kitos sritys pildomos 3.4b pagal tą patį šabloną.
+spragos) padaryta **identifikacija** ir **problema** (3.4b, 2026-10-22); kitos sritys pildomos
+pagal tą patį šabloną.
 
 ## Kaip atrodo
 
@@ -120,3 +121,27 @@ Visa fazė:
 
 Pastaba: dalis fazės radinių gali priklausyti nuo to, ką tikras LLM paklausia (testas jį
 imituoja). Prieš taisant reikia patikrinti eval scenarijumi arba gyvu skambučiu.
+
+## Problemos radiniai (3.4b, 2026-10-22, netaisyta)
+
+Variklio skaitytuvas (L1, `intents.yaml` trigeriai) — **neteisinga klasė**:
+
+- „neveikia elektra“, „telefonas neveikia“ → *internet_down* (bendras „neveikia“; tai ne mūsų sritis);
+- „vaizdas stringa per televizorių“ → *internet_slow* (turėtų būti TV);
+- „internetas vis nutrūksta“ → *internet_down* (katalogas tai aprašo kaip *internet_slow*);
+- „norėčiau nutraukti interneto sutartį“ → *internet_down* (turėtų būti *disconnection*);
+- „interneto bėdų neturiu, tik dėl sąskaitos“ → nieko (neigimas užgožia tikrą tikslą *billing*).
+
+Ko variklis neatpažįsta, bet tai **modelio (L2) darbas** pagal dizainą (ne spraga): „niekas
+nekrauna“, „kiek esu skolingas“, „routeris mirksi raudonai“, „greitesnio plano“.
+
+Anamnezė: „nuo ryto“ neatpažįstama kaip laikas; „kai perkėliau routerį“ nėra tarp priežasčių.
+
+Visa fazė:
+
+- „Noriu nutraukti sutartį“ → agentas klausia „Ar tikrai norite baigti pokalbį?“ ir baigia —
+  prašymas skaitomas kaip atsisveikinimas;
+- prašymui (pvz. sąskaita) sakoma „Gerai — patikrinsiu ryšį“, nors linija netikrinama;
+- lėtam internetui nėra kortelės — jis iškart eina į „neaiškaus gedimo“ tiketą su keista
+  formuluote („gedimo tipas neaiškus — priežastis telefonu nenustatyta, perduota analizei“);
+  tai Tyrimo srities klausimas.
