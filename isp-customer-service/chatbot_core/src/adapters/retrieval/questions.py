@@ -1,6 +1,6 @@
 """Atgaminimo patikra: ar indeksas atsako į klausimus, kuriuos žinios pažadėjo (RAG planas, E2).
 
-Tas pats rinkinys ir tos pačios ribos, kurias naudoja `tests/test_knowledge_recall.py` — failas
+Tas pats rinkinys ir tos pačios ribos, kurias naudoja `tests/knowledge/test_knowledge_recall.py` — failas
 `_questions.yaml` gyvena prie žinių būtent todėl, kad CI ir gamyba niekada nesutartų nevienodai, kas
 yra „pakankamai gerai".
 

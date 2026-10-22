@@ -1,21 +1,13 @@
 """
-ISP Customer Service Agent Tests
+ISP Customer Service Agent tests — by area and function (ROADMAP 3.2/3.4).
 
-Run all tests:
-    cd chatbot_core
-    pytest tests/ -v
+Every folder is an area (identification/, problem/, understanding/, diagnosis/, knowledge/,
+ticket/, closing/, speaking/, voice/, engine/, tools/, contract/, llm/, observe/); every file
+one function. After a run the report lists Area → Function → ✓/✗.
 
-Run specific test file:
-    pytest tests/test_tools.py -v
-    pytest tests/test_rag.py -v
-    pytest tests/test_agent.py -v
+    uv run pytest chatbot_core/tests                    # everything
+    uv run pytest -m identification chatbot_core/tests  # one area (its known gaps listed)
+    uv run pytest chatbot_core/tests/diagnosis/test_cards.py
 
-Run with coverage:
-    pytest tests/ -v --cov=src
-
-Run only fast tests (no LLM):
-    pytest tests/ -v -m "not slow"
-
-Quick smoke test:
-    pytest tests/ -v --tb=short -q
+See docs/testing/TESTAI_PAGAL_FUNKCIJAS.md.
 """

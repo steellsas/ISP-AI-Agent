@@ -1,0 +1,295 @@
+"""Wave 3: a fault card is a contract a technician can edit.
+
+The diagnosis used to live in a decision tree in code, so a new fault meant new Python.
+Now a card declares when it is a CANDIDATE, what would settle it and how it is fixed —
+and because the file is hand-edited, a typo must stop the app at startup rather than
+quietly never matching anything.
+"""
+
+import pytest
+from agent.call_record.finalizer import build_call_summary, finalize
+from agent.contract import cards as catalog
+from agent.contract.loader import _check_cards
+from agent.contract.schema import Condition, FaultCard, KnowledgeError, ModuleSpec
+from agent.graph_v2.state import (
+    ClosingState,
+    DiagnosisState,
+    DialogState,
+    GraphState,
+    IdentityState,
+    IntakeState,
+    ResolutionState,
+    TicketContext,
+    TicketState,
+    TurnScratch,
+)
+
+from tests.engine_fakes import as_call
+
+FUNCTION = "Kortelės"
+
+
+class TestACondition:
+    """`fact=value` — and "not asked yet" is not "not so"."""
+
+    def test_it_reads_a_fact(self):
+        c = Condition.parse("traffic=none")
+        assert c.holds({"traffic": "none"}) is True
+        assert c.holds({"traffic": "flowing"}) is False
+
+    def test_an_unknown_fact_is_neither_true_nor_false(self):
+        """The difference between a line we checked and a line we never saw."""
+        assert Condition.parse("traffic=none").holds({}) is None
+
+    def test_it_reads_a_denial(self):
+        c = Condition.parse("device_registered!=foreign")
+        assert c.holds({"device_registered": "match"}) is True
+        assert c.holds({"device_registered": "foreign"}) is False
+
+    @pytest.mark.parametrize("text", ["traffic", "traffic == none", "TRAFFIC=none", "=none"])
+    def test_nonsense_is_refused(self, text):
+        with pytest.raises(ValueError):
+            Condition.parse(text)
+
+
+class TestTheRouterHungCard:
+    """The first converted card: nine v1 steps as three module calls."""
+
+    def test_it_says_when_it_is_a_candidate(self):
+        card = catalog.card("router_hung")
+        facts = {
+            "node_reachable": "yes",
+            "line_link": "up",
+            "device_seen": "yes",
+            "dhcp": "ok",
+            "traffic": "none",
+        }
+        wanted, _any = card.when.parsed()
+        assert all(c.holds(facts) for c in wanted)
+
+    def test_traffic_flowing_is_not_this_card(self):
+        card = catalog.card("router_hung")
+        wanted, _any = card.when.parsed()
+        assert not all(
+            c.holds({**dict.fromkeys(("node_reachable",), "yes"), "traffic": "flowing"})
+            for c in wanted
+        )
+
+    def test_the_faults_that_own_the_case_instead_rule_it_out(self):
+        card = catalog.card("router_hung")
+        out = [Condition.parse(c) for c in card.rules_out]
+        assert any(c.holds({"device_registered": "foreign"}) for c in out)
+        assert any(c.holds({"area_outage": "yes"}) for c in out)
+
+    def test_the_fix_is_three_modules(self):
+        card = catalog.card("router_hung")
+        steps = card.solution[0].steps
+        assert [s.module for s in steps] == ["reach", "reboot", "verify"]
+        assert steps[1].args == {"device": "router", "method": "power"}
+        # telemetry saw no flap -> the reboot did not really happen: clarify and retry once
+        assert steps[1].on_fail.args["reason"] == "no_flap"
+
+    def test_one_device_is_another_cards_case(self):
+        """Wave 4a (Andrius 2026-09-23): the card no longer ASKS whether it is one device or
+        all — for a router the line sees and hears nothing from, the reboot is the first move
+        either way. A caller who says it anyway routes the call away from this card."""
+        card = catalog.card("router_hung")
+        assert "fail_scope" not in card.needs
+        assert "fail_scope=one" in card.rules_out
+
+    def test_it_asks_nothing_before_the_reboot(self):
+        card = catalog.card("router_hung")
+        assert [fact for fact, need in card.needs.items() if need.ask] == []
+        assert card.needs["lights"].volunteered is True  # used if said, never asked
+
+    def test_a_technician_is_not_sent_before_the_reboot(self):
+        assert catalog.card("router_hung").escalate.only_after == ["reboot"]
+
+    def test_a_caller_already_at_the_router_is_not_asked_to_go_there(self):
+        reach = catalog.card("router_hung").solution[0].steps[0]
+        assert reach.module == "reach" and reach.done_when == ["reachable=yes"]
+
+
+class TestABrokenCardStopsTheApp:
+    """Every one of these is a typo a technician can make in a YAML file."""
+
+    def _card(self, **over) -> FaultCard:
+        base = {
+            "fault": "x",
+            "service": "internet",
+            "when": {"all": ["traffic=none"]},
+            "solution": [
+                {"when": [], "steps": [{"module": "reboot", "args": {"device": "router"}}]}
+            ],
+        }
+        return FaultCard(**{**base, **over})
+
+    def _modules(self) -> dict[str, ModuleSpec]:
+        return catalog.modules()
+
+    def _check(self, card: FaultCard):
+        _check_cards({card.fault: card}, self._modules())
+
+    def test_a_good_card_passes(self):
+        self._check(self._card())
+
+    def test_a_misspelled_fact(self):
+        with pytest.raises(KnowledgeError, match="unknown fact 'trafic'"):
+            self._check(self._card(when={"all": ["trafic=none"]}))
+
+    def test_a_value_the_fact_never_takes(self):
+        with pytest.raises(KnowledgeError, match="is never 'non'"):
+            self._check(self._card(when={"all": ["traffic=non"]}))
+
+    def test_a_module_that_does_not_exist(self):
+        with pytest.raises(KnowledgeError, match="unknown module 'reboott'"):
+            self._check(
+                self._card(solution=[{"steps": [{"module": "reboott", "args": {"device": "r"}}]}])
+            )
+
+    def test_a_module_call_missing_its_argument(self):
+        with pytest.raises(KnowledgeError, match="needs 'device'"):
+            self._check(self._card(solution=[{"steps": [{"module": "reboot"}]}]))
+
+    def test_an_argument_outside_its_closed_set(self):
+        with pytest.raises(KnowledgeError, match="not one of"):
+            self._check(
+                self._card(
+                    solution=[
+                        {"steps": [{"module": "reboot", "args": {"device": "r", "method": "kick"}}]}
+                    ]
+                )
+            )
+
+    def test_handing_over_to_a_card_that_is_not_there(self):
+        with pytest.raises(KnowledgeError, match="unknown card 'ghost'"):
+            self._check(self._card(solution=[{"hands_to": "ghost"}]))
+
+    def test_a_phrase_key_that_is_not_in_the_locale(self):
+        with pytest.raises(KnowledgeError, match="explain phrase"):
+            self._check(self._card(explain={"conclusion": "pack.nope.gloss"}))
+
+    def test_a_second_wording_that_is_not_in_the_locale(self):
+        """Wave 4a: `again` is the wording for a caller who answered about something else."""
+        with pytest.raises(KnowledgeError, match="again phrase"):
+            self._check(
+                self._card(
+                    needs={
+                        "fail_scope": {
+                            "ask": "pack.router_hung.fail_scope.question",
+                            "again": "pack.nope.simpler",
+                            "values": {"all": "confirms"},
+                        }
+                    }
+                )
+            )
+
+
+class TestWhatToAssumeWhenNobodyAnswers:
+    """Wave 4a (Andrius 2026-09-23): a ticket instead of the fix is help we never gave, so a
+    card may say what to carry on with. It must name a value it actually knows."""
+
+    def test_an_assumption_outside_the_needs_values(self):
+        from pydantic import ValidationError
+
+        with pytest.raises(ValidationError, match="assume"):
+            FaultCard(
+                fault="x",
+                service="internet",
+                needs={
+                    "fail_scope": {
+                        "ask": "pack.router_hung.fail_scope.question",
+                        "values": {"all": "confirms"},
+                        "assume": "both",
+                    }
+                },
+            )
+
+    def test_the_client_side_card_carries_the_scope_question(self):
+        """It is the card the question actually serves: the line carries traffic, so which
+        devices fail is what tells us where to look. It may be asked twice, in two wordings,
+        and then the call goes on with the assumption."""
+        need = catalog.card("healthy_to_router").needs["fail_scope"]
+        assert need.ask and need.again and need.assume == "one"
+
+    def test_a_line_that_carries_traffic_points_at_one_device(self):
+        assert catalog.card("healthy_to_router").needs["fail_scope"].assume == "one"
+
+
+def test_every_module_a_card_can_call_declares_what_it_does():
+    for name, spec in catalog.modules().items():
+        assert spec.goal, name
+        assert spec.kind in ("ask", "instruct", "action", "verify", "escalate"), name
+        # An action runs a tool; a verification reads one; the rest speak.
+        if spec.kind == "action":
+            assert spec.tool, name
+        if spec.kind == "verify":
+            assert spec.probe, name
+
+
+class TestCardKinds:
+    """A news card tells; a fault card fixes. (The v1-pack parity check went with the
+    packs: every v1 verdict had a card when `knowledge/faults/` was deleted.)"""
+
+    def test_a_news_card_tells_and_a_fault_card_fixes(self):
+        for name, card in catalog.cards().items():
+            if card.news:
+                assert not card.solution and not card.needs, f"{name}: news does not ask or act"
+            elif not card.fallback:
+                assert card.solution, f"{name}: a fault card must say how it is fixed"
+
+    def test_exactly_one_card_is_the_honest_fallback(self):
+        fallbacks = [c.fault for c in catalog.cards().values() if c.fallback]
+        assert fallbacks == ["unclear_fault"]
+
+
+# --- from test_fault_packs.py ---
+
+
+class TestWhatTheCardsDeclare:
+    """Wave 3: the analysis knowledge is the CARD's — which facts are in play, what values
+    they take, when a question is worth asking and why we are asking it."""
+
+    def test_every_fault_in_play_declares_its_client_facts(self):
+        from agent.evidence import spec_for
+
+        for fault in ("foreign_mac", "healthy_to_router", "no_mac_observed"):
+            spec = spec_for(fault)
+            assert spec is not None and spec.get("client"), fault
+
+    def test_the_foreign_device_asks_what_changes_the_fix(self):
+        from agent.contract import cards as catalog
+
+        card = catalog.card("foreign_mac")
+        assert set(card.needs) == {"changed_device", "cable_port"}
+        assert set(card.needs["changed_device"].answers) == {"yes", "no"}
+
+    def test_a_question_waits_for_the_one_before_it(self):
+        """The cable type means nothing until we know it is a computer; the reboot question
+        only matters when it fails everywhere."""
+        from agent.contract import cards as catalog
+
+        card = catalog.card("healthy_to_router")
+        assert card.needs["connection_type"].when == ["fail_device=computer"]
+        assert card.needs["rebooted"].when == ["fail_scope=all"]
+        assert card.needs["fail_device"].when == ["fail_scope=one"]
+
+    def test_every_question_can_be_asked_and_read(self):
+        """A need must have the words to ask it and a way to read the answer — otherwise the
+        engine asks something it cannot understand."""
+        from agent.contract import cards as catalog
+        from agent.contract.locale import load_locale
+
+        locale = load_locale("lt")
+        for name, card in catalog.cards().items():
+            for fact, need in card.needs.items():
+                if need.volunteered:
+                    # Never asked: used only when the caller says it themselves (wave 4a —
+                    # "esu prie routerio, lemputės dega" confirms a hung router on the spot).
+                    assert not need.ask and not need.probe, f"{name}.{fact}: asked after all"
+                    continue
+                assert need.ask or need.probe, f"{name}.{fact}: no way to get it"
+                if need.ask:
+                    assert locale.has(need.ask), f"{name}.{fact}: the question is missing"
+                if need.why:
+                    assert locale.has(need.why), f"{name}.{fact}: the reason is missing"

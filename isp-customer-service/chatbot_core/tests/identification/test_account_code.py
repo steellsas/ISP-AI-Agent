@@ -152,3 +152,26 @@ def test_find_customer_unknown_account_code(db_connection):
 
     r = find_customer(account_code="AB-99999")
     assert r["success"] is False
+
+
+# --- from test_v3_stage3a.py ---
+
+
+class TestU8AccountCodeMisses:
+    def test_a_code_not_found_is_capped(self, db_connection):
+        from agent.contract import limits
+        from agent.decide.rules.reply import scripted_words
+
+        from tests.calls import make_agent
+
+        agent = make_agent("unknown")
+        agent.state.intake.problem_type = "internet_down"
+        agent.state.intake.anamnesis_asked = True
+        agent.state.identity.account_code_mode = True
+        replies = [
+            scripted_words(agent.state, agent.runtime, "Mano kodas AB 99999")
+            for _ in range(limits.get("account_code_miss_max") + 1)
+        ]
+        assert all("nerandu" in r for r in replies[:-1])
+        assert "tik mūsų abonentams" in replies[-1]
+        assert agent.state.closing.is_complete

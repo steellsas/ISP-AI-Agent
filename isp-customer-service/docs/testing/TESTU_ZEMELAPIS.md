@@ -20,86 +20,69 @@ Variklis vienas: LangGraph grafas `perceive → decide → execute → narrate`
 `GraphState`, kiekvienas ėjimas — vienas `TurnPlan`, kiekvienas skambutis
 palieka kontakto įrašą (`agent/call_record/`).
 
-> **2026-10-21 (ROADMAP 3.2):** testai pertvarkomi **pagal funkcijas** — žr.
-> [TESTAI_PAGAL_FUNKCIJAS.md](TESTAI_PAGAL_FUNKCIJAS.md). Identifikacija jau perkelta į
-> `chatbot_core/tests/identification/` (16 funkcijų, ataskaita po paleidimo); failai
-> `test_address_resolver`, `test_identification_rules`, `test_identification_gate`,
-> `test_identification_policy`, `test_slots`, `test_nlu_wave` panaikinti. Kitos fazės — 3.4.
+> **2026-10-22 (ROADMAP 3.4a):** visi testai suskirstyti **pagal sritis ir funkcijas** — kiekviena
+> sritis yra aplankas `chatbot_core/tests/<sritis>/`, kiekvienas failas — viena funkcija. Istoriniai
+> mišrūs failai (`test_agent`, `test_live_*`, `test_v3_stage3*`, `test_wave9/10`, `test_fault_packs`,
+> `test_identify_first`, `test_without_the_model`) išskaidyti po testą į jų funkcijas; testų kodas
+> nepakeistas. Kaip rašyti ir skaityti: [TESTAI_PAGAL_FUNKCIJAS.md](TESTAI_PAGAL_FUNKCIJAS.md).
 
-## Piramidė ir sluoksnių nuosavybė
+## Sritys
+
+| Aplankas | Sritis | Paleisti | Testų | Funkcijos (failai) |
+|---|---|---|---|---|
+| `identification/` | **Identifikacija** | `-m identification` | 269 | Paieška pagal numerį, Adreso supratimas, Adreso atmintis, Vietovės paieška, Gatvės paieška, Neaiški gatvė, Namo paieška, Buto paieška, Kelios sutartys name, Abonento kodas, Patvirtinimas, Kas skambina, Kai adreso nėra, Adreso keitimas, Nustatymai, Visa fazė |
+| `problem/` | **Problema** | `-m problem` | 65 | Problemos klasifikavimas, Problemos ir simptomų skaitymas, Ketinimai, Pagrindinė problema, Anamnezė |
+| `understanding/` | **Supratimas** | `-m understanding` | 240 | Supratimas per modelį, Vienas skaitymas per ėjimą, Suvokimo sujungimas, Skaitymas be modelio, Atsakymų skaitymas, Atsakymų detektoriai, Detektorių glosos, Analitiko signalai, Patikslinti, ne spėti |
+| `diagnosis/` | **Tyrimas** | `-m diagnosis` | 333 | Telemetrija kaip faktai, Linijos skaitymas, Kortelės, Galimi gedimai, Kitas žingsnis, Gedimo kelias, Moduliai, Įranga, Konkretūs gedimai, Paslaugų profilis, Atsisakytas žingsnis, Kantrus vedimas, Nuotoliniai veiksmai, Žingsnių serveris, Informavimas (skola, avarija), Klientas ne namie |
+| `knowledge/` | **Žinios** | `-m knowledge` | 118 | Žinių poreikis, Žinių priminimas, Žinių bazė, Paieškos sąsaja, Qdrant indeksas |
+| `ticket/` | **Tiketas** | `-m ticket` | 63 | Kontaktų dialogas, Registracijos priežastys, Prašymai, Atviri tiketai |
+| `closing/` | **Pabaiga** | `-m closing` | 119 | Uždarymas, Uždarymo taisyklės, Viena uždarymo vieta, Pabaiga balse, Kontakto įrašas, Skambučio santrauka, Atsisveikinimo ir sutikimo skaitymas |
+| `speaking/` | **Kalba** | `-m speaking` | 165 | Kalbėtojas, Atsakymo sargai, Promptai, Vienas skill per atsakymą, Istorija, Kartojimo sargas, Pokalbio kokybė, Pokalbio sluoksnis, Promptas pagal fazę, Kalbos klaidos, Adreso tarimas, Rašyti žodžiai be modelio |
+| `voice/` | **Balsas** | `-m voice` | 161 | ASR šališkumas, Balso adapteriai, Pertraukimai, Ką išgirdo klientas, Piper, Piper procesai, Paruoštos frazės, ASR teksto normalizavimas, Privaloma informacija, Generavimo stabdymas |
+| `engine/` | **Variklis** | `-m engine` | 58 | Grafas, Būsena, Decide ciklas, Taisyklių tvarka, Plano vartai, Fazės, Ėjimo įvykiai, Konfigūracija |
+| `tools/` | **Įrankiai** | `-m tools` | 100 | CRM ir tinklo įrankiai, Įrankių vartai, Prieiga iki identifikacijos, Manifestai, Kai sistema neatsako, Duomenų bazė |
+| `contract/` | **Žinių failai** | `-m contract` | 27 | Schemos, Įkėlimas, Ribos, Frazės (locale) |
+| `llm/` | **LLM** | `-m llm` | 33 | Atsarginis modelis, Kvietimų stebėjimas, Biudžetas, Srautas |
+| `observe/` | **Stebėsena** | `-m observe` | 105 | API, Žurnalas (trace), Asmens duomenys, Kodėl taip, Skambučių suvestinė, Dashboard |
+
+Po paleidimo ataskaita rodo Sritis → Funkcija → ✓/✗; paleidus vieną sritį (`-m identification`) —
+ir žinomas spragas.
+
+## Piramidė
 
 | Sluoksnis | Kas garantuojama | Kur gyvena |
 |---|---|---|
 | EVAL (pokalbio lygis) | pilni pokalbiai su tikru LLM: supratimas, identifikacija, sprendimas, tiketas, užbaigimas, kontakto įrašas | `eval/scenarios.json` (S/I/D/R/T/U/G/A/X serijos) |
-| Grafas ir būsena | grafo mazgų tvarka, checkpoint'as = visas skambutis, tarp-ėjimų įrašai | test_graph_v2, test_graph_v2_state, test_single_state |
-| `perceive` (skaitymas) | adresų NLU, slotai, supratimo pass'as, klasifikacijos kaskada, evidence įrašymas, šalutinė tema | identification/ (adresas), test_nlu (problema, simptomai), test_understand, test_perception_merge, test_classification, test_evidence |
-| `decide` (planas) | politikų grandinės tvarka, taisyklės (identifikacija, tiketas, uždarymas, prašymai, atviri tiketai), procedūros vykdytojas + jo sargai, hipotezės būsena, solverio ir plano vartai | test_policy_order, identification/ (identifikacija), test_rules_ticket, test_rules_closing, test_closing, test_requests, test_open_ticket, test_service_profile, test_procedure, test_procedure_guards, test_resolution, test_hypothesis, test_gate, test_gate_closed_set, test_repeat_guard, test_dialogue_quality, test_live_calls_m6, test_answer_reading |
-| Gedimų žinios (pack'ai) | pack'ų struktūra ir eiga, verdiktų medis, informavimo šablonai, playbook | test_fault_packs, test_faults, test_router_hung, test_line_faults, test_verdict, test_inform, test_playbook |
-| `execute` / įrankiai | įrankiai (CRM, tinklas, žinių bazė), ToolGateway, įrankių vartai iki identifikacijos, nuotoliniai veiksmai, DB, RAG | test_tools, test_tool_gateway, test_tool_gate, test_port_actions, identification/ (resolve_address), test_db |
-| `speak` (balsas LLM) | frazių kelias, konteksto kortelė, atsakymo sargai, istorijos langas, promptų kompozicija, srautinis LLM klientas | test_speak, test_history_v2, test_prompts, test_streaming_agent |
-| `analyst` | tipizuoti signalai ir jų ribos | test_analyst_signals |
-| `contract` (failų kontraktas) | žinių schema, limitai/politikos, loader + reload, locale frazės, detektorių glosos, identifikacijos politika | test_knowledge_schema, test_limits, test_loader, test_locale, test_detectors, test_identification_policy |
-| `call_record` + stebėjimas | kontakto įrašo baigtis, trace JSONL, PII maskavimas, `turn_plan` įvykiai | test_call_record, test_tracing, test_pii_redaction, test_turn_plan_trace |
-| `app` (FastAPI host) | sesijų gyvavimas, ėjimai, įvykių srautas, WS, admin | test_api |
-| Balsas (transportas) | Pipecat pertraukimai ir pristatymas, privaloma informacija, Piper, STT biasing, adapteriai, LT skaičių normalizacija | test_pipecat_barge_in, test_pipecat_delivery, test_required_information, test_piper_pool, test_piper_tts, test_tts_prewarm, test_voice_v1, test_voice_adapters, test_lt_text |
-| Mišrus (istorinis) | žr. „Dubliavimosi kandidatai" | test_agent |
+| Fazė | visa fazė per tikrą grafą, kalbantis LLM imituotas (`call` / `identified` fiktyvai) | `identification/test_phase.py`; kitoms fazėms — 3.4b |
+| Funkcija | vienas gebėjimas, variantai lentele | srities aplankai (žr. aukščiau) |
 
 ## Taisyklės
 
-1. **Vienas faktas — vienas sluoksnis.** Pvz., identifikacijos atradimo
-   variantai (dalimis diktuotas adresas, klaidingas namas, recovery) —
-   TIK identifikacijos sluoksnyje (eval I1–I6 + `tests/identification/`). Visuose KITUOSE
-   scenarijuose/testuose identifikacija = paruošta būsena (fiktyvas `identified`, arba
-   `make_state()` / `make_runtime()`), nebetestuojama pakeliui.
-2. **Naujas testas — tik su vieta žemėlapyje.** Jei sluoksnis faktą jau
-   dengia — keičiamas esamas testas, ne kuriamas naujas.
-3. **Peržiūra vyksta KARTU su pažingsniniu testavimu** (ne atskira
-   „didžioji revizija"): testuojame identifikaciją → sutvarkome jos
-   sluoksnį; tada analizę/supratimą; tada sprendimo vedimą; tada tiketą ir
-   užbaigimą. Kiekvieno etapo išvestis — sluoksnio failų sąrašas šiame
-   dokumente + išvalyti dubliai.
+1. **Vienas faktas — viena funkcija.** Pvz., identifikacijos variantai — TIK
+   `tests/identification/` (+ eval I1–I6). Visuose kituose testuose identifikacija = paruošta
+   būsena (fiktyvas `identified`, arba `make_state()` / `make_runtime()`).
+2. **Naujas testas — tik į savo funkcijos failą.** Jei funkcija faktą jau dengia — keičiamas
+   esamas testas, ne kuriamas naujas. Naujas gebėjimas = naujas failas su `FUNCTION = "..."`.
+3. **Žinoma spraga** — `xfail(strict=True, reason=...)`, ne ištrintas testas.
 
-## Pažingsninio testavimo eiga (pagal DIALOGO_ETALONAS.md srautą)
+## Dar tvarkyti (3.4b)
 
-| Etapas | Kas tikrinama | Testų sluoksnio failai (pildoma peržiūros metu) |
-|---|---|---|
-| 1. Prisistatymas + problemos supratimas | greeting (DI atskleidimas), problemos vartai (L1/L2 kaskada), capture-first | test_classification, test_nlu, test_understand, test_perception_merge, test_dialogue_quality (W1), eval G1, T1, T2, S10 |
-| 2. Identifikacija | adreso laiptai, resolve, diktuoto adreso patvirtinimas, abonento kodas, savininko vardas, identifikacijos vartai (D-09) | `tests/identification/` (16 funkcijų, žr. TESTAI_PAGAL_FUNKCIJAS.md), eval I1–I6, U1, D2b |
-| 3. Analizė (telemetrija + hipotezė) | verdiktai, paslaugų profilis, hipotezės stabilumas, analitiko signalai, fast-path | test_verdict, test_service_profile, test_hypothesis, test_analyst_signals, eval S8 pora, S3, D2–D4, R3 |
-| 4. Sprendimo vedimas | pack'ai, procedūros vykdytojas + sargai, solverio ir plano vartai, evidence žurnalas, kartojimo sargas, verifikacija dviem šaltiniais | test_fault_packs, test_procedure, test_procedure_guards, test_resolution, test_router_hung, test_line_faults, test_evidence, test_gate, test_gate_closed_set, test_repeat_guard, test_dialogue_quality, eval S1, S1v, S4, S6, S9, D5, D6, D8, A1 |
-| 5. Tiketas + užbaigimas | kontaktai, registracija, prašymai (D-11), atviri tiketai (D-12), informavimo šablonai, goodbye, kontakto įrašas (D-14) | test_rules_ticket, test_rules_closing, test_closing, test_requests, test_open_ticket, test_inform, test_call_record, test_api (dalis), eval R1, R1b, R2, R4, X_dhcp_silent |
-| 6. Balso transportas | Pipecat pertraukimai, delivery, privaloma informacija | test_pipecat_barge_in, test_pipecat_delivery, test_required_information, test_voice_v1, test_voice_adapters, test_lt_text, test_api ws |
-
-## Dubliavimosi kandidatai (tikrinti peržiūros metu)
-
-- `test_agent.py` (128) — istorinis katilas be modulio docstring'o, 27 klasės,
-  jau importuoja naujus sluoksnius (`perceive`, `decide`, `execute`, `speak`,
-  `call_record`). Skaidyti pagal sluoksnius: `TestSpeakPrompt`,
-  `TestHistoryWindow`, `TestPromptLoader`, `TestPromptPrefixHygiene` → speak;
-  `TestIdentificationLadder`, `TestAddressGuards`, `TestAddressSpeech` →
-  identifikacija; `TestTicketDialogue`, `TestAutoRegisterEscalate`,
-  `TestRefuseOrTicket` → tiketas; `TestBargeInCancel`, `TestVoiceGuardsRound5`
-  → balsas; dublius su test_fault_packs / test_dialogue_quality naikinti.
-- `test_graph_v2.py` (15) — v1 variklio (`test_graph.py`) nebėra, variklis
-  vienas. Bet šio failo docstring'as ir dalis pavadinimų dar kalba senais
-  terminais („diagnosis subgraph", „per-stage tool scopes", „walker",
-  „ticket node"), nors grafas dabar `perceive → decide → execute → narrate`
-  ir kalbantis LLM įrankių neturi. Perrašyti pavadinimus pagal dabartinį grafą.
-- `test_procedure_guards.py`, `test_procedure.py`, `test_perception_merge.py`
-  — docstring'ai dar mini „walker"; kodas dabar `decide/procedure.py`
-  (procedūros vykdytojas) + `decide/procedure_guards.py`.
-- `test_voice_adapters.py` / `test_voice_v1.py` — dalis dengia legacy PART
-  kelią; peržiūrėti, kai duplex taps vieninteliu keliu.
+- Kiekvienai sričiai: variantų lentelės ir visos fazės testai (kaip `identification/`), fazių
+  pradžios fiktyvai (`diagnosed`, `ticket` ir t. t.).
+- `engine/test_graph.py` — docstring'as ir pavadinimai dar seni („diagnosis subgraph", „walker").
+- `understanding/test_perception_merge.py` — docstring'as mini „walker".
+- `diagnosis/test_case_rule.py`, `identification/test_caller_name.py` — `_Tracer` ir importuojamas,
+  ir apibrėžiamas (veikia, bet verta suvienodinti į vieną pagalbinį modulį).
 
 ## Žinių sluoksnis (RAG, E1–E4)
 
 | Failas | Ką įrodo |
 |---|---|
-| `test_knowledge_base.py` | dokumento sutartis: rūšis, raktai, filtras, skyriai, žingsniai |
-| `test_knowledge_recall.py` | **arbitras**: 68 klausimai kliento žodžiais, `hit@1`/`hit@2` ribos, kiekvienas dokumentas turi klausimų |
-| `test_knowledge_need.py` | agento **ribos**: ką atsisako ieškoti (tema, paskirtis, prietaisas, ne klausimas), konkretus įrenginys prieš bendrą, kortelės `knowledge_need` |
-| `test_retrieval_port.py` | saugyklos keitimo siūlė: per portą grąžinami TIE PATYS dokumentai |
-| `test_qdrant_index.py` | indeksas: *sparse* sandauga = leksinis balas, hibridas, filtrai, versijos, aliasai, modelio saugiklis, sveikata |
+| `knowledge/test_knowledge_base.py` | dokumento sutartis: rūšis, raktai, filtras, skyriai, žingsniai |
+| `knowledge/test_knowledge_recall.py` | **arbitras**: 68 klausimai kliento žodžiais, `hit@1`/`hit@2` ribos, kiekvienas dokumentas turi klausimų |
+| `knowledge/test_knowledge_need.py` | agento **ribos**: ką atsisako ieškoti (tema, paskirtis, prietaisas, ne klausimas), konkretus įrenginys prieš bendrą, kortelės `knowledge_need` |
+| `knowledge/test_retrieval_port.py` | saugyklos keitimo siūlė: per portą grąžinami TIE PATYS dokumentai |
+| `knowledge/test_qdrant_index.py` | indeksas: *sparse* sandauga = leksinis balas, hibridas, filtrai, versijos, aliasai, modelio saugiklis, sveikata |
 
 Klausimų rinkinys gyvena **prie žinių** (`src/rag/knowledge_base/_questions.yaml`), ne testuose —
 tą patį failą skaito ir ingestijos kanarėlė, tad CI ir gamyba negali nesutarti, kas yra
@@ -108,11 +91,11 @@ tą patį failą skaito ir ingestijos kanarėlė, tad CI ir gamyba negali nesuta
 ### Ko CI nepaleidžia — ir kodėl tai nėra skylė
 
 GitHub paleidėjas neturi embedding'ų modelio ir į HuggingFace neina (`HF_HUB_OFFLINE=1`,
-kad nekiltų 419/429 audra). Todėl **dvylika** `test_qdrant_index.py` testų — tie, kuriems
+kad nekiltų 419/429 audra). Todėl **dvylika** `knowledge/test_qdrant_index.py` testų — tie, kuriems
 reikia `dense` vektorių — ten **praleidžiami**, ir tai matosi santraukoje (`pytest -rs`):
 
 ```
-SKIPPED tests/test_qdrant_index.py:331: embedding modelis nepasiekiamas: OSError: ...
+SKIPPED tests/knowledge/test_qdrant_index.py:331: embedding modelis nepasiekiamas: OSError: ...
 ```
 
 Iki 2026-09-28 jie krisdavo kaip **12 klaidų**, nors niekas nebuvo sugedę — `embeddings_or_skip()`
@@ -124,9 +107,9 @@ Kas CI vis tiek lieka apsaugota:
 | Vis dar tikrinama be modelio | Kodėl to užtenka |
 |---|---|
 | *sparse* sandauga **lygi** leksiniam balui (24 iš 36 to failo testų) | jei Qdrant atsako kitaip nei failai, kalta ne semantika, o indeksas |
-| `test_knowledge_recall.py` — 68 klausimai, `hit@1`/`hit@2` ribos | rikiavimo kokybė |
-| `test_knowledge_need.py` — ribos ir atsisakymai | agentas neina ne į savo sritis |
-| `test_retrieval_port.py` | portas grąžina tuos pačius dokumentus |
+| `knowledge/test_knowledge_recall.py` — 68 klausimai, `hit@1`/`hit@2` ribos | rikiavimo kokybė |
+| `knowledge/test_knowledge_need.py` — ribos ir atsisakymai | agentas neina ne į savo sritis |
+| `knowledge/test_retrieval_port.py` | portas grąžina tuos pačius dokumentus |
 
 **Jei norėsim hibridą tikrinti ir CI:** įdėti `actions/cache` į `~/.cache/huggingface`, prieš
 testus vieną kartą parsisiųsti modelį ir nuimti `HF_HUB_OFFLINE`. Kaina — ~0,5 GB kešo ir kelių

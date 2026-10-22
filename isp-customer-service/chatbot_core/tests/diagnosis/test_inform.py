@@ -1,0 +1,496 @@
+"""
+Informavimo paketai (uždarymo banga, Andrius 2026-09-08): inform verdiktų
+kalba iš knowledge/inform.yaml — skolos detalės (suma, mėnesiai,
+paskutinis mokėjimas) iš invoices lentelės; sakinys be duomenų IŠMETAMAS,
+be jokių — fallback. „Pokalbis visuomet baigiasi aiškumu."
+"""
+
+import pytest
+
+FUNCTION = "Informavimas (skola, avarija)"
+
+
+def _agent():
+    from tests.calls import make_agent
+
+    a = make_agent("+37060020101")
+    a.state.identity.customer_id = "CUST101"
+    a.state.identity.customer_address = "Šiauliai, Tilžės g. 60-3"
+    a.state.intake.problem_type = "internet_down"
+    return a
+
+
+class TestBillingDebtSignal:
+    def test_billing_status_carries_debt_details(self, db_connection):
+        from agent.tools import get_db
+        from crm_mcp.tools.customer_lookup import get_billing_status
+
+        b = get_billing_status(get_db(), "CUST101")
+        assert b["success"] and b["suspended"]
+        assert b["debt"] == {
+            "amount": 49.98,
+            "months": ["2026-07", "2026-08"],
+            "last_payment": "2026-06-05",
+        }
+
+    def test_no_debt_for_paid_customer(self, db_connection):
+        from agent.tools import get_db
+        from crm_mcp.tools.customer_lookup import get_billing_status
+
+        b = get_billing_status(get_db(), "CUST112")
+        assert b["success"] and b["debt"] is None
+
+
+class TestInformTemplates:
+    def test_billing_template_speaks_details(self, db_connection):
+        from agent.inform import inform_text
+
+        agent = _agent()
+        agent.state.diagnosis.verdicts["network"] = {
+            "reason": "billing_suspended",
+            "signals": {
+                "billing_debt": {
+                    "amount": 49.98,
+                    "months": ["2026-07", "2026-08"],
+                    "last_payment": "2026-06-05",
+                }
+            },
+        }
+        t = inform_text(agent.state, agent.runtime, "billing_suspended")
+        assert t and "49 eurai 98 centai" in t
+        assert "liepą ir rugpjūtį" in t
+        assert "birželio 5 d." in t
+        assert "įsijungs automatiškai" in t  # kada atsistatys — aiškumo dalis
+
+    def test_missing_data_drops_sentences_no_lies(self, db_connection):
+        """Nėra paskutinio mokėjimo — TAS sakinys išmetamas, kiti lieka."""
+        from agent.inform import inform_text
+
+        agent = _agent()
+        agent.state.diagnosis.verdicts["network"] = {
+            "reason": "billing_suspended",
+            "signals": {"billing_debt": {"amount": 24.99, "months": ["2026-08"]}},
+        }
+        t = inform_text(agent.state, agent.runtime, "billing_suspended")
+        assert t and "24 eurai 99 centai" in t and "rugpjūtį" in t
+        assert "mokėjimas" not in t  # be duomens — be sakinio
+
+    def test_no_data_falls_back(self, db_connection):
+        from agent.inform import inform_text
+
+        agent = _agent()
+        agent.state.diagnosis.verdicts["network"] = {"reason": "billing_suspended", "signals": {}}
+        t = inform_text(agent.state, agent.runtime, "billing_suspended")
+        assert t and "Apmokėjus sąskaitą" in t  # fallback, ne tuščios skylės
+
+    def test_unknown_reason_returns_none(self, db_connection):
+        from agent.inform import inform_text
+
+        agent = _agent()
+        assert inform_text(agent.state, agent.runtime, "router_hung") is None
+        assert inform_text(agent.state, agent.runtime, None) is None
+
+    def test_eur_forms(self):
+        from agent.contract.locale import lang
+
+        assert lang().money(1.0) == "1 euras"
+        assert lang().money(24.99) == "24 eurai 99 centai"
+        assert lang().money(10.01) == "10 eurų 1 centas"
+
+
+class TestTheAnswerDoesNotContradictTheNews:
+    """Live 2026-09-23: the agent read out a debt of 49,98 € and, when the caller asked how
+    much exactly, answered "tikslios sumos aš nematau". The FAQ sentence was written for a
+    call where we have no figures; once the news has been delivered, the answer comes from
+    the same facts."""
+
+    def _with_debt(self):
+        agent = _agent()
+        agent.state.diagnosis.verdicts["network"] = {
+            "reason": "billing_suspended",
+            "signals": {
+                "billing_debt": {
+                    "amount": 49.98,
+                    "months": ["2026-07", "2026-08"],
+                    "last_payment": "2026-06-05",
+                }
+            },
+        }
+        return agent
+
+    def test_the_amount_is_repeated_not_denied(self, db_connection):
+        from agent.faq import match
+        from agent.speak.context_card import _faq_answer
+
+        agent = self._with_debt()
+        entry = next(e for e in match("o kiek tiksliai skolingas?") if e["topic"] == "debt_amount")
+
+        said = _faq_answer(agent.state, agent.runtime, entry)
+
+        assert "49 eurai 98 centai" in said
+        assert "nematau" not in said
+
+    def test_without_the_news_the_honest_answer_stands(self, db_connection):
+        """No debt was read out in this call: we really do not see the sum."""
+        from agent.faq import match
+        from agent.speak.context_card import _faq_answer
+
+        agent = _agent()
+        entry = next(e for e in match("kiek skolingas?") if e["topic"] == "debt_amount")
+
+        assert "nematau" in _faq_answer(agent.state, agent.runtime, entry)
+
+    def test_the_restore_time_is_knowledge(self, db_connection):
+        """DEMO says an hour; production says whatever is true — one locale line, no code
+        change (Andrius, 2026-09-23)."""
+        from agent.contract.locale import phrase_or
+
+        assert "valand" in phrase_or("inform.billing_suspended.paid_just_now", "")
+
+
+class TestWrapUpHearing:
+    """Blokas 2: po „Ar dar kuo padėti?" turinys ATSAKOMAS, ne nuryjamas su
+    goodbye; darkyti atsisveikinimai nebekilpuoja (riba 2 turn'ai)."""
+
+    def _informed(self):
+        agent = _agent()
+        agent.state.identity.caller_name = "Tomas"
+        agent.state.diagnosis.news_delivered = True
+        agent.state.identity.result_pending = False
+        # Wave 3: the wrap-up belongs to a NEWS call. A fault is the Case's to work on, so the
+        # verdict has to say which kind of call this is (it used to be the walker's pointer).
+        agent.state.diagnosis.verdicts["network"] = {"reason": "active_outage"}
+        return agent
+
+    def test_payment_claim_is_heard(self, db_connection):
+        from agent.decide.rules.reply import scripted_words
+
+        agent = self._informed()
+        r = scripted_words(agent.state, agent.runtime, "Tai aš vakar sumokėjau sąskaitą")
+        assert r is None  # LLM atsako (wants_more), ne goodbye
+        assert not agent.state.closing.case_closed
+
+    def test_name_statement_gets_reaction_not_goodbye(self, db_connection):
+        from agent.decide.rules.reply import scripted_words
+
+        agent = self._informed()
+        agent.state.identity.caller_name = None
+        r = scripted_words(agent.state, agent.runtime, "Vilma")
+        assert r is None  # naratorius reaguoja su direktyva
+        assert agent.state.closing.wrap_react_note is True
+        assert not agent.state.closing.case_closed
+
+    def test_farewell_closes_immediately(self, db_connection):
+        from agent.decide.rules.reply import scripted_words
+
+        agent = self._informed()
+        r = scripted_words(agent.state, agent.runtime, "Ačiū, viso gero")
+        assert agent.state.closing.case_closed and r and "Geros dienos" in r
+
+    def test_content_turns_capped_then_close(self, db_connection):
+        """Darkytas atsisveikinimas („Nusigaro") — po 2 reakcijų uždaroma."""
+        from agent.decide.rules.reply import scripted_words
+
+        agent = self._informed()
+        assert scripted_words(agent.state, agent.runtime, "Nusigaro") is None
+        assert scripted_words(agent.state, agent.runtime, "Nusigaro visai") is None
+        r = scripted_words(agent.state, agent.runtime, "Nusigaro vėl")
+        assert agent.state.closing.case_closed and r and "Geros dienos" in r
+
+
+class TestTicketCallback:
+    """P5 (gyva 2026-09-07): „paskambinsiu vėliau" TIKETO dialogo viduryje —
+    callback noras, ne kontaktų atsakymas; šiltas uždarymas be tiketo."""
+
+    def test_callback_wish_mid_ticket_closes_warm(self, db_connection):
+        from agent.decide.rules.head import turn_head
+        from agent.decide.rules.reply import scripted_words
+        from agent.decide.rules.ticket import ticket_stage_reply
+        from agent.execute.ticket import request_ticket
+
+        agent = _agent()
+        agent.state.identity.caller_name = "Tomas"
+        agent.state.case.fault = "unclear_fault"
+        request_ticket(agent.state, agent.runtime, "sprendimas_baigtas")
+        ticket_stage_reply(agent.state, agent.runtime)  # numerio klausimas išėjo
+        turn_head(agent.state, agent.runtime, "Gerai, aš paskambinsiu vėliau pats")
+        assert agent.state.closing.case_closed and agent.state.closing.closed_reason == "callback"
+        assert agent.state.ticket.ticket_id is None
+        assert agent.state.ticket.stage is None
+        r = scripted_words(agent.state, agent.runtime, "Gerai, aš paskambinsiu vėliau pats")
+        assert r and "paskambinkite" in r  # callback_goodbye
+
+    def test_normal_hours_answer_still_captured(self, db_connection):
+        from agent.decide.rules.head import turn_head
+        from agent.decide.rules.ticket import ticket_stage_reply
+        from agent.execute.ticket import request_ticket
+
+        agent = _agent()
+        agent.state.case.fault = "unclear_fault"
+        request_ticket(agent.state, agent.runtime, "sprendimas_baigtas")
+        ticket_stage_reply(agent.state, agent.runtime)
+        turn_head(agent.state, agent.runtime, "Taip, tiks")
+        ticket_stage_reply(agent.state, agent.runtime)
+        turn_head(
+            agent.state, agent.runtime, "Skambinkite po 17 valandos"
+        )  # JŪS skambinkite — ne callback
+        assert not agent.state.closing.case_closed
+        assert agent.state.ticket.contact_hours and "17" in agent.state.ticket.contact_hours
+
+
+class TestDebtSignalsReachState:
+    """Gyva 2026-09-09: signals guli payload'o VIRŠUJE, ne verdict'e — state
+    gaudavo signals=None ir šablonas krito į fallback („nemato skolos")."""
+
+    def test_diagnose_observation_stores_toplevel_signals(self, db_connection):
+        import json
+
+        from agent.execute.observe import update_state_from_observation
+
+        agent = _agent()
+        payload = {
+            "success": True,
+            "verdict": {
+                "side": "provider",
+                "group": "B1",
+                "action": "inform",
+                "reason": "billing_suspended",
+            },
+            "signals": {
+                "billing_debt": {
+                    "amount": 49.98,
+                    "months": ["2026-07", "2026-08"],
+                    "last_payment": "2026-06-05",
+                }
+            },
+        }
+        update_state_from_observation(
+            agent.state, agent.runtime, "diagnose_connection", json.dumps(payload)
+        )
+        sig = agent.state.diagnosis.verdicts["network"]["signals"]
+        assert sig and sig["billing_debt"]["amount"] == 49.98
+        from agent.inform import inform_text
+
+        t = inform_text(agent.state, agent.runtime, "billing_suspended")
+        assert t and "49 eurai 98 centai" in t
+
+    def test_facts_block_carries_debt_for_questions(self, db_connection):
+        """„Kokia skola?" — naratorius gauna skaičius faktuose, ne „nematau"."""
+        from agent.speak.context_card import context_card
+
+        agent = _agent()
+        agent.state.diagnosis.verdicts["network"] = {
+            "reason": "billing_suspended",
+            "signals": {
+                "billing_debt": {
+                    "amount": 49.98,
+                    "months": ["2026-07", "2026-08"],
+                    "last_payment": "2026-06-05",
+                }
+            },
+        }
+        facts = context_card(agent.state, agent.runtime)
+        assert facts and "DEBT FACTS" in facts
+        assert "49 eurai 98 centai" in facts and "liepą ir rugpjūtį" in facts
+
+
+class TestCannotNowHearing:
+    """N1-N3 (gyva 2026-09-09): klientui teko 3x kartoti „negaliu" — clarify
+    atsakymas dabar girdimas, safety klausimo registro niekas neperrašo,
+    „kai grįšiu" = cannot_now."""
+
+    def test_kai_grisiu_is_cannot_now(self, db_connection):
+        """N3: „Kai grįšiu, namo padarysiu" — ne laukimas, o cannot_now."""
+        from agent.perceive.detectors import detect_cannot_now
+
+        assert detect_cannot_now("Kai grįšiu, namo padarysiu") is True
+        assert detect_cannot_now("Negaliu, nes esu ne mieste") is True
+
+    def test_double_dot_collapsed(self, db_connection):
+        """N4: „birželio 5 d.." → vienas taškas."""
+        from agent.inform import inform_text
+
+        agent = _agent()
+        agent.state.diagnosis.verdicts["network"] = {
+            "reason": "billing_suspended",
+            "signals": {
+                "billing_debt": {
+                    "amount": 49.98,
+                    "months": ["2026-07"],
+                    "last_payment": "2026-06-05",
+                }
+            },
+        }
+        t = inform_text(agent.state, agent.runtime, "billing_suspended")
+        assert t and "d.." not in t and "birželio 5 d." in t
+
+
+class TestRestoredGarble:
+    def test_satsarado_reads_as_restored(self, db_connection):
+        """P-B gyva: „interneto satsarado" (STT „atsirado") — restored YES."""
+        from agent.perceive.detectors import detect_restored
+        from agent.resolution import Outcome
+
+        assert detect_restored("Mhm, interneto satsarado") is Outcome.YES
+        assert detect_restored("interneto atsarado jau") is Outcome.YES
+
+
+class TestNodeFaultInform:
+    """B3 inform (Andrius 2026-09-11): mazgo/switch gedimas — statinis šablonas
+    kalba (be placeholder'ių), variklis pats sukuria tiketą prieš žodžius."""
+
+    def test_static_templates_speak(self, db_connection):
+        from agent.inform import inform_text
+
+        a = _agent()
+        t = inform_text(a.state, a.runtime, "node_fault_unregistered")
+        assert t and "nieko daryti nereikia" in t and "informuosime" in t
+        assert "užregistravau" in t
+        t2 = inform_text(a.state, a.runtime, "switch_unreachable")
+        assert t2 and "nieko daryti nereikia" in t2 and "informuosime" in t2
+
+    def test_deferred_result_registers_ticket_and_informs(self, db_connection):
+        from agent.decide.rules.reply import scripted_words
+
+        from tests.calls import make_agent
+
+        a = make_agent("+37060030306")
+        a.state.identity.customer_id = "CUST306"
+        a.state.identity.customer_address = "Šiauliai, Vilties g. 17-2"
+        a.state.intake.problem_type = "internet_down"
+        a.state.identity.caller_name = "Lina"
+        a.state.identity.result_pending = True
+        a.state.diagnosis.verdicts["network"] = {"reason": "node_fault_unregistered", "signals": {}}
+        a.state.diagnosis.hypothesis = {
+            "cause": "node_fault_unregistered",
+            "because": [],
+            "status": "testing",
+            "settled_by": None,
+        }
+        r = scripted_words(a.state, a.runtime, "Lina čia")
+        assert r and "meistrai" in r.lower() and "informuosime" in r
+        assert "neregistruotas" not in r  # žalias gloss'as nebekalba
+        assert a.state.ticket.ticket_id  # „meistrai jau užregistruoti" — tiesa
+
+
+class TestInformResultComposer:
+    def test_deferred_result_uses_template(self, db_connection):
+        """Pilnas kelias: diagnozė su skola → atidėtas rezultatas kalba
+        šablonu (viena žinia su detalėm), be billing_extra dubliavimo."""
+        from agent.decide.rules.reply import scripted_words
+
+        agent = _agent()
+        agent.state.identity.caller_name = "Tomas"
+        agent.state.identity.result_pending = True
+        agent.state.diagnosis.verdicts["network"] = {
+            "reason": "billing_suspended",
+            "signals": {
+                "billing_debt": {
+                    "amount": 49.98,
+                    "months": ["2026-07", "2026-08"],
+                    "last_payment": "2026-06-05",
+                }
+            },
+        }
+        r = scripted_words(agent.state, agent.runtime, "Tomas čia")
+        assert r and "49 eurai 98 centai" in r and "liepą ir rugpjūtį" in r
+        assert r.count("Apmokėjus") == 1  # šablonas vietoj billing_extra, ne kartu
+
+
+class _Tracer:
+    session_id = "wave9"
+
+    def __init__(self):
+        self.events = []
+
+    def emit(self, event_type, **fields):
+        self.events.append({"type": event_type, **fields})
+
+    def decisions(self):
+        return [(e.get("intent"), e.get("action")) for e in self.events if e["type"] == "decision"]
+
+
+@pytest.fixture
+def debt(make_state, make_runtime):
+    """A caller who has just heard the debt news."""
+    tracer = _Tracer()
+    state, rt = make_state("+37060020101"), make_runtime(tracer=tracer)
+    state.identity.customer_id = "CUST101"
+    state.identity.caller_name = "Rokas"
+    state.diagnosis.verdicts["network"] = {"reason": "billing_suspended"}
+    state.diagnosis.news_delivered = True
+    return state, rt, tracer
+
+
+# --- from test_wave9_promises.py ---
+
+
+class TestT5HowMuchIsNotADispute:
+    @pytest.mark.parametrize(
+        ("said", "dispute"),
+        [
+            ("O ho, kiek ne mokėjau?", False),  # live 2026-10-07
+            ("Kiek aš skolingas?", False),
+            ("Kaip tai skola, aš sumokėjau", True),
+            ("Kiek? Aš juk sumokėjau!", True),  # a real objection still wins
+            ("Nesutinku su ta skola", True),
+            ("Aišku, ačiū, sumokėsiu", False),
+        ],
+    )
+    def test_dispute_reading(self, said, dispute):
+        from agent.decide.rules.requests import disputes_debt
+
+        assert disputes_debt(said) is dispute
+
+    def test_the_amount_question_is_answered_from_the_news(self, debt):
+        from agent.decide.rules.requests import debt_offer_turn
+        from agent.faq import match
+
+        state, rt, _ = debt
+
+        assert debt_offer_turn(state, rt, "O ho, kiek ne mokėjau?") is None
+        assert "debt_amount" in [e["topic"] for e in match("O ho, kiek ne mokėjau?")]
+
+
+class _Tracer_wave10_quick:
+    session_id = "wave10"
+
+    def __init__(self):
+        self.events = []
+
+    def emit(self, event_type, **fields):
+        self.events.append({"type": event_type, **fields})
+
+
+@pytest.fixture
+def case_call(make_state, make_runtime):
+    """A v2 Case call on a fault, the caller identified."""
+    state, rt = make_state("+37060012353"), make_runtime(tracer=_Tracer_wave10_quick())
+    state.identity.customer_id = "CUST009"
+    state.diagnosis.verdicts["network"] = {"reason": "no_mac_observed"}
+    state.case.fault, state.case.solution = "no_mac_observed", 0
+    return state, rt
+
+
+# --- from test_wave10_quick.py ---
+
+
+class TestS1AFaultIsNotNews:
+    def _after_the_name(self, state, rt):
+        from agent.execute.step import mark_step_presented
+
+        state.identity.result_pending = True
+        state.identity.caller_name = "Andrius"
+        mark_step_presented(state, rt)
+
+    def test_a_case_fault_is_not_marked_told(self, case_call):
+        state, rt = case_call
+        self._after_the_name(state, rt)
+        assert not state.diagnosis.news_delivered
+
+    def test_a_debt_is_marked_told(self, case_call):
+        state, rt = case_call
+        state.case.fault = None
+        state.diagnosis.verdicts["network"] = {"reason": "billing_suspended"}
+        self._after_the_name(state, rt)
+        assert state.diagnosis.news_delivered

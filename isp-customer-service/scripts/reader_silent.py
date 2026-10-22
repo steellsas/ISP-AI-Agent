@@ -4,7 +4,7 @@ Variklis kiekvieną kartą, kai uždavė klausimą ir nei žodynas, nei modelis 
 įrašo į trace'ą `reader_silent` (modulis, skaitytuvas, laukiamas faktas, kliento žodžiai). Šis
 scenarijus tuos įrašus surenka ir sugrupuoja, kad po testų sesijos būtų MATOMA, ką reikia
 pridėti — į žodyną (`locales/lt/vocabulary.yaml`) ar į parafrazių testą
-(`tests/test_answer_reading.py`).
+(`tests/understanding/test_answer_reading.py`).
 
     uv run python scripts/reader_silent.py                  # visi žurnalai
     uv run python scripts/reader_silent.py --days 1         # tik šiandienos
@@ -84,7 +84,9 @@ def main(argv: list[str] | None = None) -> int:
             print(f"    „{heard}“   [{item['session']}]")
         print()
     print("Ką su tuo daryti: jei formuluotė dažna — į žodyną; jei vienkartinė — į parafrazių")
-    print("testą (tests/test_answer_reading.py), kad modelio eilė ją uždengtų sąmoningai.")
+    print(
+        "testą (tests/understanding/test_answer_reading.py), kad modelio eilė ją uždengtų sąmoningai."
+    )
     return 0
 
 

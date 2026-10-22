@@ -5,7 +5,7 @@ Run tests:
     cd chatbot_core
     pytest tests/ -v
     pytest tests/ -v --tb=short  # shorter traceback
-    pytest tests/test_rag.py -v  # specific file
+    pytest -m diagnosis tests/  # one area (tests/__init__.py)
 """
 
 import os

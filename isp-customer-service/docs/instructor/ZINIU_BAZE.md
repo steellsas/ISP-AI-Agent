@@ -84,7 +84,7 @@ turi būti tikslios („Žingsnis 2: Nustatyti WAN tipą į DHCP", ne „Toliau"
 ## Patikra
 
 ```bash
-uv run pytest chatbot_core/tests/test_knowledge_base.py chatbot_core/tests/test_knowledge_recall.py
+uv run pytest -m knowledge chatbot_core/tests
 ```
 
 **Nauja žinia atkeliauja su savo klausimais.** `chatbot_core/tests/knowledge_questions.yaml` turi

@@ -1,0 +1,404 @@
+"""
+Tests for the conversation trace (observability).
+
+Covers the JSONL sink contract from stebejimo_dizainas.md: per-session file,
+one event per line, every event stamped with v/ts/session_id/type, verdict as
+its own event type, PII redaction, and the NullTracer / factory behaviour.
+
+The end-to-end "the agent actually emits" path is validated by the manual CLI
+run (it needs live LLM calls); here we test the sink + factory directly and the
+the helper that turns observations into events.
+
+Run: pytest tests/observe/test_tracing.py -v
+"""
+
+import json
+import os
+from pathlib import Path
+
+import pytest
+from agent.call_record.finalizer import build_call_summary
+from agent.call_record.finalizer import finalize as finalize_call
+from agent.speak.postprocess import finalize
+from agent.trace import tools_called_this_session, trace_tool_result
+
+FUNCTION = "Žurnalas (trace)"
+
+
+def _read_events(path):
+    with open(path, encoding="utf-8") as f:
+        return [json.loads(line) for line in f if line.strip()]
+
+
+class TestJsonlFileTracer:
+    def test_writes_one_line_per_event_with_stamps(self, tmp_path):
+        from adapters.tracing import JsonlFileTracer
+
+        tracer = JsonlFileTracer("sess-1", trace_dir=tmp_path, redact=False)
+        tracer.emit("session_start", caller_phone="+37060020105", model="gpt-4o-mini")
+        tracer.emit("user_turn", text="neveikia internetas")
+        tracer.emit("agent_reply", text="Pasakykite adresą...")
+
+        events = _read_events(tracer.path)
+        assert len(events) == 3
+        for e in events:
+            assert e["v"] == 1
+            assert e["session_id"] == "sess-1"
+            assert "ts" in e
+            assert "type" in e
+        assert [e["type"] for e in events] == ["session_start", "user_turn", "agent_reply"]
+
+    def test_file_named_by_session_id(self, tmp_path):
+        from adapters.tracing import JsonlFileTracer
+
+        tracer = JsonlFileTracer("abc-123", trace_dir=tmp_path)
+        assert tracer.path.name == "abc-123.jsonl"
+
+    def test_redacts_phone_numbers(self, tmp_path):
+        from adapters.tracing import JsonlFileTracer
+
+        tracer = JsonlFileTracer("sess-2", trace_dir=tmp_path, redact=True)
+        tracer.emit("session_start", caller_phone="+37060020105")
+        tracer.emit("tool_call", name="find_customer", args={"phone": "+37060020105"})
+
+        raw = tracer.path.read_text(encoding="utf-8")
+        assert "+37060020105" not in raw  # masked everywhere, incl. nested args
+        assert "***0105" in raw
+
+    def test_session_id_not_corrupted_by_redaction(self, tmp_path):
+        # A numeric session id can coincidentally match the phone regex; it must
+        # survive redaction intact (structural field), unlike text/args values.
+        from adapters.tracing import JsonlFileTracer
+
+        sid = "20260617-135857-245253-0001"
+        tracer = JsonlFileTracer(sid, trace_dir=tmp_path, redact=True)
+        tracer.emit("user_turn", text="+37060020105")
+
+        events = _read_events(tracer.path)
+        assert events[0]["session_id"] == sid  # untouched
+        assert events[0]["text"] == "***0105"  # value still redacted
+
+    def test_redact_off_keeps_full_number(self, tmp_path):
+        from adapters.tracing import JsonlFileTracer
+
+        tracer = JsonlFileTracer("sess-3", trace_dir=tmp_path, redact=False)
+        tracer.emit("session_start", caller_phone="+37060020105")
+        assert "+37060020105" in tracer.path.read_text(encoding="utf-8")
+
+    def test_export_txt_writes_readable_transcript(self, tmp_path):
+        from adapters.tracing import JsonlFileTracer
+
+        tracer = JsonlFileTracer("sess-txt", trace_dir=tmp_path, redact=False)
+        tracer.emit("session_start", caller_phone="+37060020105", model="gpt-4o-mini")
+        tracer.emit("user_turn", text="neveikia internetas")
+        tracer.emit("tool_call", name="resolve_address", args={"city": "Šiauliai"})
+        tracer.emit(
+            "tool_result",
+            name="resolve_address",
+            ok=True,
+            ms=12,
+            summary={"customer_id": "CUST105"},
+        )
+        tracer.emit("verdict", side="customer", group="B6", action="instruct", reason="foreign_mac")
+        tracer.emit("agent_reply", text="Ar pakeitėte routerį?")
+        tracer.emit(
+            "turn_plan",
+            turn_index=1,
+            owner="procedure",
+            rule="procedure.verify_reboot",
+            hypothesis={"cause": "router_hung", "status": "doubt"},
+            action={"type": "tool", "name": "telemetry.recheck"},
+            say={"kind": "directive"},
+        )
+        tracer.emit("session_end", outcome="done", customer_id="CUST105", ticket_id=None)
+
+        txt = tracer.export_txt()
+        assert txt is not None and txt.exists()
+        content = txt.read_text(encoding="utf-8")
+        assert "USER : neveikia internetas" in content
+        assert "AGENT: Ar pakeitėte routerį?" in content
+        assert "VERDICT B6 instruct foreign_mac" in content
+        assert "12ms" in content
+        assert (
+            "[plan] owner=procedure rule=procedure.verify_reboot hyp=router_hung(doubt) "
+            "action=tool:telemetry.recheck say=directive"
+        ) in content
+
+    def test_emit_never_raises_on_bad_dir(self, tmp_path):
+        from adapters.tracing import JsonlFileTracer
+
+        # Point at a path that cannot be a directory (a file) -> sink disabled,
+        # but emit must stay silent (best-effort, never breaks the call).
+        blocker = tmp_path / "blocker"
+        blocker.write_text("x")
+        tracer = JsonlFileTracer("sess-4", trace_dir=blocker)
+        tracer.emit("user_turn", text="hi")  # must not raise
+
+
+class TestFactory:
+    def test_disabled_returns_null_tracer(self):
+        from adapters.tracing import NullTracer, get_tracer
+
+        tracer = get_tracer("sess", enabled=False)
+        assert isinstance(tracer, NullTracer)
+        assert tracer.emit("anything", x=1) is None  # no-op, no file
+
+    def test_enabled_returns_file_tracer(self, tmp_path):
+        from adapters.tracing import JsonlFileTracer, get_tracer
+
+        tracer = get_tracer("sess", enabled=True, trace_dir=tmp_path)
+        assert isinstance(tracer, JsonlFileTracer)
+
+    def test_new_session_id_unique_and_sortable(self):
+        from adapters.tracing import new_session_id
+
+        a = new_session_id()
+        b = new_session_id()
+        assert a != b
+        assert b >= a  # microsecond timestamp -> monotonic-ish, sortable
+
+
+class _CaptureTracer:
+    """In-memory tracer to assert what the engine emits."""
+
+    def __init__(self):
+        self.events = []
+
+    def emit(self, event_type, **fields):
+        self.events.append({"type": event_type, **fields})
+
+
+class TestEngineEmits:
+    """The engine translates tool observations into trace events (no LLM)."""
+
+    def _agent(self, tracer):
+        from tests.calls import make_agent
+
+        return make_agent("+37060020105", language="lt", tracer=tracer)
+
+    def test_session_start_on_init(self, db_connection):
+        cap = _CaptureTracer()
+        self._agent(cap)
+        assert cap.events[0]["type"] == "session_start"
+        assert cap.events[0]["model"]
+
+    def test_a_tool_result_is_traced_without_concluding_anything(self, db_connection):
+        """Wave 4: the reading is traced as a result; WHICH fault it means is the Case's
+        decision and is traced there (`verdict` with source=card), not by the tool helper."""
+        cap = _CaptureTracer()
+        agent = self._agent(cap)
+        cap.events.clear()
+
+        from agent.tools import diagnose_connection
+
+        obs = json.dumps(diagnose_connection("CUST105"))
+        trace_tool_result(agent.tracer, "diagnose_connection", obs)
+
+        assert [e["type"] for e in cap.events] == ["tool_result"]
+        assert cap.events[0]["ok"] is True
+
+    def test_resolve_address_hint_in_summary(self, db_connection):
+        cap = _CaptureTracer()
+        agent = self._agent(cap)
+        cap.events.clear()
+
+        from agent.tools import resolve_address
+
+        obs = json.dumps(resolve_address(city="Šiauliai", street="Žeimių"))
+        trace_tool_result(agent.tracer, "resolve_address", obs)
+
+        result = cap.events[0]
+        assert result["type"] == "tool_result"
+        assert "Ginkūnai" in result["summary"]["hint"]
+
+    def test_preflight_phone_sets_unconfirmed_candidate(self, db_connection):
+        from agent.execute.identification import preflight_phone
+        from agent.speak.context_card import context_card
+
+        cap = _CaptureTracer()
+        agent = self._agent(cap)  # caller +37060020105 -> CUST105
+
+        preflight_phone(agent.state, agent.runtime)
+
+        cand = agent.state.identity.phone_candidate
+        assert cand is not None
+        assert cand["customer_id"] == "CUST105"
+        assert "Tilžės" in (cand["address"] or "")
+        assert agent.state.identity.customer_id is None  # candidate, NOT confirmed
+        # Address-first design: the candidate is kept in state for SILENT use
+        # only (cross-check / outage fast-path) and is NOT surfaced to the model.
+        # The agent asks for the address rather than offering this one, so the
+        # facts block must not leak a "PHONE CANDIDATE" to confirm.
+        facts = context_card(agent.state, agent.runtime)
+        assert facts is None or "PHONE CANDIDATE" not in facts
+        assert any(e["type"] == "preflight" and e["found"] for e in cap.events)
+
+    def test_preflight_unknown_phone_no_candidate(self, db_connection):
+        from agent.execute.identification import preflight_phone
+
+        cap = _CaptureTracer()
+        from tests.calls import make_agent
+
+        agent = make_agent("+37069999999", language="lt", tracer=cap)
+        preflight_phone(agent.state, agent.runtime)
+
+        assert agent.state.identity.phone_candidate is None
+
+    def test_end_session_idempotent(self, db_connection):
+        cap = _CaptureTracer()
+        agent = self._agent(cap)
+        cap.events.clear()
+
+        finalize_call(agent.state, agent.runtime, transport_end="complete")
+        finalize_call(
+            agent.state, agent.runtime, transport_end="complete"
+        )  # second call is a no-op
+
+        ends = [e for e in cap.events if e["type"] == "session_end"]
+        assert len(ends) == 1
+        assert ends[0]["transport_end"] == "complete"  # F-4: the transport is not the outcome
+
+    def test_end_session_emits_call_summary_from_state(self, db_connection):
+        """Phase 3.10: every call ends with a structured summary derived from state."""
+        cap = _CaptureTracer()
+        agent = self._agent(cap)
+        agent.state.intake.problem_type = "internet_down"
+        agent.state.identity.customer_id = "CUST105"
+        agent.state.identity.customer_address = "Tilžės g. 60-7, Šiauliai"
+        agent.state.identity.caller_name = "duktė Rasa"
+        agent.state.diagnosis.verdicts["network"] = {"reason": "foreign_mac", "side": "customer"}
+        agent.state.closing.closed_reason = "resolved"
+        cap.events.clear()
+
+        finalize_call(agent.state, agent.runtime, transport_end="complete")
+
+        summary = next(e for e in cap.events if e["type"] == "call_summary")
+        assert summary["purpose"] == "internet_down"
+        assert summary["customer_id"] == "CUST105"
+        assert summary["caller_name"] == "duktė Rasa"
+        assert summary["cause"] == "foreign_mac"
+        assert summary["side"] == "customer"
+        assert summary["outcome"] == "resolved"
+        assert summary["closed_reason"] == "resolved"
+        assert summary["resolved"] is True
+        # No real trace file behind the capture tracer -> no actions harvested.
+        assert summary["actions"] == []
+        # call_summary is emitted BEFORE session_end (record then close).
+        types = [e["type"] for e in cap.events]
+        assert types.index("call_summary") < types.index("session_end")
+
+    def test_call_summary_actions_read_from_trace(self, db_connection, tmp_path):
+        """`actions` are the tool names actually executed, harvested from the JSONL."""
+        from adapters.tracing.jsonl_tracer import JsonlFileTracer
+
+        from tests.calls import make_agent
+
+        tracer = JsonlFileTracer("callsummary-test", trace_dir=tmp_path)
+        agent = make_agent("+37060020105", language="lt", tracer=tracer)
+        tracer.emit("tool_call", name="diagnose_connection", args={})
+        tracer.emit("tool_call", name="update_mac", args={})
+        tracer.emit("tool_call", name="diagnose_connection", args={})  # dedup
+
+        assert tools_called_this_session(agent.tracer) == ["diagnose_connection", "update_mac"]
+
+    def test_end_session_persists_conversation_row(self, db_connection, tmp_path):
+        """Phase 3.10 slice 1b: session end writes one row to the conversations table."""
+        import json as _json
+
+        from adapters.tracing.jsonl_tracer import JsonlFileTracer
+
+        from tests.calls import make_agent
+
+        tracer = JsonlFileTracer("convrow-test", trace_dir=tmp_path)
+        agent = make_agent("+37060020105", language="lt", tracer=tracer)
+        agent.state.intake.problem_type = "internet_down"
+        agent.state.identity.customer_id = "CUST105"
+        agent.state.identity.caller_name = "kaimynas Jonas"
+        agent.state.messages = [{"role": "user", "content": "labas"}]
+        agent.state.closing.closed_reason = "resolved"
+
+        finalize_call(agent.state, agent.runtime, transport_end="resolved")
+
+        with db_connection.cursor() as cur:
+            cur.execute(
+                "SELECT customer_id, outcome, summary, messages FROM conversations "
+                "WHERE session_id = ?",
+                ("convrow-test",),
+            )
+            row = dict(cur.fetchone())
+        assert row["customer_id"] == "CUST105"
+        assert row["outcome"] == "resolved"
+        parsed = _json.loads(row["summary"])
+        assert parsed["purpose"] == "internet_down"
+        assert parsed["caller_name"] == "kaimynas Jonas"
+        assert _json.loads(row["messages"]) == [{"role": "user", "content": "labas"}]
+
+    def test_save_conversation_drops_dangling_customer_fk(self, db_connection):
+        """An unidentified/unknown customer id is stored as NULL, not lost to an FK error."""
+        from crm_mcp.tools.conversations import save_conversation
+
+        res = save_conversation(
+            db_connection,
+            {
+                "session_id": "fk-test",
+                "customer_id": "CUST_DOES_NOT_EXIST",
+                "messages": [],
+                "outcome": "escalated",
+                "summary": {"purpose": "internet_down"},
+            },
+        )
+        assert res["success"] is True
+        with db_connection.cursor() as cur:
+            cur.execute("SELECT customer_id FROM conversations WHERE session_id = ?", ("fk-test",))
+            assert dict(cur.fetchone())["customer_id"] is None
+
+    def test_reply_emits_case_snapshot(self, db_connection):
+        """The reply pass emits a compact case snapshot for review (Pillar A2)."""
+        cap = _CaptureTracer()
+        agent = self._agent(cap)
+        agent.state.intake.problem_type = "internet_down"
+        agent.state.identity.customer_id = "CUST105"
+        agent.state.diagnosis.verdicts["network"] = {"group": "B6", "reason": "foreign_mac"}
+        cap.events.clear()
+
+        finalize(agent.state, agent.runtime, "Ar pakeitėte routerį?")
+
+        case = next(e for e in cap.events if e["type"] == "case")
+        assert case["problem"] == "internet_down"
+        assert case["customer_id"] == "CUST105"
+        assert "network:B6/foreign_mac" in case["diagnosis"]
+
+    def test_no_case_snapshot_when_empty(self, db_connection):
+        """No problem/customer/diagnosis yet -> no case event (e.g. greeting)."""
+        cap = _CaptureTracer()
+        agent = self._agent(cap)
+        cap.events.clear()
+
+        finalize(agent.state, agent.runtime, "Labas!")
+
+        assert not [e for e in cap.events if e["type"] == "case"]
+
+
+class TestTestTracesStayOutOfTheLogs:
+    def test_a_test_session_does_not_write_into_logs_sessions(self):
+        """Review finding L: test runs wrote ~121k traces into logs/sessions, burying
+        the real calls. The suite points TRACE_DIR outside the project logs."""
+        from agent.session import AgentSession
+
+        session = AgentSession(caller_phone="+37060000000")
+        path = Path(session.tracer.path).resolve()
+
+        assert path.parent == Path(os.environ["TRACE_DIR"]).resolve()
+        assert (path.parent.parent.name, path.parent.name) != ("logs", "sessions")
+
+
+def test_an_event_field_named_type_never_becomes_the_event_type(tmp_path):
+    """Wave 2a: `perception` events carried a `type` field (the turn type) and silently
+    became `answer`/`question` events in the trace — the structural keys win now."""
+    from adapters.tracing import JsonlFileTracer
+
+    tracer = JsonlFileTracer("s-type", tmp_path)
+    tracer.emit("perception", type="answer", source="fast_path")
+
+    event = json.loads(Path(tracer.path).read_text(encoding="utf-8").splitlines()[0])
+    assert event["type"] == "perception"
