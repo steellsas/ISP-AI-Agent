@@ -1,7 +1,37 @@
-"""The identification gate (M6, D-09): nothing about an account before it is confirmed."""
+"""Patvirtinimas — nothing about an account before the address is confirmed (M6, D-09): the held
+outage, the line, the debt wait for the caller's „taip".
+"""
 
+import pytest
 from agent.decide.rules.identification import release_held_outage
 from agent.speak.context_card import context_card
+
+from .helpers import _agent
+
+FUNCTION = "Patvirtinimas"
+
+
+def test_a_dictated_address_waits_for_the_yes(call):
+    """Padiktuotas adresas — tik po „taip“"""
+    c = call()
+    c.say("Neveikia internetas")
+    c.say("Vilniaus gatvė 29")
+    assert c.identity.customer_id is None and not c.identity.address_confirmed
+    c.say("Taip")
+    assert c.identity.customer_id == "CUST009" and c.identity.address_confirmed
+
+
+def test_an_offered_address_waits_for_the_yes(call):
+    """Pasiūlytas adresas — tik po „taip“"""
+    c = call("+37060020112")
+    c.say("Neveikia internetas")
+    assert c.identity.customer_id is None
+    reply = c.say("Taip")
+    assert c.identity.customer_id == "CUST112" and "Vilniaus g. 33-2" in reply
+
+
+# --- from test_identification_gate.py ---
+
 
 HELD = {"customer_id": "CUST102", "street": "Tilžės g.", "eta": "18:00", "description": "x"}
 

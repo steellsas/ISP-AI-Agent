@@ -206,3 +206,56 @@ def make_runtime_fixture():
     from tests.calls import make_runtime
 
     return make_runtime
+
+
+# =============================================================================
+# TESTS BY FUNCTION (ROADMAP 3.2)
+# =============================================================================
+# The function report (Area → Function → ✓/✗) and the area markers (`-m identification`):
+# tests/function_report.py. A whole call and calls that start in a given phase:
+# tests/phases.py.
+from tests.function_report import (  # noqa: E402
+    pytest_collection_modifyitems,
+    pytest_configure,
+    pytest_runtest_logreport,
+    pytest_terminal_summary,
+)
+
+__all__ = [
+    "pytest_collection_modifyitems",
+    "pytest_configure",
+    "pytest_runtest_logreport",
+    "pytest_terminal_summary",
+]
+
+
+@pytest.fixture
+def call(db_connection):
+    """`call(phone)` → a CallDriver: the real graph, the speaking LLM faked (tests/phases.py)."""
+    from tests.phases import CallDriver
+
+    drivers = []
+
+    def _make(phone="unknown", greet=True):
+        drivers.append(CallDriver(phone, greet=greet))
+        return drivers[-1]
+
+    yield _make
+    for d in drivers:
+        d.close()
+
+
+@pytest.fixture
+def identified(db_connection):
+    """`identified("CUST105")` → a CallDriver that starts after identification (tests/phases.py)."""
+    from tests.phases import identified_call
+
+    drivers = []
+
+    def _make(customer_id="CUST105", **kw):
+        drivers.append(identified_call(customer_id, **kw))
+        return drivers[-1]
+
+    yield _make
+    for d in drivers:
+        d.close()

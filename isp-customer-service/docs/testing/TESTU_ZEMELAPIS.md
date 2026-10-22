@@ -20,16 +20,22 @@ Variklis vienas: LangGraph grafas `perceive → decide → execute → narrate`
 `GraphState`, kiekvienas ėjimas — vienas `TurnPlan`, kiekvienas skambutis
 palieka kontakto įrašą (`agent/call_record/`).
 
+> **2026-10-21 (ROADMAP 3.2):** testai pertvarkomi **pagal funkcijas** — žr.
+> [TESTAI_PAGAL_FUNKCIJAS.md](TESTAI_PAGAL_FUNKCIJAS.md). Identifikacija jau perkelta į
+> `chatbot_core/tests/identification/` (16 funkcijų, ataskaita po paleidimo); failai
+> `test_address_resolver`, `test_identification_rules`, `test_identification_gate`,
+> `test_identification_policy`, `test_slots`, `test_nlu_wave` panaikinti. Kitos fazės — 3.4.
+
 ## Piramidė ir sluoksnių nuosavybė
 
 | Sluoksnis | Kas garantuojama | Kur gyvena |
 |---|---|---|
 | EVAL (pokalbio lygis) | pilni pokalbiai su tikru LLM: supratimas, identifikacija, sprendimas, tiketas, užbaigimas, kontakto įrašas | `eval/scenarios.json` (S/I/D/R/T/U/G/A/X serijos) |
 | Grafas ir būsena | grafo mazgų tvarka, checkpoint'as = visas skambutis, tarp-ėjimų įrašai | test_graph_v2, test_graph_v2_state, test_single_state |
-| `perceive` (skaitymas) | adresų NLU, slotai, supratimo pass'as, klasifikacijos kaskada, evidence įrašymas, šalutinė tema | test_nlu, test_nlu_wave, test_slots, test_understand, test_perception_merge, test_classification, test_evidence |
-| `decide` (planas) | politikų grandinės tvarka, taisyklės (identifikacija, tiketas, uždarymas, prašymai, atviri tiketai), procedūros vykdytojas + jo sargai, hipotezės būsena, solverio ir plano vartai | test_policy_order, test_identification_rules, test_identification_gate, test_rules_ticket, test_rules_closing, test_closing, test_requests, test_open_ticket, test_service_profile, test_procedure, test_procedure_guards, test_resolution, test_hypothesis, test_gate, test_gate_closed_set, test_repeat_guard, test_dialogue_quality, test_live_calls_m6, test_answer_reading |
+| `perceive` (skaitymas) | adresų NLU, slotai, supratimo pass'as, klasifikacijos kaskada, evidence įrašymas, šalutinė tema | identification/ (adresas), test_nlu (problema, simptomai), test_understand, test_perception_merge, test_classification, test_evidence |
+| `decide` (planas) | politikų grandinės tvarka, taisyklės (identifikacija, tiketas, uždarymas, prašymai, atviri tiketai), procedūros vykdytojas + jo sargai, hipotezės būsena, solverio ir plano vartai | test_policy_order, identification/ (identifikacija), test_rules_ticket, test_rules_closing, test_closing, test_requests, test_open_ticket, test_service_profile, test_procedure, test_procedure_guards, test_resolution, test_hypothesis, test_gate, test_gate_closed_set, test_repeat_guard, test_dialogue_quality, test_live_calls_m6, test_answer_reading |
 | Gedimų žinios (pack'ai) | pack'ų struktūra ir eiga, verdiktų medis, informavimo šablonai, playbook | test_fault_packs, test_faults, test_router_hung, test_line_faults, test_verdict, test_inform, test_playbook |
-| `execute` / įrankiai | įrankiai (CRM, tinklas, žinių bazė), ToolGateway, įrankių vartai iki identifikacijos, nuotoliniai veiksmai, DB, RAG | test_tools, test_tool_gateway, test_tool_gate, test_port_actions, test_address_resolver, test_db |
+| `execute` / įrankiai | įrankiai (CRM, tinklas, žinių bazė), ToolGateway, įrankių vartai iki identifikacijos, nuotoliniai veiksmai, DB, RAG | test_tools, test_tool_gateway, test_tool_gate, test_port_actions, identification/ (resolve_address), test_db |
 | `speak` (balsas LLM) | frazių kelias, konteksto kortelė, atsakymo sargai, istorijos langas, promptų kompozicija, srautinis LLM klientas | test_speak, test_history_v2, test_prompts, test_streaming_agent |
 | `analyst` | tipizuoti signalai ir jų ribos | test_analyst_signals |
 | `contract` (failų kontraktas) | žinių schema, limitai/politikos, loader + reload, locale frazės, detektorių glosos, identifikacijos politika | test_knowledge_schema, test_limits, test_loader, test_locale, test_detectors, test_identification_policy |
@@ -42,9 +48,8 @@ palieka kontakto įrašą (`agent/call_record/`).
 
 1. **Vienas faktas — vienas sluoksnis.** Pvz., identifikacijos atradimo
    variantai (dalimis diktuotas adresas, klaidingas namas, recovery) —
-   TIK identifikacijos sluoksnyje (eval I1–I6 + test_address_resolver +
-   test_slots + test_identification_rules). Visuose KITUOSE
-   scenarijuose/testuose identifikacija = paruošta būsena (fixture
+   TIK identifikacijos sluoksnyje (eval I1–I6 + `tests/identification/`). Visuose KITUOSE
+   scenarijuose/testuose identifikacija = paruošta būsena (fiktyvas `identified`, arba
    `make_state()` / `make_runtime()`), nebetestuojama pakeliui.
 2. **Naujas testas — tik su vieta žemėlapyje.** Jei sluoksnis faktą jau
    dengia — keičiamas esamas testas, ne kuriamas naujas.
@@ -59,7 +64,7 @@ palieka kontakto įrašą (`agent/call_record/`).
 | Etapas | Kas tikrinama | Testų sluoksnio failai (pildoma peržiūros metu) |
 |---|---|---|
 | 1. Prisistatymas + problemos supratimas | greeting (DI atskleidimas), problemos vartai (L1/L2 kaskada), capture-first | test_classification, test_nlu, test_understand, test_perception_merge, test_dialogue_quality (W1), eval G1, T1, T2, S10 |
-| 2. Identifikacija | adreso laiptai, resolve, diktuoto adreso patvirtinimas, abonento kodas, savininko vardas, identifikacijos vartai (D-09) | test_address_resolver, test_slots, test_nlu_wave, test_identification_rules, test_identification_gate, test_identification_policy, eval I1–I6, U1, D2b |
+| 2. Identifikacija | adreso laiptai, resolve, diktuoto adreso patvirtinimas, abonento kodas, savininko vardas, identifikacijos vartai (D-09) | `tests/identification/` (16 funkcijų, žr. TESTAI_PAGAL_FUNKCIJAS.md), eval I1–I6, U1, D2b |
 | 3. Analizė (telemetrija + hipotezė) | verdiktai, paslaugų profilis, hipotezės stabilumas, analitiko signalai, fast-path | test_verdict, test_service_profile, test_hypothesis, test_analyst_signals, eval S8 pora, S3, D2–D4, R3 |
 | 4. Sprendimo vedimas | pack'ai, procedūros vykdytojas + sargai, solverio ir plano vartai, evidence žurnalas, kartojimo sargas, verifikacija dviem šaltiniais | test_fault_packs, test_procedure, test_procedure_guards, test_resolution, test_router_hung, test_line_faults, test_evidence, test_gate, test_gate_closed_set, test_repeat_guard, test_dialogue_quality, eval S1, S1v, S4, S6, S9, D5, D6, D8, A1 |
 | 5. Tiketas + užbaigimas | kontaktai, registracija, prašymai (D-11), atviri tiketai (D-12), informavimo šablonai, goodbye, kontakto įrašas (D-14) | test_rules_ticket, test_rules_closing, test_closing, test_requests, test_open_ticket, test_inform, test_call_record, test_api (dalis), eval R1, R1b, R2, R4, X_dhcp_silent |

@@ -15,7 +15,7 @@ bangos įdiegimo — T-7…T-12 tikrina NAUJAS taisykles.
 - Vardo klausimas lieka ir prieš tiketą, prasidedantį iškart po
   identifikacijos.
 - Kodo tikrinimas: `decide/rules/identification.py`; testai —
-  `test_identification_rules.py`, `test_identification_gate.py`.
+  `chatbot_core/tests/identification/` (pagal funkcijas; T serija — `test_phase.py`).
 
 **Prieš seriją:** ♻️ DB atstatymas, Ctrl+F5. Numeris įvedamas demo puslapio
 skambintojo lauke („unknown" = palikti nežinomą).
