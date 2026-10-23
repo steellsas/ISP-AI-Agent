@@ -74,6 +74,8 @@ class TicketTypes(_Model):
     # a dead router is an EQUIPMENT REPLACEMENT, and the technician has to know before
     # loading the van (Andrius, 2026-09-30).
     by_verdict: dict[str, str] = {}
+    # A registration reason that decides the type by itself (an unfinished call).
+    by_reason: dict[str, str] = {}
 
 
 class ServiceSpec(_Model):

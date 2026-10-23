@@ -63,9 +63,9 @@ ENDINGS = [
     pytest.param(
         "switch_unreachable",
         ["Gerai", "Ne, ačiū"],
-        "ticket",
+        "informed",
         True,
-        id="mūsų tinklo gedimas → tiketas",
+        id="mūsų tinklo gedimas → informuota (tinklo tiketas)",
     ),
     pytest.param(
         "router_hung",
@@ -128,27 +128,53 @@ def test_an_unidentified_call_is_kept_for_review(call, turns, outcome, why):
     assert (row["outcome"], row["unidentified_reason"], row["needs_review"]) == (outcome, why, 1)
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="ragelio tinklas tikrina telemetrijos `verdict`, kurio nebėra — padėjus ragelį vidury taisymo įrašoma „išspręsta“",
-)
-def test_a_hang_up_mid_fix_on_a_down_line_is_not_resolved(diagnosing):
-    """Padėjo ragelį vidury taisymo, linija neveikia — ne „išspręsta“"""
+def _unfinished(row):
+    import sqlite3
+
+    from agent.db_path import database_path
+
+    conn = sqlite3.connect(database_path())
+    try:
+        kind = conn.execute(
+            "SELECT ticket_type FROM tickets WHERE ticket_id = ?", (row["ticket_id"],)
+        ).fetchone()
+    finally:
+        conn.close()
+    return (row["outcome"], row["needs_review"], row["review_reason"], kind and kind[0])
+
+
+UNFINISHED = ("unfinished", 1, "unfinished", "call_unfinished")
+
+
+def test_a_hang_up_mid_fix_on_a_down_line_is_unfinished(diagnosing):
+    """Padėjo ragelį vidury taisymo — nebaigtas, žmogus perskambins"""
     c = diagnosing("router_hung")
     for text in ["Gerai", "Taip, galiu prieiti"]:
         c.say(text)
     row = _end(c)
-    assert row["outcome"] != "resolved"
+    assert _unfinished(row) == UNFINISHED
+    assert c.state.ticket.reason == "nebaigtas"
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="tas pats ragelio tinklas — patvirtinta pabaiga vidury taisymo įrašoma „išspręsta“",
-)
-def test_a_confirmed_goodbye_mid_fix_is_not_resolved(diagnosing):
-    """Patvirtino pabaigą vidury taisymo — ne „išspręsta“"""
+def test_a_confirmed_goodbye_mid_fix_is_unfinished(diagnosing):
+    """Patvirtino pabaigą vidury taisymo — nebaigtas, ne „išspręsta“"""
     c = diagnosing("router_hung")
     for text in ["Gerai", "Viso gero", "Taip"]:
         c.say(text)
     row = _end(c)
-    assert row["outcome"] != "resolved"
+    assert _unfinished(row) == UNFINISHED
+
+
+def test_a_hang_up_after_veikia_before_the_end_is_resolved(diagnosing):
+    """Klientas patvirtino „veikia“ ir padėjo ragelį — išspręsta (patvirtino klientas)"""
+    c = diagnosing("router_hung")
+    for text in [
+        "Gerai",
+        "Taip, galiu prieiti",
+        "Taip, galiu prieiti",
+        "Perkroviau",
+        "Taip, veikia",
+    ]:
+        c.say(text)
+    row = _end(c)
+    assert row["outcome"] == "resolved" and not row["ticket_id"]

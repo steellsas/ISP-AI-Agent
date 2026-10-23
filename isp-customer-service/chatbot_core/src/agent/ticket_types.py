@@ -25,6 +25,7 @@ def _catalog() -> dict[str, Any]:
 def reload() -> None:
     _catalog.cache_clear()
     _by_verdict.cache_clear()
+    _by_reason.cache_clear()
 
 
 def known(ticket_type: str | None) -> bool:
@@ -33,6 +34,25 @@ def known(ticket_type: str | None) -> bool:
 
 def priority(ticket_type: str | None) -> str:
     return str((_catalog().get(ticket_type or "") or {}).get("priority") or "medium")
+
+
+def department(ticket_type: str | None) -> str:
+    return str((_catalog().get(ticket_type or "") or {}).get("department") or "")
+
+
+def for_call(cause: str | None, reason: str | None) -> str:
+    """The ticket this call's fault registration becomes: the reason first (an unfinished
+    call is reviewed by a person and called back, whatever the line showed — Andrius,
+    2026-10-22), then the fault."""
+    mapped = _by_reason().get(reason or "")
+    if mapped and known(str(mapped)):
+        return str(mapped)
+    return fault_type(cause)
+
+
+def callback_only(cause: str | None, reason: str | None) -> bool:
+    """No technician on the way: a person reviews the call and phones back."""
+    return for_call(cause, reason) == "call_unfinished"
 
 
 def fault_type(verdict: str | None) -> str:
@@ -54,4 +74,13 @@ def _by_verdict() -> dict[str, str]:
 
     data = read_yaml(_PATH) or {}
     mapping = data.get("by_verdict") if isinstance(data, dict) else None
+    return mapping if isinstance(mapping, dict) else {}
+
+
+@lru_cache(maxsize=1)
+def _by_reason() -> dict[str, str]:
+    from .contract.loader import read_yaml
+
+    data = read_yaml(_PATH) or {}
+    mapping = data.get("by_reason") if isinstance(data, dict) else None
     return mapping if isinstance(mapping, dict) else {}

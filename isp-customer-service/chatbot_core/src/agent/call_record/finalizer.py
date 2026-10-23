@@ -14,7 +14,6 @@ import contextlib
 import logging
 
 from ..contract.locale import phrase
-from ..faults import verdict_flag
 from ..graph_v2.state import GraphState
 from ..runtime import AgentRuntime
 from ..trace import tools_called_this_session, trace_note
@@ -67,44 +66,33 @@ def finalize(state: GraphState, rt: AgentRuntime, transport_end: str | None = No
         # questions — v1's procedure had covered it (v3 3c).
         and (s.case.in_progress or _registration_decided(s))
     ):
-        # The line's CURRENT truth decides (2026-08-06): a caller who hung up
-        # right after "veikia!" must NOT get a technician ticket (observed
-        # live: TKT00D19E54 for a healthy line). A recorded fix or one fresh
-        # diagnose read showing healthy skips the net; telemetry unreachable
-        # -> register anyway (a spare ticket beats an abandoned caller).
-        solved = False
+        # Andrius (2026-10-22): „išspręsta" only when the internet works AND the caller said
+        # so — a resolved call is closed by the Case before it gets here. The line alone never
+        # decides: until 2026-10-22 a recheck here read a field telemetry no longer has, and
+        # every hang-up mid-fix was recorded as „resolved" with no ticket.
+        # * a technician already decided → that ticket, as before (`padejo_rageli`);
+        # * still being solved → `nebaigtas`: a person reviews the call and phones back.
         decided = _registration_decided(s)
-        if decided:
-            # The technician was already decided (summary said, contact dialogue running, a
-            # bridge bound to a dead router). A bridge makes the line LOOK healthy, so the recheck
-            # closed such calls as „resolved" with no ticket (eval S4/A1, 2026-10-09).
-            rt.tracer.emit("decision", intent="hangup_net", action="registration_decided")
-        if not solved and not decided:
-            try:
-                from ..tooling import telemetry
+        rt.tracer.emit(
+            "decision",
+            intent="hangup_net",
+            action="registration_decided" if decided else "unfinished",
+        )
+        _record_hang_up(state, rt)
+        if not s.ticket.contact_phone:
+            s.ticket.contact_phone = s.identity.caller_phone
+        if not s.ticket.contact_hours:
+            s.ticket.contact_hours = phrase("ticket.default_hours")
+        from ..contract.registration import mark
 
-                d = telemetry(state, rt, mode="recheck", reason="hangup_net").data
-                reason = (d.get("verdict") or {}).get("reason")
-                solved = reason is None or verdict_flag(reason, "healthy_up_to_router")
-            except Exception:  # pragma: no cover - defensive
-                solved = False
-        if solved:
-            close_call(state, rt, "resolved")
-            rt.tracer.emit("decision", intent="hangup_net", action="skip_solved")
-        else:
-            _record_hang_up(state, rt)
-            if not s.ticket.contact_phone:
-                s.ticket.contact_phone = s.identity.caller_phone
-            if not s.ticket.contact_hours:
-                s.ticket.contact_hours = phrase("ticket.default_hours")
-            if not s.ticket.reason:
-                from ..contract.registration import mark
-
-                mark(s, "padejo_rageli")
-            register_ticket_from_state(state, rt)
-            if s.ticket.ticket_id:
-                close_call(state, rt, "registered")
-                rt.tracer.emit("decision", intent="hangup_net", action="register")
+        if not decided:
+            mark(s, "nebaigtas")
+        elif not s.ticket.reason:
+            mark(s, "padejo_rageli")
+        register_ticket_from_state(state, rt)
+        if s.ticket.ticket_id:
+            close_call(state, rt, "registered")
+            rt.tracer.emit("decision", intent="hangup_net", action="register")
     from .outcome import derive, outage_id
 
     record = derive(state, technical_error=_technical_error(rt.tracer))

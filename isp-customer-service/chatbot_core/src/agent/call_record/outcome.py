@@ -47,6 +47,14 @@ def derive(state: Any, *, technical_error: bool = False) -> Outcome:
     if s.closing.appended_ticket_id:
         return Outcome("ticket_appended")
     if s.ticket.ticket_id:
+        # Andrius (2026-10-22): a ticket is a technician only when it is clear why to go. An
+        # unfinished call (hung up mid-fix; the line works but the caller says it does not) is
+        # reviewed by a person who phones back; our own network fault needs no visit — the
+        # caller was informed.
+        if s.ticket.ticket_type == "call_unfinished":
+            return Outcome("unfinished", None, True, "unfinished")
+        if s.ticket.ticket_type == "network_fault":
+            return Outcome("informed")
         return Outcome("ticket")
     if inform == "debt" and s.diagnosis.news_delivered:
         return Outcome("informed_debt")

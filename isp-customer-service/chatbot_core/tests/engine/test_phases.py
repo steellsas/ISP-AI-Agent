@@ -148,7 +148,9 @@ class TestHangUpWithATechnicianDecided:
         assert "padėjo ragelį" in description and "registruojant gedimą" in description
         assert any(e.get("action") == "registration_decided" for e in tracer.events)
 
-    def test_a_healthy_line_without_a_decision_is_still_resolved(self, make_state, make_runtime):
+    def test_a_hang_up_without_a_decision_is_unfinished(self, make_state, make_runtime):
+        """Andrius 2026-10-22: the line alone never makes a call „resolved" — only the caller's
+        confirmation does. A hang-up mid-fix is an unfinished call: a person phones back."""
         from agent.call_record import finalizer
 
         created = []
@@ -156,5 +158,6 @@ class TestHangUpWithATechnicianDecided:
         state.dialog.phase = phase.INVESTIGATE
         finalizer.finalize(state, rt)
 
-        assert created == []
-        assert state.closing.closed_reason == "resolved"
+        assert [c["ticket_type"] for c in created] == ["call_unfinished"]
+        assert state.ticket.reason == "nebaigtas"
+        assert state.closing.closed_reason == "registered"

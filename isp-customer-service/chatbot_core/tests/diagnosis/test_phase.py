@@ -53,12 +53,6 @@ TO_A_TICKET = [
         "pažeistas laidas",
         id="klaidos linijoje",
     ),
-    pytest.param(
-        "healthy_to_router",
-        ["Gerai", "Visuose įrenginiuose", "Taip, perkroviau"],
-        "Registruoju meistrą",
-        id="sveika iki routerio",
-    ),
 ]
 
 
@@ -69,6 +63,37 @@ def test_what_the_phone_cannot_fix_goes_to_a_ticket(diagnosing, card, turns, rea
     assert c.state.case.fault == card
     assert c.rule == "ticket.phone_intro"
     assert reason in c.replies[-1] and "neišspręsime" in c.replies[-1]
+
+
+HEALTHY = ["Gerai", "Visuose įrenginiuose", "Taip, perkroviau"]
+
+
+def test_a_working_line_the_caller_says_is_down_is_unfinished(diagnosing):
+    """Linija veikia, klientas sako — neveikia: nebaigtas, kolega perskambins (ne meistras)"""
+    c = walk(diagnosing("healthy_to_router"), HEALTHY)
+    assert c.rule == "ticket.phone_intro"
+    assert "kolega" in c.replies[-1] and "meistr" not in c.replies[-1]
+    assert c.state.ticket.reason == "nebaigtas"
+
+
+def test_the_unfinished_ticket_carries_both_sides(diagnosing):
+    """Nebaigto tiketo aprašyme — ir linijos duomenys, ir kliento žodžiai"""
+    import sqlite3
+
+    from agent.db_path import database_path
+
+    c = walk(diagnosing("healthy_to_router"), [*HEALTHY, "Taip", "Po pietų"])
+    assert c.state.ticket.ticket_id and c.state.ticket.ticket_type == "call_unfinished"
+    conn = sqlite3.connect(database_path())
+    try:
+        (text,) = conn.execute(
+            "SELECT summary || ' ' || coalesce(details, '') FROM tickets WHERE ticket_id = ?",
+            (c.state.ticket.ticket_id,),
+        ).fetchone()
+    finally:
+        conn.close()
+    assert "srautas iki routerio vaikšto" in text and "klientas sako" in text
+    assert "perskambinti" in text  # the reason, for the person who calls back
 
 
 @pytest.mark.parametrize(

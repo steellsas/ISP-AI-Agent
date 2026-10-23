@@ -1008,15 +1008,32 @@ def _summary_to_tell(state) -> list[str]:
         parts.append(f"WHAT WORKS NOW: {told['dabar']}")
     if told.get("nepavyko"):
         parts.append(f"WHAT WE COULD NOT DO (say it plainly, no blame): {told['nepavyko']}")
-    if told.get("kodel"):
+    callback = _callback_only(state)
+    if told.get("kodel") and not callback:
         parts.append(f"WHY A TECHNICIAN: {told['kodel']}")
     body = " · ".join(part for part in parts if part)
+    # Linija rodo, kad veikia, o klientas sako, kad ne: ne meistras — kolega peržiūrės ir
+    # perskambins (Andrius, 2026-10-22).
+    handover = (
+        "that the line shows it working but it does not work for them, so you are registering "
+        "it for a colleague who will review it and call back — do NOT promise a technician"
+        if callback
+        else "that you are registering a technician"
+    )
     return [
         "SUM UP THE CALL BEFORE REGISTERING — this is what the caller will remember. "
         f"{body}. At most THREE short sentences, in this order: what we did, what it means / "
-        "what works now, and that you are registering a technician. No greeting, no new "
+        f"what works now, and {handover}. No greeting, no new "
         "question, do NOT ask for contact details in this reply — that is the next turn."
     ]
+
+
+def _callback_only(state) -> bool:
+    """This registration is a call-back by a colleague, not a technician."""
+    from ..ticket_types import callback_only
+
+    why = state.ticket.reason or (state.case.facts or {}).get("_escalate_why")
+    return callback_only(state.case.fault, why)
 
 
 def _recheck_to_ask(state) -> list[str]:
@@ -1330,9 +1347,15 @@ def _goal_ticket(state, rt) -> list[str]:
         if state.case.summarised:
             # Išvada ką tik nuskambėjo savo ėjimu — kartoti „kodėl" reikštų tą patį du kartus.
             goal = (
-                "you have JUST summed up what was done and why a technician is needed — do NOT "
+                "you have JUST summed up what was done and why it is registered — do NOT "
                 "repeat it. Ask ONE thing only: whether the number they are calling from suits "
                 "for contact"
+            )
+        elif _callback_only(state):
+            goal = (
+                "say that the line shows it working but it does not work for them, and that a "
+                "colleague will review it and call back (no technician); ask ONE thing only: "
+                "whether the number they are calling from suits for contact"
             )
         elif state.resolution.bridge_bound:
             goal = (

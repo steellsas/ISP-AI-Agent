@@ -9,11 +9,11 @@ const Monitoring = (() => {
   const sec = ms => ms == null ? "—" : (ms / 1000).toFixed(1).replace(".", ",") + " s";
   const OUTCOME_LT = {
     resolved: "išspręsta", informed: "informuota", informed_debt: "informuota: skola", informed_outage: "informuota: avarija",
-    callback: "perskambins", ticket: "tiketas", ticket_appended: "pastaba prie tiketo", declined: "atsisakė",
+    callback: "perskambins", ticket: "tiketas", ticket_appended: "pastaba prie tiketo", unfinished: "nebaigtas", declined: "atsisakė",
     closed: "baigta", abandoned: "nutrūko", unidentified: "neidentifikuotas", error: "techninė klaida", "be įrašo": "be pabaigos įrašo",
   };
   const GOOD = new Set(["resolved", "informed", "informed_debt", "informed_outage", "callback"]);
-  const HANDED = new Set(["ticket", "ticket_appended"]);
+  const HANDED = new Set(["ticket", "ticket_appended", "unfinished"]);
   const PHASE_LT = { greeting: "Pasisveikinimas", intake: "Kodėl skambina", identify: "Identifikacija", investigate: "Tyrimas", ticket: "Tiketas", closing: "Pabaiga" };
   const GUARD_LT = { one_question: "nukirptas antras klausimas", length: "per ilgas atsakymas", unbacked_promise: "pažadas be veiksmo" };
 

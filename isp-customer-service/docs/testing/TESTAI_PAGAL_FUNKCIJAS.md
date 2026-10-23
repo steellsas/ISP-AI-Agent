@@ -202,12 +202,12 @@ teste turi savo id. Veikia: išspręsta, tiketas, skola, avarija, perskambins, p
 sprendimo — tiketas; neidentifikuoti — įrašas peržiūrai; tyla po baigiamojo klausimo —
 atsisveikinimas.
 
-- **Svarbiausia: ragelio tinklas įrašo „išspręsta“, kai klientas padeda ragelį vidury
-  taisymo.** `call_record/finalizer.py` patikrina liniją ir ieško `verdict`, kurio telemetrija
-  nebegrąžina (pašalintas 4 bangoje) — todėl `reason is None` → „išspręsta“, be tiketo ir be
-  peržiūros žymos, nesvarbu, kokia linija. Tas pats, kai klientas vidury taisymo patvirtina
-  pabaigą. Gyvuose skambučiuose: 4 iš 94 (pvz., miręs routeris `no_mac_observed` įrašytas kaip
-  išspręstas). Tai iškreipia ir stebėsenos skaičius.
+- ~~**Svarbiausia: ragelio tinklas įrašo „išspręsta“, kai klientas padeda ragelį vidury
+  taisymo.**~~ **Ištaisyta 2026-10-23** (`feature/fix-hangup-net`): linija pati
+  „išspręsta“ nebenusprendžia — tik kliento patvirtinimas. Padėjus ragelį vidury taisymo →
+  `call_unfinished` tiketas (priežastis `nebaigtas`), įrašas „unfinished“ su peržiūros žyma;
+  jau nuspręstas meistras — kaip anksčiau (`padejo_rageli`). Abu xfail testai — tikri testai.
+
 - Po sutvarkymo „Taip, turiu dar klausimą“ į „Ar dar kuo galiu padėti?“ — agentas atsisveikina
   ir baigia (pažeidžia pabaigos taisyklę).
 - Po žinios (skola) „Ne“ į „Ar dar kuo galiu padėti?“ pokalbio nebaigia, o po sutvarkymo —

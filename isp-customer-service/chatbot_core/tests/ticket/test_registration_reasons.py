@@ -49,6 +49,12 @@ PATHS = [
         id="mazgas nepasiekiamas → mūsų tinklo gedimas",
     ),
     pytest.param(
+        "healthy_to_router",
+        ["Gerai", "Visuose įrenginiuose", "Taip, perkroviau"],
+        "nebaigtas",
+        id="linija veikia, klientui ne → nebaigtas",
+    ),
+    pytest.param(
         "no_mac_observed",
         ["Gerai", F, F, "Registruokite meistrą"],
         "klientas_praso",

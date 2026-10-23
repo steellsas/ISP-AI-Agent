@@ -22,7 +22,7 @@ function makeBrain(root, opts = {}) {
   const PHASE_SLOW = { intake: 4, identify: 8, investigate: 14, ticket: 5 };
   const GOOD_ENDINGS = new Set(["resolved", "ticket", "ticket_appended", "informed", "informed_debt", "informed_outage", "callback"]);
   const ENDING_LT = {
-    resolved: "išspręsta", ticket: "užregistruotas tiketas", ticket_appended: "pastaba prie tiketo",
+    resolved: "išspręsta", ticket: "užregistruotas tiketas", ticket_appended: "pastaba prie tiketo", unfinished: "nebaigtas (perskambinti)",
     informed: "informuota", informed_debt: "informuota: skola", informed_outage: "informuota: avarija",
     callback: "perskambinimas", declined: "klientas atsisakė", closed: "baigta",
     abandoned: "nutraukta", unidentified: "neidentifikuotas", error: "techninė klaida",

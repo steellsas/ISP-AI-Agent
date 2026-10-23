@@ -31,13 +31,15 @@ SOURCES = {"live": _ROOT / "logs" / "sessions", "eval": _ROOT / "logs" / "eval"}
 PHASES = ("greeting", "intake", "identify", "investigate", "ticket", "closing")
 # „be žmogaus": the agent solved it or told the caller what is going on; a ticket hands it on.
 SOLVED = {"resolved", "informed", "informed_debt", "informed_outage", "callback"}
-HANDED_ON = {"ticket", "ticket_appended"}
+# An unfinished call is handed on too: a person reviews it and phones back (2026-10-22).
+HANDED_ON = {"ticket", "ticket_appended", "unfinished"}
 SLOW_MS = 3000  # a p90 above this puts the call in the review queue
 
 FLAG_LT = {
     "technical_error": "techninė klaida",
     "hung_up_before_close": "padėjo ragelį prieš pabaigą",
     "hung_up": "padėjo ragelį",
+    "unfinished": "nebaigtas — perskambinti",
     "stuck": "užstrigo",
     "not_a_customer": "ne klientas",
     "address_not_found": "adreso nerado",
