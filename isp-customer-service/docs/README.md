@@ -18,7 +18,7 @@
 |---|---|
 | [demo/](demo/) | `DEMO_PRISTATYMAS.md` — the demo run · `DEMO_SCENARIJAI.md` — the demo calls (also in the dashboard's Scenarijai tab) |
 | [instructor/](instructor/) | Drafts for the instructor guide: `ZINIU_BAZE.md` (knowledge-base documents, v2), `AGENT_ONBOARDING.md` (customer questionnaire), `FAULT_PACKS.md` (**outdated: v1 packs**, see STATUS §7) |
-| [testing/](testing/) | Live test scripts: `BALSO_TESTAVIMAS.md` (voice), `IDENT_TESTAI.md`, `BARGE_IN_TESTAI.md`; `TESTU_ZEMELAPIS.md` (test map) · eval harness: [../chatbot_core/src/agent/eval/README.md](../chatbot_core/src/agent/eval/README.md) |
+| [testing/](testing/) | **How to check and fix (start here): `KAIP_TIKRINTI_IR_TAISYTI.md`** · tests by function: `TESTAI_PAGAL_FUNKCIJAS.md` · live test scripts: `BALSO_TESTAVIMAS.md` (voice), `IDENT_TESTAI.md`, `BARGE_IN_TESTAI.md`; `TESTU_ZEMELAPIS.md` (test map) · eval harness: [../chatbot_core/src/agent/eval/README.md](../chatbot_core/src/agent/eval/README.md) |
 | [review/](review/) | The live review: `PERZIURA.md` (findings and principles), `STRUKTURA_V3.md` (phases design), `PROMPTAI.md` (prompt and LLM-parameter change log), `DELSA.md` (latency measurements and levers) |
 | [archive/](archive/) | History only: pre-refactor engine docs, the M0–M7 refactor (`archive/refactoring/`), fix waves and RAG planning (`archive/review/`), `AGENTO_VEIKIMAS.md` and `MODELIAI.md` (folded into ARCHITECTURE/STATUS) |
 
