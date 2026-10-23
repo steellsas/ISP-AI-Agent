@@ -33,8 +33,8 @@ scenarios:
     client: Lina
     address: Šiauliai, Vilties g. 17-2
     say: ["Neveikia internetas", "Taip", "Lina", "O kada sutvarkysit?", "Aišku, ačiū, viso gero"]
-    actions: ["Tikslaus laiko agentas nežada. Tiketas sukuriamas automatiškai."]
-    expect: {verdict: node_fault_unregistered, outcome: ticket}
+    actions: ["Tikslaus laiko agentas nežada. Tinklo tiketas (network_fault) sukuriamas automatiškai, klientas informuotas."]
+    expect: {verdict: node_fault_unregistered, outcome: informed}
 
   - id: switch
     title: Switch nepasiekiamas
@@ -42,8 +42,8 @@ scenarios:
     client: Egidijus
     address: Šiauliai, Žemaitės g. 14-2
     say: ["Neveikia internetas", "Taip", "Egidijus", "O kada sutvarkysit?", "Aišku, ačiū, viso gero"]
-    actions: ["Kaip mazgo gedimas: gedimas mūsų tinkle, tiketas automatiškai."]
-    expect: {verdict: switch_unreachable, outcome: ticket}
+    actions: ["Kaip mazgo gedimas: gedimas mūsų tinkle, tinklo tiketas automatiškai, klientas informuotas."]
+    expect: {verdict: switch_unreachable, outcome: informed}
 
   - id: link_down
     title: Linija nutrūkusi iki buto
