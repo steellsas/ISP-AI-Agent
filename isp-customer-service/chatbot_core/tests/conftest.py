@@ -259,3 +259,33 @@ def identified(db_connection):
     yield _make
     for d in drivers:
         d.close()
+
+
+@pytest.fixture
+def diagnosing(db_connection, monkeypatch):
+    """`diagnosing("router_hung")` → a CallDriver that starts after identification, on the
+    demo customer whose line shows that card (tests/phases.py CARD_CUSTOMER); its next turn
+    hears the findings. The demo's reboot/bridge simulations are on, and the DB is reset
+    afterwards: a simulated reboot or a bind changes the seeded line."""
+    from app.admin import reset_db
+
+    from tests.phases import CARD_CUSTOMER, identified_call
+
+    monkeypatch.setenv("SIMULATE_REBOOT", "on")
+    monkeypatch.setenv("SIMULATE_BRIDGE", "on")
+    # `data_version` moves when another connection writes: the DB is reset (~1 s) only after
+    # a test that changed it — a simulated reboot, a bind, a ticket — not after every read.
+    watch = sqlite3.connect(database_path())
+    version = watch.execute("PRAGMA data_version").fetchone()[0]
+    drivers = []
+
+    def _make(card, **kw):
+        drivers.append(identified_call(CARD_CUSTOMER[card], **kw))
+        return drivers[-1]
+
+    yield _make
+    for d in drivers:
+        d.close()
+    if watch.execute("PRAGMA data_version").fetchone()[0] != version:
+        reset_db()
+    watch.close()

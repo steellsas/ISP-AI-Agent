@@ -9,4 +9,5 @@ FUNCTIONS = (
     "Registracijos priežastys",
     "Prašymai",
     "Atviri tiketai",
+    "Visa fazė",
 )

@@ -12,8 +12,22 @@ ticket_types:
   equipment_replacement:
     department: technical
     priority: high
+  # Mūsų tinklo gedimas (mazgas, komutatorius): sprendžia tinklo komanda, pas klientą
+  # nevažiuojama (Andrius, 2026-10-22). Klientas informuotas — jam meistro nereikia.
+  network_fault:
+    department: network
+    priority: high
+  # Skambutis nebaigtas: klientas padėjo ragelį ar nutrūko ryšys, kol problema dar buvo
+  # sprendžiama, arba linija rodo, kad veikia, o klientas sako, kad ne, ir telefonu nebeliko ką
+  # tikrinti. Žmogus peržiūri ir perskambina — meistras nesiunčiamas, kol neaišku, kodėl
+  # (Andrius, 2026-10-22).
+  call_unfinished:
+    department: customer_service
+    priority: medium
+  # Neaiškų gedimą pirma peržiūri žmogus (ne meistras): meistras važiuoja tik tada, kai aišku,
+  # kodėl (Andrius, 2026-10-22).
   fault_unclear:
-    department: technical
+    department: customer_service
     priority: medium
   billing_request:
     department: billing
@@ -35,3 +49,11 @@ ticket_types:
 # Kuris verdiktas kokiu tiketu tampa, kai to nepakanka bendram `fault_technician`.
 by_verdict:
   no_mac_observed: equipment_replacement
+  # Linija iki routerio sveika, klientas sako „neveikia" — neaišku, kodėl važiuoti.
+  healthy_to_router: call_unfinished
+  switch_unreachable: network_fault
+  node_fault_unregistered: network_fault
+
+# Kuri registracijos priežastis pati nulemia tiketo tipą (`knowledge/registracija.yaml`).
+by_reason:
+  nebaigtas: call_unfinished

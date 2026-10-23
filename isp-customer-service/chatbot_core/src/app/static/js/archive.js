@@ -52,7 +52,7 @@ const Archive = (() => {
 
   // The call in one line (monitoring.py call_card): how it ended, why it may need a look.
   const OUT = { resolved: "išspręsta", informed: "informuota", informed_debt: "informuota: skola", informed_outage: "informuota: avarija",
-    callback: "perskambins", ticket: "tiketas", ticket_appended: "pastaba prie tiketo", declined: "atsisakė", closed: "baigta",
+    callback: "perskambins", ticket: "tiketas", ticket_appended: "pastaba prie tiketo", unfinished: "nebaigtas", declined: "atsisakė", closed: "baigta",
     abandoned: "nutrūko", unidentified: "neidentifikuotas", error: "techninė klaida" };
   function callCard(c) {
     if (!c) return "";

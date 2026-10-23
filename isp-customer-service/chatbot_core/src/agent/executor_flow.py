@@ -165,12 +165,16 @@ def register_ticket_from_state(state: Any, rt: Any) -> None:
     hung_up = (s.case.facts or {}).get("_hangup_note")
     if hung_up:
         details += f" {hung_up}"
-    from .ticket_types import fault_type
+    from .ticket_types import for_call
 
+    ticket_type = for_call(cause, s.ticket.reason)
+    if ticket_type == "call_unfinished" and cause and _line_said_healthy(cause):
+        # Two sources disagree (Andrius, 2026-10-22): the person calling back reads both.
+        details += phrase("ticket.details.line_vs_client")
     actions = tools_called_this_session(rt.tracer)
     args = {
         "customer_id": s.identity.customer_id,
-        "ticket_type": fault_type(cause),
+        "ticket_type": ticket_type,
         "problem_type": s.intake.problem_type,
         "problem_description": details,
         "notes": phrase("ticket.details.actions", tools=", ".join(actions)) if actions else "",
@@ -180,6 +184,14 @@ def register_ticket_from_state(state: Any, rt: Any) -> None:
         rt.tools.run(state, rt, "create_ticket", args, reason="register_ticket")
     except Exception as e:  # pragma: no cover - defensive
         trace_note(rt.tracer, state, "register_ticket", str(e), level="error")
+    if s.ticket.ticket_id:
+        s.ticket.ticket_type = ticket_type
+
+
+def _line_said_healthy(cause: str) -> bool:
+    from .faults import verdict_flag
+
+    return bool(verdict_flag(cause, "healthy_up_to_router"))
 
 
 def _fold(text: str) -> str:
@@ -279,6 +291,8 @@ def _register_request(state: Any, rt: Any) -> None:
         rt.tools.run(state, rt, "create_ticket", args, reason="register_request")
     except Exception as e:  # pragma: no cover - defensive
         trace_note(rt.tracer, state, "register_request", str(e), level="error")
+    if s.ticket.ticket_id:
+        s.ticket.ticket_type = s.ticket.request_type
 
 
 def simulate_router_reboot_action(state: Any, rt: Any) -> None:

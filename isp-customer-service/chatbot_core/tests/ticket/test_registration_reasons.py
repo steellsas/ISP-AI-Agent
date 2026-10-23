@@ -12,6 +12,150 @@ import pytest
 
 FUNCTION = "Registracijos priežastys"
 
+
+F = "Taip, galiu."
+# The path through the call → the reason written on the ticket (knowledge/registracija.yaml).
+PATHS = [
+    pytest.param(
+        "no_mac_observed",
+        [
+            "Gerai",
+            F,
+            F,
+            "Nedega nė viena",
+            "Maitinimo laidas įkištas tvirtai.",
+            "Neturiu kompiuterio.",
+            "Taip",  # the conclusion is said; the next turn registers
+        ],
+        "telefonu_nepataisoma",
+        id="miręs routeris → telefonu nepataisoma",
+    ),
+    pytest.param(
+        "link_down_local",
+        ["Gerai", F, F, "Dega žalia", "Perkišau laidą", "Neveikia"],
+        "sprendimas_baigtas",
+        id="linija neaktyvi, perkišta → sprendimas baigtas",
+    ),
+    pytest.param(
+        "crc_errors",
+        ["Gerai", F, F, "Patikrinau, laidas sveikas, tvirtai įkištas", "Neveikia"],
+        "sprendimas_baigtas",
+        id="klaidos linijoje → sprendimas baigtas",
+    ),
+    pytest.param(
+        "switch_unreachable",
+        ["Gerai"],
+        "musu_tinklo_gedimas",
+        id="mazgas nepasiekiamas → mūsų tinklo gedimas",
+    ),
+    pytest.param(
+        "healthy_to_router",
+        ["Gerai", "Visuose įrenginiuose", "Taip, perkroviau"],
+        "nebaigtas",
+        id="linija veikia, klientui ne → nebaigtas",
+    ),
+    pytest.param(
+        "no_mac_observed",
+        ["Gerai", F, F, "Registruokite meistrą"],
+        "klientas_praso",
+        id="registruokite meistrą → klientas prašo",
+    ),
+    pytest.param(
+        "router_hung",
+        ["Gerai", F, "Ne, nesu namie", "Nežinau, gal negalėsiu"],
+        "klientas_negali",
+        id="nesu namie, nežinau kada → klientas negali",
+    ),
+    pytest.param(
+        "router_hung",
+        [
+            "Gerai",
+            "Taip, galiu prieiti",
+            "Taip, galiu prieiti",
+            "Perkroviau",
+            "Taip, veikia",
+            "Ne, palaukite, vis tiek neveikia",
+        ],
+        "vel_neveikia",
+        id="po „veikia“ vėl neveikia",
+    ),
+    pytest.param(
+        "dhcp_silent",
+        ["Gerai", "Turiu telefoną.", "Turiu telefoną.", "Ne, geriau meistrą", "Taip"],
+        "klientas_nenori",
+        id="atsisako vedimo → klientas nenori",
+        marks=pytest.mark.xfail(
+            strict=True, reason="įrašoma „sprendimas_baigtas“, nors klientas atsisakė tęsti"
+        ),
+    ),
+]
+
+
+@pytest.mark.parametrize(("card", "turns", "reason"), PATHS)
+def test_the_reason_follows_the_call(diagnosing, card, turns, reason):
+    """Registracijos priežastis atitinka skambučio eigą"""
+    c = diagnosing(card)
+    for text in turns:
+        c.say(text)
+    assert c.state.ticket.reason == reason
+
+
+def _phoned(*turns):
+    """A whole call from +37060020112 (this module's own `call` fixture is another one)."""
+    from tests.phases import CallDriver
+
+    c = CallDriver("+37060020112")
+    try:
+        for text in turns:
+            c.say(text)
+    finally:
+        c.close()
+    return c
+
+
+def test_a_request_from_the_start_is_not_ours_to_answer(db_connection):
+    """Sąskaitos klausimas → atsakingam žmogui"""
+    c = _phoned("Skambinu dėl sąskaitos", "Taip", "Paulius")
+    assert (
+        c.state.ticket.reason == "ne_musu_klausimas"
+        and c.state.ticket.request_type == "billing_request"
+    )
+
+
+def test_a_slow_line_without_a_card_is_an_unclear_fault(db_connection):
+    """Lėtas internetas be kortelės → neaiškus gedimas"""
+    c = _phoned("Internetas labai lėtas", "Taip", "Paulius")
+    assert c.state.ticket.reason == "neaiskus_gedimas"
+
+
+def test_a_hang_up_after_the_decision_registers_anyway(diagnosing):
+    """Padėjo ragelį po sprendimo → tiketas vis tiek registruojamas"""
+    c = diagnosing("no_mac_observed")
+    for text in [
+        "Gerai",
+        F,
+        F,
+        "Nedega nė viena",
+        "Maitinimo laidas įkištas tvirtai.",
+        "Neturiu kompiuterio.",
+    ]:
+        c.say(text)
+    c.session.end_session()
+    assert c.state.ticket.reason == "padejo_rageli" and c.state.ticket.ticket_id
+    assert c.state.closing.closed_reason == "registered"
+
+
+@pytest.mark.xfail(
+    strict=True, reason="„nenoriu…, atsiųskite meistrą“ skaitoma kaip noras baigti pokalbį"
+)
+def test_asking_for_a_technician_is_not_a_goodbye(diagnosing):
+    """„Atsiųskite meistrą“ — prašymas, ne atsisveikinimas"""
+    c = diagnosing("no_mac_observed")
+    for text in ["Gerai", F, F, "Nenoriu nieko daryti, atsiųskite meistrą"]:
+        c.say(text)
+    assert c.rule != "dialog.confirm_end"
+
+
 SRC = Path(__file__).resolve().parents[2] / "src" / "agent"
 
 

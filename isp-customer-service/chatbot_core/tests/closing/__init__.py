@@ -12,4 +12,6 @@ FUNCTIONS = (
     "Kontakto įrašas",
     "Skambučio santrauka",
     "Atsisveikinimo ir sutikimo skaitymas",
+    "Baigiamasis klausimas",
+    "Visa fazė",
 )

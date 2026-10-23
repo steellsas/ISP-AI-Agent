@@ -59,3 +59,7 @@ priezastys:
     kada: "klientas padėjo ragelį po to, kai variklis jau nusprendė meistrą"
     sutikimas: ne
     tiketui: "klientas padėjo ragelį registruojant"
+  nebaigtas:
+    kada: "skambutis nutrūko ar klientas padėjo ragelį, kol problema dar buvo sprendžiama; arba linija rodo, kad veikia, o klientas sako, kad neveikia, ir telefonu nebeliko ką tikrinti"
+    sutikimas: ne
+    tiketui: "pokalbis nebaigtas — reikia peržiūrėti ir perskambinti klientui"

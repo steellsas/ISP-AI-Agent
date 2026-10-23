@@ -21,11 +21,24 @@ def fresh_diagnose(state, rt) -> dict | None:
 
 
 def fresh_diagnose_reason(state, rt) -> str | None:
-    """The fresh verdict reason alone (or None on error)."""
+    """What the line shows NOW, as the card it matches (or None: no card, or an error)."""
     d = fresh_diagnose(state, rt)
     if not isinstance(d, dict):
         return None
-    return (d.get("verdict") or {}).get("reason")
+    return line_fault(d.get("signals"))
+
+
+def line_fault(signals: dict | None) -> str | None:
+    """The card a telemetry reading matches — read through the cards, as the Case does.
+
+    Telemetry has carried no `verdict` since wave 4 (only `signals`), so the bind check read
+    None here and called every bind „fixed" (found 2026-10-22).
+    """
+    from ..case import candidates
+    from ..facts import facts_from_signals
+
+    matched = [c.fault for c in candidates(facts_from_signals(signals)) if c.status == "matched"]
+    return matched[0] if matched else None
 
 
 def ensure_diagnosed(state, rt) -> bool:

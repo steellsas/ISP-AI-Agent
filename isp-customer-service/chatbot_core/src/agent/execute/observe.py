@@ -45,7 +45,8 @@ def chain_after_bind(state, rt, name: str, observation: str) -> str:
     reason_now = fresh_diagnose_reason(state, rt)
     from ..faults import verdict_flag
 
-    fixed = not verdict_flag(reason_now, "unresolved_after_fix")
+    # No card for the reading is no proof of a fix.
+    fixed = reason_now is not None and not verdict_flag(reason_now, "unresolved_after_fix")
     obs["telemetry_after"] = reason_now
     obs["fixed"] = fixed
     gloss = phrase_or(f"verdict.{reason_now}.gloss", reason_now or "—")

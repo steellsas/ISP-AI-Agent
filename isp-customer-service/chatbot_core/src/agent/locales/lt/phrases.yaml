@@ -56,6 +56,8 @@ identification:
   # v3 6d: „Telefonu neišspręsim" modelis bandydavo papildyti ir gadindavo („Telefonu šio
   # nešaldymo neišspręsim") — dabar sakinys pilnas.
   ticket_intro: "Telefonu šio gedimo neišspręsime — {reason}. Registruoju meistrą."
+  # Linija rodo, kad veikia, o klientui neveikia (Andrius, 2026-10-22): ne meistras.
+  ticket_intro_unfinished: "Linija rodo, kad internetas iki routerio veikia, o jums neveikia — telefonu nebeturiu, ką dar patikrinti. Užregistruosiu, kad kolega peržiūrėtų ir jums paskambintų."
   # A question outside the agent's knowledge, registered for the responsible person.
   ticket_intro_request: "Šiuo klausimu jums geriausiai atsakys atsakingas žmogus — užregistruosiu jūsų klausimą, ir jis su jumis susisieks."
   ticket_done_request: "Užregistravau jūsų klausimą. Atsakingas žmogus paskambins {phone}, {hours}. Ar dar kuo padėti?"
@@ -870,6 +872,8 @@ ticket:
     anamnesis: " Klientas: {text}."
     bridge_router: " Laikinas tiltas per kompiuterį veikia; routeris sugedęs, reikia keisti."
     checked: " Patikrinta su klientu: {facts}."
+    # Linija rodo, kad veikia, o klientas sako, kad ne (Andrius, 2026-10-22): abu šaltiniai.
+    line_vs_client: " Linijos duomenys rodo, kad srautas iki routerio vaikšto, o klientas sako, kad internetas neveikia — telefonu nebeliko, ką patikrinti."
     # Ką agentas su klientu PADARĖ (ne tik patikrino) — meistras turi matyti, kas jau atlikta,
     # kad nekartotų to paties (Andrius, 2026-10-02).
     done: " Padaryta telefonu: {works}."

@@ -264,6 +264,9 @@ class TicketState(BaseModel):
     # A request outside the agent's knowledge, registered for the responsible person as
     # this ticket type (billing_request, …) instead of a fault ticket (D-11).
     request_type: str | None = None
+    # The type the registered ticket got (knowledge/ticket_types.yaml) — the outcome reads it:
+    # a call_unfinished ticket is an unfinished call, not a technician on the way.
+    ticket_type: str | None = None
     # What the caller said the request is about, when it is not the call's opening (a
     # disputed debt) — the ticket carries these words.
     request_note: str | None = None

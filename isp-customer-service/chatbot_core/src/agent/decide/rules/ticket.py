@@ -583,6 +583,8 @@ def ticket_stage_reply(state: Any, rt: Any) -> str:
             parts.append(phrase("identification.ticket_intro_request"))
         elif state.resolution.bridge_bound:
             parts.append(phrase("identification.ticket_intro_bridge"))
+        elif _callback_only(state):
+            parts.append(phrase("identification.ticket_intro_unfinished"))
         else:
             parts.append(phrase("identification.ticket_intro", reason=ticket_need(state, rt)))
     else:
@@ -591,6 +593,12 @@ def ticket_stage_reply(state: Any, rt: Any) -> str:
     _q_register(state, rt, "ticket", "ticket_phone")
     parts.append(phrase("identification.ticket_phone"))
     return " ".join(parts)
+
+
+def _callback_only(state: Any) -> bool:
+    from ...ticket_types import callback_only
+
+    return callback_only(state.case.fault, state.ticket.reason)
 
 
 def ticket_question_turn(state: Any, rt: Any) -> tuple[str, str | None]:

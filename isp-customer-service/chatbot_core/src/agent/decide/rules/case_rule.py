@@ -2200,6 +2200,11 @@ def _escalate(
 
     if why == "sprendimas_baigtas" and state.case.facts.get("_escalate_why"):
         why = state.case.facts["_escalate_why"]  # said on the conclusion turn, kept for this one
+    if why in ("sprendimas_baigtas", "telefonu_nepataisoma") and _callback_card(fault):
+        # The line says it works, the caller says it does not, and the phone has nothing left
+        # to check (Andrius, 2026-10-22): not a technician — the call is unfinished, and a
+        # person reviews both sides and phones back.
+        why = "nebaigtas"
     pending = _phone_work_left(state, fault)
     if pending is not None and why in ("klientas_praso", "klientas_nenori"):
         # The CALLER asked for a technician while phone work is left (Andrius, 2026-10-14):
@@ -2262,6 +2267,12 @@ def _escalate(
     request_ticket(state, rt, why)
     rt.tracer.emit("case", move="escalate", fault=fault, note=note)
     goal = "say WHY the phone cannot fix this and that a technician will be registered"
+    if _callback_card(fault) or why == "nebaigtas":
+        goal = (
+            "say plainly that the line shows it working but it does not work for them, and that "
+            "you are registering it so a colleague reviews it and calls them back — no "
+            "technician is promised"
+        )
     unchecked = _unchecked_words(state)
     if unchecked:
         # "Jūs nežinote, ar neveikia visuose įrenginiuose" — the caller must hear what stayed
@@ -2511,6 +2522,13 @@ def _summary_words(state: Any, card: Any, facts: dict[str, str]) -> dict[str, st
     if not (told["padaryta"] or told["dabar"] or told["nepavyko"]):
         return None  # nieko nebuvo padaryta — nėra ko ir sumuoti
     return told
+
+
+def _callback_card(fault: str | None) -> bool:
+    """The card's ticket is a call-back, not a technician (`ticket_types.yaml` by_verdict)."""
+    from ...ticket_types import fault_type
+
+    return bool(fault) and fault_type(fault) == "call_unfinished"
 
 
 def _technician_why(state: Any, card: Any) -> str:

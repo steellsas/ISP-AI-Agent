@@ -32,7 +32,9 @@ def apply_bg_diagnosis(state: Any, rt: Any) -> None:
         return
     with contextlib.suppress(Exception):
         in_solution = bool(state.resolution.bridge_plug_reported or state.resolution.bridge_bound)
-        fresh = ((json.loads(bg) or {}).get("verdict") or {}).get("reason")
+        from .execute.diagnosis import line_fault
+
+        fresh = line_fault((json.loads(bg) or {}).get("signals"))
         # Live 2026-09-17 (repeat call): the engine decided without telemetry (an open
         # ticket, a service not subscribed, a request) — a refresh turned it into a node
         # fault and registered a duplicate ticket.

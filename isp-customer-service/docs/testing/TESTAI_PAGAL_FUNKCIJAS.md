@@ -3,7 +3,7 @@
 Tikslas: testas iš karto pasako, **kuri funkcija** sugedo, žmonių kalba, dar prieš skaitant
 traceback'ą. Nuo 3.4a (2026-10-22) **visi** testai yra srities aplanke, failas = funkcija — sričių
 žemėlapis [TESTU_ZEMELAPIS.md](TESTU_ZEMELAPIS.md). Pilnai (variantų lentelės, visa fazė, žinomos
-spragos) padaryta **identifikacija** ir **problema** (3.4b, 2026-10-22); kitos sritys pildomos
+spragos) padaryta visos skambučio fazės — **identifikacija**, **problema**, **tyrimas**, **tiketas** ir **pabaiga** (3.4b, 2026-10-22); kitos sritys pildomos
 pagal tą patį šabloną.
 
 ## Kaip atrodo
@@ -70,8 +70,12 @@ def test_kazkas_po_identifikacijos(identified):
 ```
 
 `identified` priskiria klientą tuo pačiu variklio veiksmu, kaip po kliento „taip“
-(`engine_resolve_from_slots`), bet be identifikacijos dialogo. Kitoms fazėms (diagnozė,
-tiketas, pabaiga) tokie fiktyvai bus pridėti 3.4 etape.
+(`engine_resolve_from_slots`, kartu perskaitoma linija), bet be identifikacijos dialogo; kitas
+ėjimas išgirsta radinį, kaip po tikro vardo atsakymo.
+
+`diagnosing("router_hung")` — tas pats, bet demo klientui, kurio linija rodo nurodytą kortelę
+(`tests/phases.py` `CARD_CUSTOMER`); įjungtos demo imitacijos (perkrovimas, tiltas), o po testo DB
+atstatoma (imitacija pakeičia liniją). Tiketo ir pabaigos fiktyvai — 3.4b toliau.
 
 ## Visas skambutis teste (`call`)
 
@@ -145,3 +149,68 @@ Visa fazė:
 - lėtam internetui nėra kortelės — jis iškart eina į „neaiškaus gedimo“ tiketą su keista
   formuluote („gedimo tipas neaiškus — priežastis telefonu nenustatyta, perduota analizei“);
   tai Tyrimo srities klausimas.
+
+## Tyrimo radiniai (3.4b 1 dalis, 2026-10-22, netaisyta)
+
+- **Atsakymas į pirmą klausimą po radinio skaitomas tik modelio.** Radinį ir pirmą klausimą
+  („Ar galite dabar prieiti prie routerio?“) pasako `identification.result_to_procedure` ėjimas,
+  o variklis klausimą laiko nuskambėjusiu tik `case.*` ėjime — todėl jo paties skaitytuvas
+  atsakymo nepaima ir klausimą užduoda dar kartą. Gyvuose rugsėjo skambučiuose tai buvo girdėti
+  („Galiu, tuoj nueisiu“ → „Ar galite dabar prieiti prie routerio?“); spalio skambučiuose atsakymą
+  paima modelio skaitymas, bet tai papildomas LLM kvietimas.
+- Lėtam internetui kortelės nėra (žr. Problemos radinius).
+
+## Tyrimo radiniai (3.4b 2 dalis — atsakymai žingsniuose, 2026-10-22, netaisyta)
+
+Lentelė `diagnosis/test_steps.py`: žingsnis, kliento žodžiai → ką variklis daro kitame ėjime (visas
+ėjimas, be modelio skaitymo). Neperskaitoma ir klausimas kartojamas:
+
+- prieiti prie routerio: „Galiu, tuoj nueisiu“ (girdėta gyvai rugsėjį);
+- maitinimo laidas: „Įjungtas“, „Įkišau dabar“.
+
+Perskaitoma neteisingai:
+
+- perkrovimas: „Dar ne“ laikomas atliktu — pereinama prie patikros;
+- „Nežinau kada“ (kada galės prieiti) laikomas klausimu modeliui, ne „nežino kada“ (turėtų vesti
+  į meistrą);
+- lemputės užrašomos teisingai (dega / mirksi / nedega), bet degančios lemputės neatmeta kortelės
+  „įrenginio nematyti“ — Case lieka prie jos ir klausia apie maitinimą, nors kortelė sako, kad
+  dega = įrenginys gyvas, ieškom laido.
+
+Veikia kaip aprašyta: perkrovimas, kurio linija nematė, prašomas pakartoti vieną kartą; nepadėjus —
+išvada ir tiketas; sprendimui nepadėjus du kartus Case ieško kitos kortelės.
+
+## Tiketo radiniai (3.4b, 2026-10-22, netaisyta)
+
+Fiktyvas `at_contacts()` (`tests/ticket/conftest.py`) — skambutis jau kontaktų dialoge (miręs
+routeris, variklis nusprendė registruoti). Veikia: telefonas → valandos → „Užregistravau.
+Skambinsime …“, tiketas DB su tipu ir priežastimi („Registruota, nes: …“); kiekvienas kelias
+įrašo savo priežastį iš `registracija.yaml`; padėjus ragelį po sprendimo tiketas registruojamas.
+
+- **„Tiks šis“ neperskaitomas**, nors agentas pats siūlo taip atsakyti („Pasakykite
+  skaitmenimis arba „tiks šis““) — po to kitas atsakymas susimaišo.
+- „Nuo dvylikos iki pirmos“ → „apie 12 val.“ (valanda šnekamąja „pirma“ pametama).
+- Atsisakius vedimo („Ne, geriau meistrą“) įrašoma `sprendimas_baigtas`, o sąraše tai
+  `klientas_nenori` (su sutikimu).
+- „Nenoriu nieko daryti, atsiųskite meistrą“ → „Ar tikrai norite baigti pokalbį?“ — prašymas
+  skaitomas kaip atsisveikinimas (tas pats raštas kaip „nutraukti sutartį“ Problemoje).
+
+## Pabaigos radiniai (3.4b, 2026-10-22, netaisyta)
+
+`CallDriver.record()` — skambučio kontakto įrašas (conversations eilutė); kiekvienas skambutis
+teste turi savo id. Veikia: išspręsta, tiketas, skola, avarija, perskambins, padėjus ragelį po
+sprendimo — tiketas; neidentifikuoti — įrašas peržiūrai; tyla po baigiamojo klausimo —
+atsisveikinimas.
+
+- ~~**Svarbiausia: ragelio tinklas įrašo „išspręsta“, kai klientas padeda ragelį vidury
+  taisymo.**~~ **Ištaisyta 2026-10-23** (`feature/fix-hangup-net`): linija pati
+  „išspręsta“ nebenusprendžia — tik kliento patvirtinimas. Padėjus ragelį vidury taisymo →
+  `call_unfinished` tiketas (priežastis `nebaigtas`), įrašas „unfinished“ su peržiūros žyma;
+  jau nuspręstas meistras — kaip anksčiau (`padejo_rageli`). Abu xfail testai — tikri testai.
+
+- Po sutvarkymo „Taip, turiu dar klausimą“ į „Ar dar kuo galiu padėti?“ — agentas atsisveikina
+  ir baigia (pažeidžia pabaigos taisyklę).
+- Po žinios (skola) „Ne“ į „Ar dar kuo galiu padėti?“ pokalbio nebaigia, o po sutvarkymo —
+  baigia; „Aha“ ir „Ačiū“ irgi skaitomi skirtingai priklausomai nuo kelio.
+- Problemos nepasakiusio skambintojo įrašas — `not_a_customer` (ar tai tinkama priežastis —
+  aptarti).
