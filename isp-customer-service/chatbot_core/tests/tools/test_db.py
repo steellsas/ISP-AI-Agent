@@ -50,3 +50,37 @@ class TestInPlaceReset:
         with db_connection.cursor() as cur:
             cur.execute("SELECT COUNT(*) AS n FROM customers")
             assert dict(cur.fetchone())["n"] == result["customers"]
+
+    def test_reset_keeps_the_call_records(self, db_connection):
+        """The archive lists past calls from `conversations`; a scenario's ▶ resets the DB
+        before every call, and the reset used to wipe the previous calls (2026-10-27)."""
+        import sqlite3
+
+        from agent.db_path import database_path
+        from app.admin import reset_db
+
+        conn = sqlite3.connect(database_path())
+        conn.execute(
+            "INSERT INTO tickets (ticket_id, customer_id, ticket_type, summary)"
+            " VALUES ('TKT-GONE', 'CUST001', 'fault_technician', 'x')"
+        )
+        conn.execute(
+            "INSERT INTO conversations (conversation_id, session_id, messages, outcome, ticket_id)"
+            " VALUES ('C-KEEP', 'S-KEEP', '[]', 'ticket', 'TKT-GONE')"
+        )
+        conn.commit()
+        conn.close()
+
+        reset_db()
+
+        conn = sqlite3.connect(database_path())
+        try:
+            kept = conn.execute(
+                "SELECT session_id, outcome, ticket_id FROM conversations"
+                " WHERE conversation_id = 'C-KEEP'"
+            ).fetchone()
+            ticket = conn.execute("SELECT 1 FROM tickets WHERE ticket_id = 'TKT-GONE'").fetchone()
+        finally:
+            conn.close()
+        assert kept == ("S-KEEP", "ticket", "TKT-GONE")
+        assert ticket is None  # the demo data itself is reset
