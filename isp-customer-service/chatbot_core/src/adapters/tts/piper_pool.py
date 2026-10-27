@@ -21,6 +21,7 @@ import logging
 import multiprocessing as mp
 import os
 import queue
+import signal
 import threading
 from collections.abc import Iterator
 from pathlib import Path
@@ -39,6 +40,7 @@ _PIECE_TIMEOUT_S = 15.0
 
 def _worker_main(voice: str, root: str, threads: int, jobs, results) -> None:
     """One worker: load the voice once, then render jobs until told to stop (None)."""
+    signal.signal(signal.SIGINT, signal.SIG_IGN)
     os.environ["TTS_PIPER_THREADS"] = str(threads)
     provider = PiperTTSProvider(voice=voice, root=Path(root))
     provider.synthesize_pcm("Labas.")  # loads the model and the phonemizer
