@@ -519,6 +519,7 @@ addr_no:
   - "kitas butas"
   - "kito buto"
   - "kitam bute"
+  - "neteising"
   - "ne šit"
   - "ne sit"
 
@@ -1070,9 +1071,6 @@ name_stop_words:
   - "nuomininkė"
   - "kaimynas"
   - "kaimynė"
-  # Gyvai / eval 2026-10-01: „Aišku, ačiū, lauksiu" buvo užrašyta kaip vardas „Aišku" — ir
-  # nesutapus su sutarties vardu agentas dar paklausė dėl savininko. Padėkos, supratimo ir
-  # atsisveikinimo žodžiai nėra vardai.
   - "aišku"
   - "aisku"
   - "ačiū"
@@ -1177,7 +1175,7 @@ device_denial: ["neturiu", "nėra"]
 negated_word: "\\bne\\w*"
 # ... unless it negates the PROBLEM ("neveikia", "nėra interneto"), not the address.
 problem_negations: ["neveik", "nevyk", "nėra", "nera", "netur", "nebeveik", "nebėr", "neber"]
-address_yes: ["taip", "tvirtinu", "to adreso", "dėl šio", "del sio", "aha", "jo"]
+address_yes: ["taip", "tvirtinu", "to adreso", "dėl šio", "del sio", "aha", "jo", "teising"]
 # A word starting with these is negated ("NEregistruokite" is not a ticket demand).
 negation_prefixes: ["ne", "nebe"]
 # "Ačiū, nereikia" / "nebereikia" = polite done-signal (live 2026-08-13).

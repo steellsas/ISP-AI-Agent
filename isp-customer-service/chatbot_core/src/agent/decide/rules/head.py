@@ -410,7 +410,7 @@ def unidentified_address(state: Any, rt: Any, user_input: str) -> bool:
             from ...perceive.detectors import detect_address_confirm
 
             verdict = detect_address_confirm(user_input)
-            if heard_open and verdict != "yes":
+            if heard_open and verdict == "no":
                 forget_heard_numbers(state, rt)
             if (
                 verdict == "yes"

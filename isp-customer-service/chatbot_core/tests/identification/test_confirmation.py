@@ -120,8 +120,11 @@ class TestAddressGuards:
         assert detect_address_confirm("Taip, nebija") is None  # mixed -> re-ask
         assert detect_address_confirm("Taip, tvirtinu") == "yes"
         assert detect_address_confirm("Ne, dėl kito adreso") == "no"
-        # Problem words are not denials: "neveikia" alongside taip still confirms.
+
         assert detect_address_confirm("Taip, neveikia internetas dėl to adreso") == "yes"
+        assert detect_address_confirm("Teisingai.") == "yes"
+        assert detect_address_confirm("Teisingas adresas.") == "yes"
+        assert detect_address_confirm("Neteisingai.") == "no"
 
     def test_pre_turn_guard_vetoes_commit(self, db_connection):
         from agent.decide.rules.head import turn_head

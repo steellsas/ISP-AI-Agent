@@ -141,7 +141,22 @@ class TestReopenConfirmation:
         assert agent.state.identity.customer_id is None
         assert agent.state.dialog.active_question.key == "address_heard_confirm"
         turn_head(agent.state, agent.runtime, "Taip")
-        assert agent.state.identity.customer_id == "CUST009"  # nauja sutartis prisirišo
+        assert agent.state.identity.customer_id == "CUST009"
+
+    def test_unclear_reply_keeps_heard_address(self, db_connection):
+        """#12 (gyva 2026-10-28): neaiškus atsakymas („Haloo!“) į „ar teisingai
+        išgirdau?“ adreso netrina — klausiama dar kartą, „taip“ jį identifikuoja."""
+        from agent.decide.rules.head import turn_head
+
+        agent = self._identified()
+        agent.state.identity.reopen_confirm_utterance = "skambinu dėl Vilniaus gatvės 29"
+        agent.state.identity.reopen_confirm_asked = True
+        turn_head(agent.state, agent.runtime, "Taip")
+        assert agent.state.dialog.active_question.key == "address_heard_confirm"
+        turn_head(agent.state, agent.runtime, "Haloo!")
+        assert agent.state.identity.profile.house.value == "29"
+        turn_head(agent.state, agent.runtime, "Teisingai.")
+        assert agent.state.identity.customer_id == "CUST009"
 
     def test_address_question_mid_ident_names_heard_address(self, db_connection):
         """A-2R-b gyva: „kokiu adresu bendraujam?" PO reopen (klientas numestas,
