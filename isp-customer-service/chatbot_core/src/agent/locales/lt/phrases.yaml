@@ -133,6 +133,12 @@ identification:
   # nuo jos raktuojasi patvirtinimo sargas.
   ident_address_heard: "Girdėjau adresą {address}, bet dar nepatvirtinau. Ar skambinate dėl šio adreso?"
   ident_address_none: "Adreso dar nenustatėme — kaip tik jį tikslinuosi. Koks adresas, dėl kurio skambinate?"
+  # Rastas adresas tvirtinamas variklio žodžiais — klientas girdi tai, ką variklis turi.
+  address_heard_confirm: "Ar teisingai supratau — {address}?"
+  address_heard_reask: "Atsiprašau, nesupratau atsakymo. Ar teisingai supratau — {address}? Pasakykite „taip“ arba „ne“."
+  address_heard_again: "Atsiprašau, kad blogai supratau. Pasakykite adresą dar kartą — gatvę, namo ir buto numerį."
+  address_not_found_code: "Atsiprašau, pagal adresą jūsų sutarties rasti nepavyksta. Pabandykime kitaip — gal turite abonento kodą? Jį rasite sąskaitoje, jis prasideda raidėmis A B."
+  address_unconfirmed_code: "Atsiprašau, nepavyksta patvirtinti adreso. Pabandykime kitaip — gal turite abonento kodą? Jį rasite sąskaitoje, jis prasideda raidėmis A B."
   # A-3 skaidrumas (2026-09-07): agentas pasako, KOKĮ kodą išgirdo — ir radęs
   # (patvirtinimui kartu su adresu), ir neradęs (klientas girdi, kur klaida).
   account_code_echo_offer: "Išgirdau kodą {code}. Radau adresą — ar skambinate dėl {address}?"

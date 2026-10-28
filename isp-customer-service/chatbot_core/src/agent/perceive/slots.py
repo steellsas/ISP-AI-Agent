@@ -193,6 +193,24 @@ def prefill_slots_from_text(state: Any, rt: Any, text: str) -> None:
             conf = reading.street_confidence or 0.6
             if reading.street and reading.house:
                 conf = max(conf, 0.99)
+    # The registry asked for the flat and the caller says only a number („5", „trys"): that
+    # number is the flat — it used to land in the house and replace it.
+    if (
+        state.identity.apartment_needed
+        and p.house.value
+        and not p.apartment.value
+        and reading.house
+        and not (reading.street or reading.apartment or reading.anchored)
+    ):
+        reading.apartment, reading.house, reading.alternatives = reading.house, None, []
+    state.turn.address_reading = {
+        "street": reading.street,
+        "house": reading.house,
+        "apartment": reading.apartment,
+        "anchored": reading.anchored,
+    }
+    if reading.house or reading.apartment:
+        state.identity.address_readings = list(reading.alternatives)
     if reading.city:
         p.city.propose(reading.city, conf, SlotStatus.HEARD)
     if reading.street:
@@ -237,6 +255,49 @@ def prefill_slots_from_text(state: Any, rt: Any, text: str) -> None:
     revalidate_accumulated_address(state, rt)
 
 
+def _slot_args(p: Any) -> dict[str, str]:
+    args: dict[str, str] = {"street": str(p.street.value)}
+    if p.city.value:
+        args["city"] = str(p.city.value)
+    if p.house.value:
+        args["house_number"] = str(p.house.value)
+    if p.apartment.value:
+        args["apartment_number"] = str(p.apartment.value)
+    return args
+
+
+def lookup_heard_address(state: Any, rt: Any, reason: str) -> tuple[dict[str, str], dict]:
+    """The registry's answer for the address heard so far, read-only.
+
+    When the slots are not an address, the other readings of the caller's digits are tried
+    („5 5" heard as house 55 — house 5 flat 5 exists): the first one that names a contract
+    replaces the house and flat in the slots, so what is confirmed is what was found."""
+    from ..slots import Slot, SlotStatus
+
+    p = state.identity.profile
+    args = _slot_args(p)
+    res = rt.tools.run(state, rt, "resolve_address", args, reason=reason, apply=False).data
+    if res.get("success") or not p.house.value:
+        return args, res
+    for house, flat in state.identity.address_readings:
+        alt = {k: v for k, v in args.items() if k not in ("house_number", "apartment_number")}
+        alt["house_number"] = house
+        if flat:
+            alt["apartment_number"] = flat
+        found = rt.tools.run(state, rt, "resolve_address", alt, reason="other_reading", apply=False)
+        if found.data.get("success"):
+            p.house, p.apartment = Slot(), Slot()
+            p.house.propose(house, 0.9, SlotStatus.HEARD)
+            if flat:
+                p.apartment.propose(flat, 0.9, SlotStatus.HEARD)
+            state.identity.address_readings = []
+            rt.tracer.emit(
+                "decision", intent="address_reading", action="other", house=house, apartment=flat
+            )
+            return alt, found.data
+    return args, res
+
+
 def revalidate_accumulated_address(state: Any, rt: Any) -> None:
     """Check the ACCUMULATED address slots against the DB every turn and stash
     the DB's verdict for the facts block.
@@ -253,26 +314,21 @@ def revalidate_accumulated_address(state: Any, rt: Any) -> None:
     s = state
     if s.identity.customer_id or not s.identity.profile.street.value:
         return
-    p = s.identity.profile
-    args: dict[str, str] = {"street": p.street.value}
-    if p.city.value:
-        args["city"] = p.city.value
-    if p.house.value:
-        args["house_number"] = p.house.value
-    if p.apartment.value:
-        args["apartment_number"] = p.apartment.value
     try:
-        res = rt.tools.run(
-            state, rt, "resolve_address", args, reason="revalidate_address", apply=False
-        ).data
+        args, res = lookup_heard_address(state, rt, "revalidate_address")
     except Exception:  # pragma: no cover - best-effort, never break a turn
+        return
+    flat = (res.get("resolution") or {}).get("apartment") or {}
+    state.identity.apartment_needed = flat.get("status") == "required"
+    if res.get("success"):
+        # Found: the engine asks the caller to confirm it in its own words (the turn head).
+        state.turn.address_found = True
         return
     hint = res.get("hint")
     if hint:
         state.turn.db_address_note = (
             f"- DB CHECK (everything heard so far → {args}): {hint} "
-            "Act on THIS (the DB), not on the last thing you misheard; if it is a "
-            "match, confirm that exact address; if a part is missing/unclear, ask "
-            "only for it. Do NOT read out a list of street names for the caller to "
+            "Ask ONLY for that one part, in one short question — do not confirm the rest "
+            "of the address. Do NOT read out a list of street names for the caller to "
             "pick from — if the street is unclear, ask them to repeat it."
         )

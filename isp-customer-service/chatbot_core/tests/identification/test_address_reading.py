@@ -163,17 +163,25 @@ READINGS = [
         "butas prieš gatvę",
         "namas ir butas sukeičiami",
     ),
-    gap(
+    pytest.param(
         "Tilžės 60-7",
         {"street": "Tilžės g.", "house": "60", "apartment": "7"},
-        "namas-butas per brūkšnį",
-        "butas po brūkšnio pametamas",
+        id="namas-butas per brūkšnį",
     ),
-    gap(
+    pytest.param(
         "Vilniaus g. 33-2",
         {"street": "Vilniaus g.", "house": "33", "apartment": "2"},
-        "užrašyta forma g. 33-2",
-        "butas po brūkšnio pametamas",
+        id="užrašyta forma g. 33-2",
+    ),
+    pytest.param(
+        "Dainų gatvė, 5-5",
+        {"street": "Dainų g.", "house": "5", "apartment": "5"},
+        id="vienaženkliai namas-butas per brūkšnį",
+    ),
+    pytest.param(
+        "Dėl Dainų gatvės 5.5",
+        {"street": "Dainų g.", "house": "5", "apartment": "5"},
+        id="namas.butas su tašku",
     ),
     gap(
         "Žemaitės keturiolika, antras butas",
@@ -256,3 +264,28 @@ class TestV7AddressReading:
         from agent.perceive.nlu import extract_address
 
         assert extract_address(said, self.STREETS, ["Šiauliai"]).street == street
+
+
+# The same digits read another way: the registry decides which address exists (#14).
+OTHER_READINGS = [
+    pytest.param("Dainų gatvė 5 5", ("55", None), [("5", "5")], id="5 5 — namas 55 arba 5-5"),
+    pytest.param("Dainų 55", ("55", None), [("5", "5")], id="55 — namas 55 arba 5-5"),
+    pytest.param("Dainų gatvė 5, butas 55", ("5", "55"), [("5", "5")], id="butas 55 — arba 5"),
+    pytest.param("Vilniaus 33 2", ("33", None), [("33", "2")], id="du skaičiai be žodžio butas"),
+    pytest.param("Tilžės 60-7", ("60", "7"), [], id="brūkšnys — vienas skaitymas"),
+    pytest.param("Tildžės 6 0 būtų namas", ("60", None), [], id="šeši nulis — namas 60"),
+]
+
+
+@pytest.mark.parametrize(("text", "first", "others"), OTHER_READINGS)
+def test_other_readings_of_the_digits(text, first, others):
+    """Kiti tų pačių skaičių skaitymai"""
+    r = extract(text)
+    assert (r.house, r.apartment) == first
+    assert r.alternatives == others
+
+
+def test_a_number_in_a_confirmation_is_not_an_address_statement():
+    """Skaičius patvirtinimo sakinyje — ne adresas"""
+    assert extract("Taip, girdžiu, patvirtinu 2 kartus").anchored is False
+    assert extract("Ne, butas 5").anchored is True

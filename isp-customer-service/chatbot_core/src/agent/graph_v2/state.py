@@ -115,6 +115,17 @@ class IdentityState(BaseModel):
     # The name answer was unreadable once and asked again (A4, 2026-10-12): the second
     # unreadable answer is „nenurodyta", never a garbled word used as a name.
     caller_name_reasked: bool = False
+    # „Ar teisingai supratau — <adresas>?": the engine says it from the slots, the answer is
+    # read in the turn head. `heard_confirm_due` is "ask" / "reask" for this turn's words;
+    # `heard_confirm_asks` counts unclear answers to it before another way is tried.
+    heard_confirm_due: str | None = None
+    heard_confirm_asks: int = 0
+    heard_address: str | None = None
+    # Other readings (house, flat) of the digits the caller said, most likely first — tried
+    # against the registry when the first reading is not an address.
+    address_readings: list[tuple[str, str | None]] = Field(default_factory=list)
+    # The registry wants the flat number: a bare number answer is the flat, not the house.
+    apartment_needed: bool = False
 
     def set_customer(
         self,
@@ -412,6 +423,10 @@ class TurnScratch(BaseModel):
     address_lookup_note: str | None = None
     address_confirm_note: str | None = None
     db_address_note: str | None = None
+    # This utterance's address reading: {"house", "apartment", "street", "anchored"}.
+    address_reading: dict[str, Any] | None = None
+    # The address heard so far names one contract (the registry check this turn).
+    address_found: bool = False
     reopen_note: bool = False
     # What this utterance sounded like (a problem label) — decide commits or files it.
     problem_reading: str | None = None

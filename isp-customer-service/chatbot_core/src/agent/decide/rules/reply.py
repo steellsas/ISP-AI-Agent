@@ -256,6 +256,21 @@ def reply_plan(state: Any, rt: Any, user_input: str | None) -> TurnPlan | None:
             return _words("inform.debt_offer", phrase("identification.debt_dispute_clarify"))
         if offer == "start":
             return _words(*ticket_question_turn(state, rt))
+    # „Ar teisingai supratau — <adresas>?" and its follow-ups: the engine's own words, built
+    # from the address it holds (a model-worded confirm drifted from the slots — live
+    # 2026-10-28, ~30 turns).
+    if not s.identity.customer_id and state.identity.heard_confirm_due:
+        due, state.identity.heard_confirm_due = state.identity.heard_confirm_due, None
+        key = {
+            "ask": "address_heard_confirm",
+            "reask": "address_heard_reask",
+            "again": "address_heard_again",
+            "give_up": "address_unconfirmed_code",
+        }[due]
+        return _words(
+            f"identification.{key}",
+            phrase(f"identification.{key}", address=state.identity.heard_address or ""),
+        )
     if (
         user_input
         and is_real_question(user_input)

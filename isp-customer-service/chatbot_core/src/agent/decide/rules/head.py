@@ -398,11 +398,7 @@ def unidentified_address(state: Any, rt: Any, user_input: str) -> bool:
     """The reply to the address offer / a dictated address commits the identity (§5 row 9). True when it owns the rest of the turn head."""
     s = state
     if not s.identity.customer_id:
-        from .identification import (
-            ask_heard_address,
-            forget_heard_numbers,
-            heard_confirm_open,
-        )
+        from .identification import ask_heard_address, heard_confirm_open
 
         q = (last_agent_question(state) or "").lower()
         heard_open = heard_confirm_open(state)
@@ -410,8 +406,8 @@ def unidentified_address(state: Any, rt: Any, user_input: str) -> bool:
             from ...perceive.detectors import detect_address_confirm
 
             verdict = detect_address_confirm(user_input)
-            if heard_open and verdict == "no":
-                forget_heard_numbers(state, rt)
+            if heard_open and _heard_confirm_answer(state, rt, verdict):
+                return True
             if (
                 verdict == "yes"
                 and s.identity.phone_candidate
@@ -538,12 +534,62 @@ def unidentified_address(state: Any, rt: Any, user_input: str) -> bool:
                 s.intake.anamnesis_asked  # the address ladder is live (not the opener)
                 and p.street.value
                 and p.house.value
-                and _re.search(r"\d", user_input or "")
+                and (_re.search(r"\d", user_input or "") or state.turn.address_found)
+                # Waiting for the account code: its digits are the code, not the address —
+                # only a dictation with a street in it is an address again.
+                and not (
+                    state.identity.account_code_mode
+                    and not (state.turn.address_reading or {}).get("street")
+                )
             ):
                 if ask_heard_address(state, rt):
                     return True
         return True
     return False
+
+
+def _heard_confirm_answer(state: Any, rt: Any, verdict: str | None) -> bool:
+    """The answer to „Ar teisingai supratau — <adresas>?". True when it owns the turn; a
+    clean yes is left to the commit below.
+
+    A correction („ne, butas 25", „5-2") replaces only the numbers it names and the new
+    address is checked again; an unclear answer keeps everything and asks again; after
+    `address_confirm_max_asks` unclear answers the account code is offered."""
+    from ..question import register as _q_register
+    from .identification import (
+        HEARD_CONFIRM,
+        ask_heard_address,
+        forget_heard_numbers,
+        says_other_numbers,
+    )
+
+    s = state
+    if verdict == "no" or says_other_numbers(state):
+        forget_heard_numbers(state, rt)
+        p = s.identity.profile
+        if not (p.street.value and p.house.value and ask_heard_address(state, rt)):
+            # The confirm is over: what follows is the address again, not a yes or no.
+            _q_register(state, rt, "ident", "address_ask")
+            if not (state.turn.address_reading or {}).get("anchored"):
+                state.identity.heard_confirm_due = "again"  # nothing new was said: ask anew
+        return True
+    if verdict == "yes":
+        state.identity.heard_confirm_due = None
+        state.identity.heard_confirm_asks = 0
+        return False
+    asks = state.identity.heard_confirm_asks + 1
+    state.identity.heard_confirm_asks = asks
+    if asks >= limits.get("address_confirm_max_asks"):
+        state.identity.heard_confirm_due = "give_up"
+        state.identity.account_code_mode = True
+        state.identity.account_code_grace_turns = 0
+        _q_register(state, rt, "ident", "account_code")
+        rt.tracer.emit("decision", intent="address_heard", action="give_up", asks=asks)
+        return True
+    state.identity.heard_confirm_due = "reask"
+    _q_register(state, rt, "ident", HEARD_CONFIRM, address=state.identity.heard_address)
+    rt.tracer.emit("decision", intent="address_heard", action="reask", asks=asks)
+    return True
 
 
 def address_correction(state: Any, rt: Any, user_input: str) -> bool:

@@ -66,17 +66,14 @@ FLAT_ANSWERS = [
     pytest.param(
         "7",
         id="tik skaičius",
-        marks=pytest.mark.xfail(strict=True, reason="skaičius po buto klausimo užrašomas į namą"),
     ),
     pytest.param(
         "trys",
         id="tik skaičius žodžiu",
-        marks=pytest.mark.xfail(strict=True, reason="skaičius po buto klausimo užrašomas į namą"),
     ),
     pytest.param(
         "Trečias",
         id="kelintinis",
-        marks=pytest.mark.xfail(strict=True, reason="skaičius po buto klausimo užrašomas į namą"),
     ),
 ]
 

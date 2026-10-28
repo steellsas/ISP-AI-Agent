@@ -15,7 +15,7 @@ hand-given registry lists (the gateway's address_registry() provides them).
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from ..contract import limits
 from ..contract.locale import lang, vocab, vocab_map, vocab_re, vocab_set, vocab_text
@@ -40,6 +40,43 @@ class AddressReading:
     house: str | None = None
     apartment: str | None = None
     street_confidence: float = 0.0
+    # Other (house, apartment) readings of the same spoken digits, most likely first:
+    # „5 5" / „55" may be house 5 flat 5 or house 55. The registry decides which exists.
+    alternatives: list[tuple[str, str | None]] = field(default_factory=list)
+    # The numbers came with a marker (namas / butas), a „5-5" pair or a street name — an
+    # address statement, not a number dropped into another sentence („patvirtinu 2 kartus").
+    anchored: bool = False
+
+
+# „5-5", „33-2", „60/7", „5.5": house and flat written as one pair.
+_PAIR_RE = re.compile(
+    r"(?<![\d.])(\d{1,3}[^\W\d_]?)\s*[-–/]\s*(\d{1,3})(?![\d])|(?<![\d.])(\d{1,3})\.(\d{1,3})(?![\d.])"
+)
+
+
+def _number_readings(
+    house: str | None, apartment: str | None, numbers: list[str], glued: bool
+) -> list[tuple[str, str | None]]:
+    """Readings of the caller's own digits other than (house, apartment).
+
+    Only digits the caller said are combined — nothing is taken from the registry."""
+    out: list[tuple[str, str | None]] = []
+
+    def add(h: str | None, a: str | None) -> None:
+        if h and (h, a) != (house, apartment) and (h, a) not in out:
+            out.append((h, a))
+
+    if house and not apartment:
+        # Two digits heard as one number („5 5" glued, or STT wrote „55"): house + flat.
+        if len(house) == 2 and house.isdigit() and "0" not in house:
+            if glued or (house[0] == house[1] and len(numbers) == 1):
+                add(house[0], house[1])
+        # Two separate numbers without a marker („Vilniaus 33 2"): the second is the flat.
+        if len(numbers) >= 2 and numbers[0] == house:
+            add(numbers[0], numbers[1])
+    if apartment and len(apartment) == 2 and apartment.isdigit() and apartment[0] == apartment[1]:
+        add(house, apartment[0])  # a doubled digit („butas 55" for „5")
+    return out
 
 
 def _tokenize(text: str) -> list[tuple[str, str]]:
@@ -195,8 +232,19 @@ def extract_address(
         if pick:
             house = pick[0][1]
 
+    # „5-5" / „60-7": the pair is house and flat (the tokenizer would glue „5 5" into 55).
+    pair = _PAIR_RE.search(norm)
+    if pair and apt is None and house_anchor is None:
+        house, apt = (pair.group(1), pair.group(2)) if pair.group(1) else pair.group(3, 4)
+    glued = sum(1 for m in _TOKEN_RE.finditer(norm) if m.group("num")) > len(nums)
     return AddressReading(
-        city=city, street=street, house=house, apartment=apt, street_confidence=sc
+        city=city,
+        street=street,
+        house=house,
+        apartment=apt,
+        street_confidence=sc,
+        alternatives=_number_readings(house, apt, [v for _, v in nums], glued and not pair),
+        anchored=bool(street or pair or house_anchor is not None or apt is not None),
     )
 
 

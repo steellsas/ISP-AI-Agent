@@ -1173,8 +1173,9 @@ clause_split: "[,;]| bet | tačiau "
 device_denial: ["neturiu", "nėra"]
 # address confirm: any "ne-" word is a denial ...
 negated_word: "\\bne\\w*"
-# ... unless it negates the PROBLEM ("neveikia", "nėra interneto"), not the address.
-problem_negations: ["neveik", "nevyk", "nėra", "nera", "netur", "nebeveik", "nebėr", "neber"]
+# ... unless it negates the PROBLEM ("neveikia", "nėra interneto"), not the address, or says the
+# caller did not catch the question ("nesuprantu", "negirdžiu") — that is unclear, not a no.
+problem_negations: ["neveik", "nevyk", "nėra", "nera", "netur", "nebeveik", "nebėr", "neber", "nesupr", "negird", "nežin", "nezin"]
 address_yes: ["taip", "tvirtinu", "to adreso", "dėl šio", "del sio", "aha", "jo", "teising"]
 # A word starting with these is negated ("NEregistruokite" is not a ticket demand).
 negation_prefixes: ["ne", "nebe"]
