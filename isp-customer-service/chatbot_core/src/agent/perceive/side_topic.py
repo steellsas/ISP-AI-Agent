@@ -32,6 +32,13 @@ def classify_side_topic(state, rt, user_input: str | None) -> bool:
 
     if debt_dispute_due(state, user_input):
         return False
+    # A question about the news just delivered is answered with the news (the wrap-up).
+    from .detectors import asks_about_the_news
+
+    if asks_about_the_news(state, user_input):
+        state.dialog.side_topic_streak = 0
+        rt.tracer.emit("decision", intent="side_topic", action="news_asked")
+        return False
     # Ticket demand is NEVER a side topic (live 2026-08-13: "Išregistruoti
     # meistrą ir paleisti internetą…" got type=deviation and the side_topic
     # LLM talked the caller OUT of the registration) — the demand machinery

@@ -260,6 +260,8 @@ farewell:
 # „Pakartokit, ką reikia man padaryti" ir dar du beveik tokie pat vedimo punktai pakėlė „stuck"
 # skaitliuką iki 3, ir agentas pasiūlė abonento kodą (identifikacijos taktika!), o paskui
 # užregistravo gedimą ir atsisveikino vedimo viduryje.
+# Po žinios (avarija, skola) klientas klausia apie patį gedimą — variklis kartoja žinią.
+news_asked_marks: ["gedim", "neveik", "nevei", "nevyk", "nėra interneto", "nera interneto", "kas atsitiko", "kas nutiko", "kodėl", "kodel", "negirdėjau", "negirdejau", "nesupratau"]
 repeat_request:
   - "pakartok"
   - "pakartot"

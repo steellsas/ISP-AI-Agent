@@ -10,6 +10,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from .contract import limits
+
 
 def apply_delivery(state: Any, rt: Any, sentences: list[str], delivered: int) -> None:
     """D1 delivery ledger (live 2026-08-25: the transcript renders before
@@ -82,8 +84,8 @@ def _owe_required(state: Any, rt: Any, heard: str, tail: str) -> str:
         for sentence in _sentences(required):
             if _fold(sentence) in heard_folded:
                 continue  # this part was heard
-            if sentence in state.voice.redelivered:
-                # Said again once already: no loop (F1) — it stays in the unheard tail, for
+            if state.voice.redelivered.count(sentence) >= limits.get("required_redeliver_max"):
+                # Said again enough times: no loop (F1) — it stays in the unheard tail, for
                 # the narrator to mention briefly in its own words.
                 continue
             owed.append(sentence)

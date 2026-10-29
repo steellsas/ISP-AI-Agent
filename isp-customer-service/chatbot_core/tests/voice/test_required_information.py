@@ -118,8 +118,9 @@ def test_only_the_unheard_sentences_are_owed(make_state, make_runtime):
     ]
 
 
-def test_owed_words_are_said_again_once_then_left_to_the_narrator(make_state, make_runtime):
-    """F1 (live 2026-10-20): cut again, the debt news looped three times."""
+def test_owed_words_are_said_again_twice_then_left_to_the_narrator(make_state, make_runtime):
+    """F1: no endless loop — but a news cut twice by the caller's own words is said once more
+    (live 2026-10-29: name fragments cut the outage news twice and it was never heard)."""
     state, rt = _news_said(make_state, make_runtime)
     apply_delivery(state, rt, ["Ačiū!", NEWS + " Ar dar kuo galiu padėti?"], 1)
     plan = TurnPlan(
@@ -128,9 +129,10 @@ def test_owed_words_are_said_again_once_then_left_to_the_narrator(make_state, ma
         action=Action(type="none"),
         say=Say(kind="phrase", text="Supratau. Ar dar kuo galiu padėti?", stage="diagnosis"),
     )
-    text = speak(state, rt, plan, None)  # the news again, first
-    assert text.startswith("Patikrinau")
+    for _ in range(2):
+        text = speak(state, rt, plan, None)  # the news again, first
+        assert text.startswith("Patikrinau")
+        apply_delivery(state, rt, [text], 0)  # cut again before anything was heard
 
-    apply_delivery(state, rt, [text], 0)  # cut again before anything was heard
     assert state.voice.owed == []
     assert "Skola 49 eurai" in (state.voice.unheard_question or state.voice.undelivered_tail or "")

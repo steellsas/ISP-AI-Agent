@@ -60,7 +60,7 @@ def reply_plan(state: Any, rt: Any, user_input: str | None) -> TurnPlan | None:
         return _plan("closing.closed_this_turn", None, directive=True)
     from ...contract.locale import phrase
     from ...identification import caller_question
-    from ...perceive.detectors import is_real_question
+    from ...perceive.detectors import asks_about_the_news, is_real_question
 
     # Address CHANGE confirmation (reference dialogue №3, Andrius 2026-09-03): a
     # caller's mention of another address after identification NO longer switches
@@ -283,6 +283,8 @@ def reply_plan(state: Any, rt: Any, user_input: str | None) -> TurnPlan | None:
         # pairs are spelling-shaped even without the mode (client-initiated).
         and not state.identity.spell_mode
         and user_input.lower().count(" kaip ") < 2
+        # „Tai koks gedimas?" after the news: the wrap-up repeats the news.
+        and not asks_about_the_news(state, user_input)
         # „Neveikia internetas, kaip galit padėt?" is the problem, not a question to answer —
         # live 2026-10-14 the agent replied „nesu tikras, ar supratau" instead of starting.
         and not (
@@ -373,6 +375,22 @@ def reply_plan(state: Any, rt: Any, user_input: str | None) -> TurnPlan | None:
         and (state.diagnosis.news_delivered or s.diagnosis.outage_reported)
         and not state.identity.result_pending
     ):
+        from ...perceive.detectors import asks_about_the_news
+
+        if asks_about_the_news(state, user_input) and state.diagnosis.news_repeats < limits.get(
+            "news_repeat_max"
+        ):
+            from ...inform import inform_text
+
+            news = inform_text(state, rt, (s.diagnosis.verdicts.get("network") or {}).get("reason"))
+            if news:
+                state.diagnosis.news_repeats += 1
+                rt.tracer.emit("decision", intent="inform", action="repeat")
+                return _plan(
+                    "inform.repeat",
+                    f"{news} {phrase('identification.anything_else')}",
+                    required=news,
+                )
         low = (user_input or "").lower()
         wants_more = (
             is_real_question(user_input)

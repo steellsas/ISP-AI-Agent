@@ -178,3 +178,26 @@ def test_a_hang_up_after_veikia_before_the_end_is_resolved(diagnosing):
         c.say(text)
     row = _end(c)
     assert row["outcome"] == "resolved" and not row["ticket_id"]
+
+
+@pytest.mark.parametrize("asked", ["Tai koks gedimas?", "Kodas nevyk internetas.", "Nesupratau"])
+def test_a_question_about_the_fault_repeats_the_news(diagnosing, asked):
+    """Klausimas apie gedimą po žinios — variklis kartoja žinią, neatsisveikina"""
+    c = diagnosing("active_outage")
+    c.say("Gerai")
+    for _ in range(2):
+        reply = c.say(asked)
+        assert c.rule == "inform.repeat" and "avarija" in reply
+    assert not c.state.closing.case_closed
+
+
+def test_the_news_is_repeated_after_name_fragments(diagnosing):
+    """Vardo nuotrupos nesuvalgo pranešimo kartojimo"""
+    c = diagnosing("active_outage")
+    c.say("Gerai")
+    c.say("Ramana, o sako tu")
+    c.say("Rasam anavardas.")
+    c.say("Tai koks gedimas?")
+    assert c.rule == "inform.repeat"
+    c.say("Kodas nevyk internetas.")
+    assert c.rule == "inform.repeat" and not c.state.closing.case_closed

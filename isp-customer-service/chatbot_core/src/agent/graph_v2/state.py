@@ -192,6 +192,8 @@ class DiagnosisState(BaseModel):
     # --- evidence dialogue ------------------------------------------------------
     # The diagnosis result was told to the caller (never repeated).
     news_delivered: bool = False
+    # Times the news was repeated because the caller asked about the fault after it.
+    news_repeats: int = 0
     # How many times each evidence key was asked.
     evidence_ask_counts: dict[str, int] = Field(default_factory=dict)
     # The evidence key whose question is out (a bare "taip/ne" maps to it).
@@ -374,8 +376,8 @@ class VoiceState(BaseModel):
     required_said: list[str] = Field(default_factory=list)
     # Required words a barge-in cut off: the next reply says them first (PERZIURA §6 I-1).
     owed: list[str] = Field(default_factory=list)
-    # Required sentences already said again once — cut a second time, they are not owed
-    # again (live 2026-10-20: the debt news looped three times, F1).
+    # Required sentences said again (one entry per repeat) — after `required_redeliver_max`
+    # repeats they are not owed again (F1: no endless loop).
     redelivered: list[str] = Field(default_factory=list)
     # The owed words the engine has just said before an LLM reply — the narrator must not
     # say them a second time in its own words (F2). One-shot, read by the context card.

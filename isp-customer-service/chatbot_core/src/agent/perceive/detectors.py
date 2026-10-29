@@ -734,6 +734,23 @@ def is_bare_negation(text: str | None) -> bool:
     )
 
 
+def asks_about_the_news(state, text: str | None) -> bool:
+    """After the news (outage, debt) the caller asks about the fault itself — „Tai koks
+    gedimas?", „Kodėl neveikia internetas?": the answer is the news again, in the engine's
+    words, not a side topic and not a goodbye."""
+    from ..inform import is_news
+
+    reason = (state.diagnosis.verdicts.get("network") or {}).get("reason")
+    if not text or not is_news(reason):
+        return False
+    if not (state.diagnosis.news_delivered or state.diagnosis.outage_reported):
+        return False
+    low = text.lower()
+    return any(m in low for m in vocab("news_asked_marks")) or any(
+        m in low for m in vocab("repeat_request")
+    )
+
+
 def is_real_question(text: str | None) -> bool:
     """A QUESTION by its words, not by punctuation — STT sticks '?' onto rising
     intonation ("Tomas?"), which is not the caller asking us something. Token
