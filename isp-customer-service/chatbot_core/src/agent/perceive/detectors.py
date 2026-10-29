@@ -745,9 +745,11 @@ def asks_about_the_news(state, text: str | None) -> bool:
         return False
     if not (state.diagnosis.news_delivered or state.diagnosis.outage_reported):
         return False
-    low = text.lower()
-    return any(m in low for m in vocab("news_asked_marks")) or any(
-        m in low for m in vocab("repeat_request")
+    from ..evidence import _fold
+
+    low = _fold(text)
+    return any(_fold(m) in low for m in vocab("news_asked_marks")) or any(
+        _fold(m) in low for m in vocab("repeat_request")
     )
 
 

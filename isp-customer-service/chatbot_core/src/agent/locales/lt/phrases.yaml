@@ -529,10 +529,13 @@ inform:
   active_outage:
     template: "Patikrinau — jūsų rajone įvykusi tinklo avarija ({location}). Meistrai jau dirba, numatomas atstatymas iki {eta}. Jums nieko daryti nereikia — kai gedimas bus pašalintas, gausite pranešimą."
     fallback: "Patikrinau — jūsų rajone įvykusi tinklo avarija, meistrai jau dirba. Jums nieko daryti nereikia — kai gedimas bus pašalintas, gausite pranešimą."
+    reminder: "Primenu — tai tinklo avarija jūsų rajone ({location}). Meistrai jau dirba, internetas turėtų veikti iki {eta}. Jei gausite žinutę, kad sutvarkyta, o jums vis tiek neveiks — paskambinkite mums."
   node_fault_unregistered:
     template: "Patikrinau — matau gedimą tinkle iki jūsų namo, ne tik jūsų bute. Jums nieko daryti nereikia — gedimą užregistravau, meistrai jį tvarkys. Kai gedimas bus pašalintas, jus informuosime."
+    reminder: "Primenu — gedimas tinkle iki jūsų namo, ne jūsų bute. Gedimą užregistravau, meistrai jį tvarkys. Jei gavę pranešimą, kad sutvarkyta, internetas vis tiek neveiks — paskambinkite mums."
   switch_unreachable:
     template: "Patikrinau — jūsų namą aptarnaujantis tinklo įrenginys nepasiekiamas, gedimas mūsų tinkle. Jums nieko daryti nereikia — gedimą užregistravau, meistrai jį tvarkys. Kai gedimas bus pašalintas, jus informuosime."
+    reminder: "Primenu — gedimas mūsų tinkle: jūsų namą aptarnaujantis įrenginys nepasiekiamas. Gedimą užregistravau, meistrai jį tvarkys. Jei gavę pranešimą, kad sutvarkyta, internetas vis tiek neveiks — paskambinkite mums."
 
 system:
   greeting: "Labas! Čia {company_name}. Esu dirbtinio intelekto asistentas — padedu dėl interneto ir televizijos gedimų. Kuo galiu padėti?"

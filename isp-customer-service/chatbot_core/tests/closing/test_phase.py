@@ -180,24 +180,42 @@ def test_a_hang_up_after_veikia_before_the_end_is_resolved(diagnosing):
     assert row["outcome"] == "resolved" and not row["ticket_id"]
 
 
-@pytest.mark.parametrize("asked", ["Tai koks gedimas?", "Kodas nevyk internetas.", "Nesupratau"])
-def test_a_question_about_the_fault_repeats_the_news(diagnosing, asked):
-    """Klausimas apie gedimą po žinios — variklis kartoja žinią, neatsisveikina"""
+@pytest.mark.parametrize(
+    "asked", ["Tai koks gedimas?", "O koks šiek gėdimas?", "Kodas nevyk internetas.", "Nesupratau"]
+)
+def test_a_question_about_the_fault_gets_a_short_reminder(diagnosing, asked):
+    """Klausimas apie gedimą po žinios — trumpas priminimas, neatsisveikina"""
     c = diagnosing("active_outage")
     c.say("Gerai")
-    for _ in range(2):
+    for _ in range(3):
         reply = c.say(asked)
-        assert c.rule == "inform.repeat" and "avarija" in reply
+        assert c.rule == "inform.remind" and reply.startswith("Primenu — tai tinklo avarija")
+        assert "paskambinkite mums" in reply and reply.endswith("Ar dar kuo galiu padėti?")
     assert not c.state.closing.case_closed
 
 
-def test_the_news_is_repeated_after_name_fragments(diagnosing):
-    """Vardo nuotrupos nesuvalgo pranešimo kartojimo"""
+def test_cut_news_is_finished_not_repeated(diagnosing):
+    """Nutraukta žinia užbaigiama vieną kartą, ne kartojama du kartus"""
+    from agent.delivery import apply_delivery
+
+    c = diagnosing("active_outage")
+    c.say("Gerai")
+    news = c.state.messages[-1]["content"]
+    c.session._write_between_turns(
+        lambda state, rt: apply_delivery(state, rt, ["Ačiū!", news.split("Ačiū! ", 1)[1]], 1)
+    )
+    reply = c.say("Kas atsitiko?")
+    assert c.rule == "inform.finish"
+    assert reply.count("Patikrinau") == 1 and reply.endswith("Ar dar kuo galiu padėti?")
+
+
+def test_name_fragments_do_not_use_up_the_reminder(diagnosing):
+    """Vardo nuotrupos nesuvalgo priminimo"""
     c = diagnosing("active_outage")
     c.say("Gerai")
     c.say("Ramana, o sako tu")
     c.say("Rasam anavardas.")
     c.say("Tai koks gedimas?")
-    assert c.rule == "inform.repeat"
+    assert c.rule == "inform.remind"
     c.say("Kodas nevyk internetas.")
-    assert c.rule == "inform.repeat" and not c.state.closing.case_closed
+    assert c.rule == "inform.remind" and not c.state.closing.case_closed

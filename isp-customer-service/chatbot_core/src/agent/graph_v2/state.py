@@ -192,8 +192,6 @@ class DiagnosisState(BaseModel):
     # --- evidence dialogue ------------------------------------------------------
     # The diagnosis result was told to the caller (never repeated).
     news_delivered: bool = False
-    # Times the news was repeated because the caller asked about the fault after it.
-    news_repeats: int = 0
     # How many times each evidence key was asked.
     evidence_ask_counts: dict[str, int] = Field(default_factory=dict)
     # The evidence key whose question is out (a bare "taip/ne" maps to it).

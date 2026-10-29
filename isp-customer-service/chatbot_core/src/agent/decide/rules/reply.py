@@ -377,20 +377,22 @@ def reply_plan(state: Any, rt: Any, user_input: str | None) -> TurnPlan | None:
     ):
         from ...perceive.detectors import asks_about_the_news
 
-        if asks_about_the_news(state, user_input) and state.diagnosis.news_repeats < limits.get(
-            "news_repeat_max"
-        ):
+        if asks_about_the_news(state, user_input):
+            anything_else = phrase("identification.anything_else")
+            if state.voice.owed:
+                # The news was cut: the reply finishes it (the owed words go first) — that
+                # is the answer, not a repeat.
+                rt.tracer.emit("decision", intent="inform", action="finish")
+                return _plan("inform.finish", anything_else)
             from ...inform import inform_text
 
-            news = inform_text(state, rt, (s.diagnosis.verdicts.get("network") or {}).get("reason"))
-            if news:
-                state.diagnosis.news_repeats += 1
-                rt.tracer.emit("decision", intent="inform", action="repeat")
-                return _plan(
-                    "inform.repeat",
-                    f"{news} {phrase('identification.anything_else')}",
-                    required=news,
-                )
+            reason = (s.diagnosis.verdicts.get("network") or {}).get("reason")
+            reminder = inform_text(state, rt, reason, key="asked_again_key") or inform_text(
+                state, rt, reason
+            )
+            if reminder:
+                rt.tracer.emit("decision", intent="inform", action="remind")
+                return _plan("inform.remind", f"{reminder} {anything_else}", required=reminder)
         low = (user_input or "").lower()
         wants_more = (
             is_real_question(user_input)

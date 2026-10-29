@@ -276,6 +276,18 @@ def _asked_how(state, rt) -> list[str]:
     ]
 
 
+def _news_facts(state, rt) -> str:
+    """The news already told in this call (outage, debt, network fault) — the facts every later
+    answer about the fault comes from; empty before the news or for a fault being worked on."""
+    from ..inform import inform_text, is_news
+
+    s = state
+    reason = (s.diagnosis.verdicts.get("network") or {}).get("reason")
+    if not is_news(reason) or not (s.diagnosis.news_delivered or s.diagnosis.outage_reported):
+        return ""
+    return inform_text(state, rt, reason) or ""
+
+
 def _side_topic(state, rt) -> list[str]:
     """A deviation: the ONLY permitted content is the FAQ hit (or an honest "not my
     area"), then the return anchor — the engine's exact pending question."""
@@ -285,11 +297,17 @@ def _side_topic(state, rt) -> list[str]:
     from ..faq import match as faq_match
 
     hits = faq_match(state.dialog.last_heard)
+    news = _news_facts(state, rt)
     known = " ".join(f"[{e.get('topic')}] {_faq_answer(state, rt, e)}" for e in hits) or (
+        # After the news, a question about the fault is answered from the news' own facts.
         # Beyond the five FAQ topics there is a tagged knowledge base — equipment
         # instructions, configuration algorithms, tips (wave 4b, finding AK). It answers, or
         # the agent says honestly that it is not its area.
-        _kb_answer(state, rt)
+        " ".join(
+            p
+            for p in ((f"[the news already told] {news}" if news else ""), _kb_answer(state, rt))
+            if p
+        )
         or "(NO KNOWN ANSWER for this topic - say politely that it is not your area)"
     )
     # The topic is DETERMINISTIC when the FAQ matched — the model once copied a prompt
@@ -617,6 +635,13 @@ def _identification_notes(state, rt) -> list[str]:
             "without it you cannot see the caller's line or check the fault. Hints: the "
             "contract may be in another family member's name; a street may have been "
             "renamed; the street and house number are enough. Ask what they know."
+        )
+    news = _news_facts(state, rt)
+    if news:
+        out.append(
+            "THE NEWS YOU ALREADY TOLD — a question about the fault, when it will work or what "
+            f"to do is answered briefly ONLY from these facts, never „not my area“: {news} If "
+            "they get the notice that it is fixed and it still does not work, they should call us."
         )
     if state.closing.wrap_react_note:
         state.closing.wrap_react_note = False

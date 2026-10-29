@@ -78,6 +78,8 @@ def anchor_text(state, rt) -> str:
     announce back at the caller (live 2026-08-10)."""
     q = (state.dialog.last_question or "").strip()
     if not q:
+        if state.diagnosis.news_delivered or state.diagnosis.outage_reported:
+            return phrase("identification.anything_else")  # after the news nothing is being fixed
         return phrase("system.default_anchor")
     sentences = re.split(r"(?<=[.!?])\s+", q)
     questions = [x for x in sentences if x.strip().endswith("?")]

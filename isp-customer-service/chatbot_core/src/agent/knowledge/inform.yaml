@@ -26,15 +26,21 @@ billing_suspended:
 
 active_outage:
   template_key: "inform.active_outage.template"
+  # Klientas po žinios vėl klausia apie gedimą — trumpas priminimas iš tų pačių faktų.
+  asked_again_key: "inform.active_outage.reminder"
   fallback_key: "inform.active_outage.fallback"
   clarity_requirements: [what_is_wrong, what_is_being_done, when_restored, how_notified]
 
 node_fault_unregistered:
   template_key: "inform.node_fault_unregistered.template"
+  # Klientas po žinios vėl klausia apie gedimą — trumpas priminimas iš tų pačių faktų.
+  asked_again_key: "inform.node_fault_unregistered.reminder"
   clarity_requirements: [what_is_wrong, what_is_being_done, how_notified]
 
 switch_unreachable:
   template_key: "inform.switch_unreachable.template"
+  # Klientas po žinios vėl klausia apie gedimą — trumpas priminimas iš tų pačių faktų.
+  asked_again_key: "inform.switch_unreachable.reminder"
   clarity_requirements: [what_is_wrong, what_is_being_done, how_notified]
 
 # The caller's complaint is about a service their contract does not have (D-10).
