@@ -52,6 +52,28 @@ class TestUnheardQuestion:
         assert agent.state.voice.undelivered_tail is None  # superseded by the strong note
         block = context_card(agent.state, agent.runtime) or ""
         assert "YOUR QUESTION NEVER WENT OUT" in block and "lemputė" in block
+
+    def test_a_new_question_drops_the_stale_reply_but_keeps_its_question(self, db_connection):
+        """Live 2026-10-29: „Kada paskutinis mokėjimas?" got the answer AND the whole unheard
+        „Malonu, Tomai! Supratau, kad norėjote…" read out again."""
+        from agent.speak.context_card import context_card
+
+        agent = self._agent()
+        apply_delivery(
+            agent.state,
+            agent.runtime,
+            [
+                "Malonu, Tomai!",
+                "Supratau, kad norėjote kažką pasakyti.",
+                "Ar dar kuo galiu padėti?",
+            ],
+            0,
+        )
+        agent.state.dialog.last_heard = "Kada paskutinis mokėjimas?"
+        block = context_card(agent.state, agent.runtime) or ""
+        assert "THE CALLER ASKED A NEW QUESTION" in block
+        assert "Malonu, Tomai" not in block and "„Ar dar kuo galiu padėti?“" in block
+        assert "YOUR QUESTION NEVER WENT OUT" not in block
         assert "KLAUSIMAS NEIŠĖJO" not in (context_card(agent.state, agent.runtime) or "")
 
     def test_heard_question_keeps_the_ask(self, db_connection):

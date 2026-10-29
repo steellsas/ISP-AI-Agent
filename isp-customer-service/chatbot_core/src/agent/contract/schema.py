@@ -116,6 +116,9 @@ class InformEntry(_Model):
     # What to say when the caller asks about this news AFTER hearing it — rendered from the
     # same facts, so the answer can never contradict what was just delivered.
     asked_again_key: str | None = None
+    # What to say when the caller questions the news while the registration is offered
+    # („O kodėl jūs nematote mano mokėjimo?") — what the agent sees, from the same facts.
+    dispute_key: str | None = None
     clarity_requirements: list[
         Literal[
             "what_is_wrong", "what_to_do", "what_is_being_done", "when_restored", "how_notified"

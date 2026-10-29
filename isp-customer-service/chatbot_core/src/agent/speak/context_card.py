@@ -481,6 +481,27 @@ def _delivery(state, rt) -> list[str]:
             f"YOU HAVE JUST SAID (the caller missed it earlier, the engine said it again): "
             f"„{just[:220]}“ — do NOT repeat any of it; go on with the rest of your reply."
         )
+    from ..perceive.detectors import is_real_question
+
+    if is_real_question(state.dialog.last_heard) and (
+        state.voice.undelivered_tail or state.voice.unheard_question
+    ):
+        # The caller has moved on and asks something new: the words they missed are stale —
+        # repeating them buried the answer (live 2026-10-29).
+        import re
+
+        asked = [
+            x
+            for x in re.split(r"(?<=[.!?])\s+", state.voice.unheard_question or "")
+            if x.endswith("?")
+        ]
+        state.voice.undelivered_tail = None
+        state.voice.unheard_question = None
+        out.append(
+            "THE CALLER ASKED A NEW QUESTION over your last reply: answer THAT. Do NOT repeat "
+            "your earlier reply they did not hear"
+            + (f" — only end with its question: „{asked[-1]}“" if asked else ".")
+        )
     tail = state.voice.undelivered_tail
     if tail:
         state.voice.undelivered_tail = None

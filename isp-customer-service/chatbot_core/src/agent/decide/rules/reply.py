@@ -254,6 +254,17 @@ def reply_plan(state: Any, rt: Any, user_input: str | None) -> TurnPlan | None:
             return _words("inform.debt_offer", phrase("identification.debt_dispute_offer"))
         if offer == "clarify":
             return _words("inform.debt_offer", phrase("identification.debt_dispute_clarify"))
+        if offer == "explain":
+            from ...inform import inform_text
+
+            reason = (s.diagnosis.verdicts.get("network") or {}).get("reason")
+            seen = inform_text(state, rt, reason, key="dispute_key") or inform_text(
+                state, rt, reason, key="asked_again_key"
+            )
+            return _words(
+                "inform.debt_explain",
+                f"{seen or ''} {phrase('identification.debt_dispute_ask_again')}".strip(),
+            )
         if offer == "start":
             return _words(*ticket_question_turn(state, rt))
     # „Ar teisingai supratau — <adresas>?" and its follow-ups: the engine's own words, built

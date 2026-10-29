@@ -219,3 +219,16 @@ def test_name_fragments_do_not_use_up_the_reminder(diagnosing):
     assert c.rule == "inform.remind"
     c.say("Kodas nevyk internetas.")
     assert c.rule == "inform.remind" and not c.state.closing.case_closed
+
+
+def test_a_question_in_the_debt_offer_is_answered_from_the_facts(diagnosing):
+    """„Kodėl nematote mano mokėjimo?" — atsakymas iš faktų, tada vėl pasiūlymas"""
+    c = diagnosing("billing_suspended")
+    c.say("Gerai")
+    assert "Ar registruoti?" in c.say("Aš liepos mėnesį mokėjau 40 eurų.")
+    reply = c.say("O kodėl jūs nematote tą mokėjimą?")
+    assert c.rule == "inform.debt_explain"
+    assert reply.startswith("Matau tik sąskaitos būseną: skola 49")
+    assert reply.endswith("Ar užregistruoti jūsų klausimą?")
+    c.say("Gerai, užregistruokit")
+    assert c.state.ticket.request_type == "billing_request"

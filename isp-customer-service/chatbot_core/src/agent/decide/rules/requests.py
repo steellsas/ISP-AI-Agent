@@ -66,6 +66,7 @@ def debt_dispute_due(state: Any, user_input: str | None) -> bool:
 def debt_offer_turn(state: Any, rt: Any, user_input: str | None) -> str | None:
     """After the debt news: a dispute gets the offer to register it for the responsible
     person — the agent does not explain bills. Returns "ask" (the offer goes out now),
+    "explain" (the caller asked a question: what the agent sees, then the offer again),
     "clarify" (the answer was unclear: asked once more), "start" (they agreed: the contact
     dialogue starts), or None (not this rule's turn).
 
@@ -79,6 +80,21 @@ def debt_offer_turn(state: Any, rt: Any, user_input: str | None) -> str | None:
         from ...perceive.detectors import detect_ticket_consent
 
         answer = detect_ticket_consent(user_input)
+        from ...contract.locale import vocab
+        from ...perceive.detectors import is_real_question
+
+        text = (user_input or "").strip()
+        opens = text.lower().split()[:2]
+        if (
+            answer is None
+            and is_real_question(text)
+            and ("?" in text or any(w in vocab("debt_question_openers") for w in opens))
+        ):
+            # „O kodėl jūs nematote mano mokėjimo?" — answered from the facts, then the offer
+            # stands; a question is not an unclear answer.
+            register(state, rt, "inform", "debt_offer")
+            rt.tracer.emit("decision", intent="debt_offer", action="explain")
+            return "explain"
         if answer is None and c.debt_offer == "asked":
             c.debt_offer = "clarify"
             register(state, rt, "inform", "debt_offer")
