@@ -43,6 +43,20 @@ def mentions_other_street(state, rt, text: str | None) -> bool:
     )
 
 
+def short_address_part(state: Any, text: str | None) -> bool:
+    """While the account code is awaited, a short number („5", „penki", „butas 25") is
+    the missing house or flat, not the code: the code has five digits and the street is
+    already known."""
+    import re
+
+    from ..contract.locale import lang
+
+    if not state.identity.profile.street.value:
+        return False
+    digits = re.findall(r"\d+", lang().normalize_numbers(text or ""))
+    return bool(digits) and all(len(d) <= 3 for d in digits)
+
+
 def prefill_slots_from_text(state: Any, rt: Any, text: str) -> None:
     """Deterministic NLU Track A: extract the address from the caller's turn and
     propose it into the slots BEFORE the LLM runs (docs/archive/chatbot_core/pokalbio_variklis.md §4).
@@ -95,7 +109,9 @@ def prefill_slots_from_text(state: Any, rt: Any, text: str) -> None:
     # in the turn — wakes the reader; bare digits stay silenced (the code).
     if state.identity.account_code_mode:
         low_cd = (text or "").lower()
-        if not any(w in low_cd for w in vocab("street_words")):
+        if not any(w in low_cd for w in vocab("street_words")) and not short_address_part(
+            state, text
+        ):
             return
     # NLU wave block 4: the spelling turn carries LETTERS ("K kaip Kaunas"),
     # not an address — the fuzzy reader would turn the anchor words into a
@@ -151,7 +167,9 @@ def prefill_slots_from_text(state: Any, rt: Any, text: str) -> None:
             state.identity.suggested_city = None
             rt.tracer.emit("decision", intent="city_suggestion", action="accepted", value=str(sug))
 
-    low = (text or "").lower()
+    from ..contract.locale import lang
+
+    low = lang().normalize_numbers(text or "").lower()
     has_addr_evidence = any(ch.isdigit() for ch in low) or any(
         w in low for w in vocab("address_words")
     )

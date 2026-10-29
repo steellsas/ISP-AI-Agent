@@ -68,6 +68,9 @@ class TestNormalizeLtNumbers:
             ("du šimtai", "200"),
             ("septintas", "7"),  # ordinal (butas septintas)
             ("penktas", "5"),
+            ("Pinkė", "5"),  # Whisper's "penki"
+            ("Pinki", "5"),
+            ("Pinky", "5"),
         ],
     )
     def test_number_words_to_digits(self, spoken, expected):

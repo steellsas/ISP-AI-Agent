@@ -90,7 +90,7 @@ def extract_caller_name(text: str | None) -> str | None:
     import re as _re
 
     m = _re.search(rf"vard(?:as|u)(?:\s+yra)?\s+({vocab_text('name_word')})", text, _re.IGNORECASE)
-    if m:
+    if m and m.group(1).lower() not in vocab_set("name_stop_words"):
         return m.group(1).capitalize()
     for tok in _re.findall(vocab_text("name_word"), text):
         if tok.lower() not in vocab_set("name_stop_words") and len(tok) >= 3:

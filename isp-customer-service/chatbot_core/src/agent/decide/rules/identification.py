@@ -660,7 +660,7 @@ def _account_code_rung(state: Any, rt: Any, s: Any, user_input: str | None):
 
         _q_register(state, rt, "ident", "address_need")
         rt.tracer.emit("decision", intent="account_code", action="warn")
-        return True, phrase("identification.address_need_warning")
+        return True, _address_need_warning(s)
     if n == limit - 1 and state.identity.address_warned:
         # U8 (Andrius, 2026-10-09): the last prompt says what happens without an answer.
         rt.tracer.emit("decision", intent="account_code", action="last_warning")
@@ -670,6 +670,20 @@ def _account_code_rung(state: Any, rt: Any, s: Any, user_input: str | None):
         rt.tracer.emit("decision", intent="account_code", action="no_location_close")
         return True, phrase("identification.no_location_goodbye")
     return False, None
+
+
+def _address_need_warning(s) -> str:
+    """The warning names the part of the address already heard and asks only for the
+    missing one; with nothing heard it asks for the whole address."""
+    from ...contract.locale import phrase
+
+    p = s.identity.profile
+    street, house = p.street.value, p.house.value
+    if street and house and not p.apartment.value:
+        return phrase("identification.address_need_apartment", known=f"{street} {house}")
+    if street and not house:
+        return phrase("identification.address_need_house", known=street)
+    return phrase("identification.address_need_warning")
 
 
 def _address_move(state, rt, s):

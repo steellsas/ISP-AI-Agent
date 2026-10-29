@@ -18,7 +18,11 @@ from ...dialog_utils import last_agent_question
 from ...execute.ticket import request_ticket
 from ...perceive.caller import holder_name_matches
 from ...perceive.detectors import detect_farewell, detect_ticket_consent
-from ...perceive.slots import mentions_other_street, prefill_slots_from_text
+from ...perceive.slots import (
+    mentions_other_street,
+    prefill_slots_from_text,
+    short_address_part,
+)
 from ...trace import trace_note
 from .identification import engine_resolve_from_slots, reopen_identification
 from .ticket import caller_owed, ticket_capture
@@ -540,6 +544,7 @@ def unidentified_address(state: Any, rt: Any, user_input: str) -> bool:
                 and not (
                     state.identity.account_code_mode
                     and not (state.turn.address_reading or {}).get("street")
+                    and not short_address_part(state, user_input)
                 )
             ):
                 if ask_heard_address(state, rt):

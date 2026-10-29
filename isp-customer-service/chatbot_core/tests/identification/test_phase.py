@@ -287,6 +287,31 @@ def test_the_found_address_is_confirmed_in_the_engines_words(call):
     assert c.rule == "identification.address_heard_confirm"
 
 
+def test_the_warning_asks_only_for_the_missing_flat(call):
+    """Įspėjimas klausia tik trūkstamo buto; „Pinkė" tampa butu, kodas vis dar veikia"""
+    c = call()
+    c.say("Neveikia internetas")
+    c.say("Dainų gatvėje mes turim.")
+    c.say("Na, mano numeris 5.")
+    c.say("Ir ką?")
+    warned = c.say("Nežinau")
+    assert warned.startswith("Adresą Dainų g. 5 jau turiu, dar reikia buto numerio.")
+    assert c.say("Pinkė") == "Ar teisingai supratau — Šiauliai, Dainų g. 5, butas 5?"
+    c.say("Taip")
+    assert c.identity.customer_id == "CUST102"
+
+
+def test_the_code_is_still_heard_after_the_flat_warning(call):
+    """Po buto įspėjimo abonento kodas atpažįstamas"""
+    c = call()
+    c.say("Neveikia internetas")
+    c.say("Dainų gatvėje mes turim.")
+    c.say("Na, mano numeris 5.")
+    c.say("Ir ką?")
+    c.say("Nežinau")
+    assert "Išgirdau kodą" in c.say("AB-10102")
+
+
 def test_an_unclear_answer_asks_again_then_offers_the_code(call):
     """Neaiškus atsakymas: dar kartą, po trijų — abonento kodas"""
     c = call()
