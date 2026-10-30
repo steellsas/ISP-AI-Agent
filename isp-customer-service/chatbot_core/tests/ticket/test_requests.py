@@ -97,6 +97,33 @@ class TestDebtDispute:
         assert requests.debt_offer_turn(state, rt, "Liepos mėnesį 40 eur.") == "ask_facts"
         assert requests.debt_offer_turn(state, rt, "Nežinau") == "offer"
 
+    def test_a_question_while_the_details_are_asked_is_answered_and_kept(
+        self, make_state, make_runtime
+    ):
+        state = self._told_debt(make_state)
+        rt = make_runtime()
+        assert requests.debt_offer_turn(state, rt, "Aš mokėjau. Liepos 12 diena? 40 eurų.") == (
+            "ask_facts"
+        )
+        assert requests.debt_offer_turn(state, rt, "Jūs to nematot?") == "facts_question"
+        assert state.closing.debt_questions == ["Jūs to nematot?"]
+
+    def test_details_after_the_offer_add_to_the_way_of_paying(self, make_state, make_runtime):
+        state = self._told_debt(make_state)
+        rt = make_runtime()
+        requests.debt_offer_turn(state, rt, "Aš mokėjau liepos 12 d. 40 eurų pavedimu")
+        assert requests.debt_offer_turn(state, rt, "Per Svetbanką.") == "noted"
+        assert state.closing.debt_claim["how"] == "banko pavedimu, per Swedbank"
+        assert state.closing.debt_offer_unclear == 0
+        assert requests.debt_offer_turn(state, rt, "Taip") == "start"
+
+    def test_a_sum_after_the_month_is_no_day(self, make_state, make_runtime):
+        state = self._told_debt(make_state)
+        requests.debt_offer_turn(state, make_runtime(), "Aš mokėjau liepą 40 eur per banką")
+        assert state.closing.debt_claim["when"] == "liepos mėn."
+        requests.debt_offer_turn(state, make_runtime(), "Per Swedbank")
+        assert state.closing.debt_claim["how"] == "per Swedbank"
+
     def test_an_amount_and_a_month_alone_are_a_claim(self, make_state, make_runtime):
         state = self._told_debt(make_state)
         assert requests.debt_offer_turn(state, make_runtime(), "Liepos mėnesis 40 eur.") == (

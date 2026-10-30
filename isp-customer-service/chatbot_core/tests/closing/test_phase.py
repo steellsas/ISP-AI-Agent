@@ -228,7 +228,9 @@ def test_a_disputed_payment_goes_to_the_accounting_with_its_details(diagnosing):
     asked = c.say("Žinokit, aš sumokėjau liepos mėnesį 40 eurų.")
     assert c.rule == "inform.debt_claim" and "kokiu būdu" in asked and "kada" not in asked
     offer = c.say("Pavedimu per Swedbank.")
-    assert "(liepos mėn., banko pavedimu, 40 €)" in offer and offer.endswith("Ar registruoti?")
+    assert "(liepos mėn., banko pavedimu, per Swedbank, 40 €)" in offer and offer.endswith(
+        "Ar registruoti?"
+    )
     explained = c.say("O kodėl jūs nematote mano mokėjimo?")
     assert c.rule == "inform.debt_explain" and explained.endswith("Ar registruoti?")
     for said in ("Pasižiūrėkit.", "Taip, tinka.", "Bet kada"):
@@ -240,7 +242,7 @@ def test_a_disputed_payment_goes_to_the_accounting_with_its_details(diagnosing):
         cur.execute("SELECT details FROM tickets WHERE ticket_id = ?", (c.state.ticket.ticket_id,))
         text = dict(cur.fetchone())["details"]
     assert text.startswith("Skolos ginčas. Klientas atjungtas už skolą 49")
-    assert "Kliento teiginys: mokėjo liepos mėn., banko pavedimu, 40 €" in text
+    assert "Kliento teiginys: mokėjo liepos mėn., banko pavedimu, per Swedbank, 40 €" in text
     assert "Kliento klausimai: O kodėl jūs nematote mano mokėjimo? Kontaktas" in text
 
 

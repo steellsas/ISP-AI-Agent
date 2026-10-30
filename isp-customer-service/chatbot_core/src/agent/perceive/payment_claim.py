@@ -28,17 +28,39 @@ def read_payment_claim(text: str | None) -> dict[str, str]:
     when = _when(low)
     if when:
         found["when"] = when
-    for stem, label in vocab_map("payment_methods").items():
-        if stem in low:
-            found["how"] = label
-            break
+    how = _how(low)
+    if how:
+        found["how"] = how
     return found
+
+
+def _how(low: str) -> str | None:
+    """„pavedimu per Swedbank" → „banko pavedimu, per Swedbank"; a vague „per banką" only alone."""
+    named = {s: label for s, label in vocab_map("payment_methods").items() if s in low}
+    vague = set(vocab("payment_methods_vague"))
+    if any(s not in vague for s in named):
+        named = {s: label for s, label in named.items() if s not in vague}
+    labels = list(dict.fromkeys(named.values()))
+    return ", ".join(labels) or None
+
+
+def merge_claim(old: dict[str, str], new: dict[str, str]) -> dict[str, str]:
+    """A later sentence corrects the date and the sum but adds to the way of paying."""
+    merged = {**old, **new}
+    before, after = old.get("how"), new.get("how")
+    vague = {vocab_map("payment_methods")[s] for s in vocab("payment_methods_vague")}
+    if before and after and before not in vague and after not in before:
+        merged["how"] = f"{before}, {after}"
+    elif before and after and after in before:
+        merged["how"] = before
+    return merged
 
 
 def _when(low: str) -> str | None:
     """A month („liepą", „liepos 10 d.") or a relative day („vakar", „prieš savaitę")."""
     for stem, month in vocab_map("payment_months").items():
-        m = re.search(rf"\b{stem}\w*(?:\s+(\d{{1,2}})(?:\s*d\.?)?)?", low)
+        # „liepą 40 eur" names the sum, not the 40th day.
+        m = re.search(rf"\b{stem}\w*(?:\s+(\d{{1,2}})(?![\d.,]*\s*(?:eur|€))(?:\s*d\.?)?)?", low)
         if m:
             day = m.group(1)
             return f"{month.split()[0]} {day} d." if day else month

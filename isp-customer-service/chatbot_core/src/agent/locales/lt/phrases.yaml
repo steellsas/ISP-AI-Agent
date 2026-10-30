@@ -37,6 +37,8 @@ identification:
   # Klientas sako, kad mokėjo: atsakingas asmuo ieško mokėjimo pagal šiuos duomenis (Andrius, 2026-10-30).
   debt_claim_ask: "Suprantu. Kad atsakingas asmuo galėtų rasti jūsų mokėjimą, pasakykite — {parts}?"
   debt_claim_ask_again: "Dar pasakykite — {parts}?"
+  debt_claim_question: "Šio mokėjimo sistemoje nematau — todėl ir klausiu, kad atsakingas asmuo galėtų jį rasti. Jūsų klausimą jam taip pat perduosiu. Pasakykite — {parts}?"
+  debt_claim_noted: "Ačiū, užsirašiau — {claim}. Ar registruoti jūsų klausimą atsakingam asmeniui?"
   debt_claim_part_when: "kada mokėjote"
   debt_claim_part_how: "kokiu būdu — banku, savitarnoje ar grynais"
   debt_claim_part_amount: "kokią sumą"

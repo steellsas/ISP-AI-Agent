@@ -1504,6 +1504,8 @@ payment_methods:
   internet bank: "per internetinę bankininkystę"
   bank: "per banką"
   swedbank: "per Swedbank"
+  svedbank: "per Swedbank"
+  svetbank: "per Swedbank"
   luminor: "per Luminor"
   seb: "per SEB"
   revolut: "per Revolut"
@@ -1519,6 +1521,10 @@ payment_methods:
   maxim: "Maximoje"
   narvesen: "Narvesen"
 # Atsakymas į „Ar registruoti?" ginčo metu: „pasižiūrėkit", „patikrinkit" — prašo patikrinti, t. y. taip.
+# „Jūs to nematot?" — an objection to what we see, a question though no question word is in it.
+debt_objection_asked: ["nematot", "nematai", "nerandat", "nerandi", "neužskait", "neuzskait", "negavot", "negavo"]
+# A way that says less than another named one („per banką" next to „per Swedbank") is dropped.
+payment_methods_vague: ["bank"]
 debt_consent_extra: ["žinoma", "zinoma", "pasižiūrėk", "pasiziurek", "patikrink", "išsiaiškink", "issiaiskink", "perduok", "sujunk", "perjunk"]
 # Aiškus prašymas perduoti žmogui, kai agentas pats nebeklausia.
 debt_handover_request: ["užregistruok", "uzregistruok", "registruok", "sujunk", "perjunk", "su žmogumi", "su zmogumi", "su operator", "su buhalter", "noriu, kad paskambint", "noriu kad paskambint", "noriu, kad pasakyt", "noriu kad pasakyt", "perduok"]

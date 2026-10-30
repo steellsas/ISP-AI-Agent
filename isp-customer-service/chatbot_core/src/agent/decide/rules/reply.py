@@ -543,11 +543,18 @@ def _debt_words(state: Any, rt: Any, offer: str) -> TurnPlan:
         from .ticket import ticket_question_turn
 
         return _words(*ticket_question_turn(state, rt))
-    if offer == "ask_facts":
+    if offer in ("ask_facts", "facts_question"):
         parts = [phrase(f"identification.debt_claim_part_{p}") for p in missing_parts(c.debt_claim)]
         joined = parts[0] if len(parts) == 1 else f"{', '.join(parts[:-1])} ir {parts[-1]}"
         key = "debt_claim_ask" if c.debt_claim_asks == 1 else "debt_claim_ask_again"
+        if offer == "facts_question":
+            key = "debt_claim_question"
         return _words("inform.debt_claim", phrase(f"identification.{key}", parts=joined))
+    if offer == "noted":
+        return _words(
+            "inform.debt_offer",
+            phrase("identification.debt_claim_noted", claim=debt_claim_text(state)),
+        )
     if offer == "declined":
         return _words("inform.debt_declined", phrase("identification.debt_declined"))
     if offer == "clarify":

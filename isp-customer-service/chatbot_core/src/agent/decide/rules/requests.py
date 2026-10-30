@@ -101,10 +101,10 @@ def _clean(text: str | None) -> str:
 
 def _note(state: Any, text: str | None) -> None:
     """What the caller said in the dispute: the payment details and their questions."""
-    from ...perceive.payment_claim import read_payment_claim
+    from ...perceive.payment_claim import merge_claim, read_payment_claim
 
     c = state.closing
-    c.debt_claim = {**c.debt_claim, **read_payment_claim(text)}
+    c.debt_claim = merge_claim(c.debt_claim, read_payment_claim(text))
     said = _clean(text)
     if said and _asks_a_question(text) and said not in c.debt_questions:
         c.debt_questions = [*c.debt_questions, said]
@@ -137,7 +137,11 @@ def _asks_a_question(text: str | None) -> bool:
     from ...perceive.detectors import is_real_question
 
     t = (text or "").strip()
-    opens = t.lower().split()[:2]
+    low = t.lower()
+    opens = low.split()[:2]
+    if "?" in t and any(m in low for m in vocab("debt_objection_asked")):
+        # „Jūs to nematot?" — an objection asked, though no question word is in it.
+        return True
     return is_real_question(t) and (
         "?" in t or any(w in vocab("debt_question_openers") for w in opens)
     )
@@ -150,15 +154,17 @@ def debt_offer_turn(state: Any, rt: Any, user_input: str | None) -> str | None:
 
     Returns what the engine says this turn:
       "ask_facts" — the caller says they paid: ask for the missing details (twice at most);
+      "facts_question" — a question while the details are asked: answered, then asked again;
       "offer"     — the details are in (or it is not about a payment): offer to register;
       "explain"   — a question while the offer stands: what the agent sees, then the offer;
+      "noted"     — more payment details after the offer: noted, the offer asked again;
       "clarify"   — an unclear answer to the offer: asked again, never taken as a no;
       "start"     — yes: the contact dialogue starts;
       "declined"  — a clear no;
       None        — not this rule's turn.
     """
     from ...contract import limits
-    from ...perceive.payment_claim import missing_parts
+    from ...perceive.payment_claim import missing_parts, read_payment_claim
     from ..question import clear, register
 
     c = state.closing
@@ -171,10 +177,14 @@ def debt_offer_turn(state: Any, rt: Any, user_input: str | None) -> str | None:
             and c.debt_claim_asks < limits.get("debt_claim_asks_max")
             and not wants_handover(user_input)
         ):
+            # „Jūs to nematot?" is answered before the details are asked again; the opening
+            # „Kaip tai skola, aš sumokėjau" is the dispute itself and gets the plain ask.
+            asked = c.debt_claim_asks > 0 and _asks_a_question(user_input)
             c.debt_claim_asks += 1
             register(state, rt, "inform", "debt_claim")
-            rt.tracer.emit("decision", intent="debt_offer", action="ask_facts")
-            return "ask_facts"
+            action = "facts_question" if asked else "ask_facts"
+            rt.tracer.emit("decision", intent="debt_offer", action=action)
+            return action
         return _offer(state, rt)
     if c.debt_offer == "asked":
         answer = _debt_consent(user_input)
@@ -193,6 +203,10 @@ def debt_offer_turn(state: Any, rt: Any, user_input: str | None) -> str | None:
         if _asks_a_question(user_input):
             rt.tracer.emit("decision", intent="debt_offer", action="explain")
             return "explain"
+        if read_payment_claim(user_input):
+            # „Per Swedbank." after the offer adds to the details: noted, the offer stands.
+            rt.tracer.emit("decision", intent="debt_offer", action="noted")
+            return "noted"
         c.debt_offer_unclear += 1
         rt.tracer.emit("decision", intent="debt_offer", action="clarify", n=c.debt_offer_unclear)
         return "clarify"

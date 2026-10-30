@@ -21,6 +21,8 @@ Agentas: priežastis (skola 49,98 € už liepą–rugpjūtį, paskutinis mokėj
    ├─ „Aš mokėjau" / „Liepą 40 eur" ─► klausia, ko trūksta:
    │      „Kad atsakingas asmuo galėtų rasti jūsų mokėjimą, pasakykite —
    │       kada mokėjote, kokią sumą ir kokiu būdu?"   (≤ 2 kartus)
+   │      klausimas („Jūs to nematot?") ─► „Šio mokėjimo sistemoje nematau — todėl ir
+   │       klausiu…" + ko trūksta; klausimas įrašomas į tiketą
    │                    │
    ├─ „Nesutinku" ──────┤
    │                    ▼
@@ -30,6 +32,7 @@ Agentas: priežastis (skola 49,98 € už liepą–rugpjūtį, paskutinis mokėj
    │                    │
    │     taip / „pasižiūrėkit" ──► kontaktas → tiketas buhalterijai
    │     klausimas („kodėl nematot?") ──► faktai + „Į tai atsakyti negaliu … Ar registruoti?"
+   │     dar faktų („Per Swedbank") ──► „Ačiū, užsirašiau — … Ar registruoti?"
    │     neaišku ──► klausia dar kartą (niekada nelaikoma „ne")
    │     ne ──► „Gerai, neregistruoju. Ar dar kuo galiu padėti?"
    │
