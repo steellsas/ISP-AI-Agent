@@ -187,15 +187,16 @@ class TestWrapUpHearing:
         r = scripted_words(agent.state, agent.runtime, "Ačiū, viso gero")
         assert agent.state.closing.case_closed and r and "Geros dienos" in r
 
-    def test_content_turns_capped_then_close(self, db_connection):
-        """Darkytas atsisveikinimas („Nusigaro") — po 2 reakcijų uždaroma."""
+    def test_content_turns_capped_then_asked(self, db_connection):
+        """Darkytas atsisveikinimas („Nusigaro") — po 2 reakcijų agentas klausia, o ne uždaro
+        (Andrius, 2026-10-30: pokalbis nenutrūksta, kai baigiasi bandymai)."""
         from agent.decide.rules.reply import scripted_words
 
         agent = self._informed()
         assert scripted_words(agent.state, agent.runtime, "Nusigaro") is None
         assert scripted_words(agent.state, agent.runtime, "Nusigaro visai") is None
         r = scripted_words(agent.state, agent.runtime, "Nusigaro vėl")
-        assert agent.state.closing.case_closed and r and "Geros dienos" in r
+        assert not agent.state.closing.case_closed and r == "Ar dar kuo galiu padėti?"
 
 
 class TestTicketCallback:

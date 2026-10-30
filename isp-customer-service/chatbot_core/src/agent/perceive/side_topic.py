@@ -21,11 +21,11 @@ def classify_side_topic(state, rt, user_input: str | None) -> bool:
     if not user_input or not s.identity.customer_id or s.closing.case_closed or state.ticket.stage:
         return False
 
-    if (
-        state.dialog.end_confirm_pending
-        or state.dialog.resume_hold_due
-        or state.closing.debt_offer == "asked"
-    ):
+    if state.dialog.end_confirm_pending or state.dialog.resume_hold_due:
+        return False
+    from ..decide.rules.requests import debt_dialogue_running
+
+    if debt_dialogue_running(state):
         return False
     # A disputed debt answers our own news — the debt offer owns it (D-11).
     from ..decide.rules.requests import debt_dispute_due

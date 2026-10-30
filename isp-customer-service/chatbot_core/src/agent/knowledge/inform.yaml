@@ -24,6 +24,7 @@ billing_suspended:
   asked_again_key: "inform.billing_suspended.amount_again"
   # Klientas ginčija skolą ir klausia, kodėl nematom jo mokėjimo — ką matom, iš tų pačių faktų.
   dispute_key: "inform.billing_suspended.dispute"
+  ticket_key: "ticket.details.debt_system"
   clarity_requirements: [what_is_wrong, what_to_do, when_restored]
 
 active_outage:

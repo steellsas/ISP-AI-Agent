@@ -1405,7 +1405,7 @@ polarity_yes: ["turiu", "turim", "taip", "yra"]
 # The narrator CLAIMED a registration ("Užregistravau gedimą…") ...
 # A PROMISE counts too („užregistruosiu jūsų klausimą", live 2026-10-07): words may not
 # outrun the engine in either tense — the promise becomes the contact dialogue.
-registration_claim: ["užregistrav", "uzregistrav", "užregistruoj", "uzregistruoj", "registruoju gedim", "užregistruosiu", "uzregistruosiu", "registruosiu", "užregistruosim", "uzregistruosim"]
+registration_claim: ["registracija atlikta", "registracija jau atlikta", "užregistruota", "uzregistruota", "užregistrav", "uzregistrav", "užregistruoj", "uzregistruoj", "registruoju gedim", "užregistruosiu", "uzregistruosiu", "registruosiu", "užregistruosim", "uzregistruosim"]
 # ... about the ticket/technician (not a MAC bind "užregistravau routerį").
 registration_claim_subject: ["gedim", "meistr", "tiket", "koleg", "technik", "klausim", "prašym", "prasym", "atsaking", "kreipim"]
 # "ne aš sudariau sutartį" — explicitly not the contract holder.
@@ -1475,10 +1475,56 @@ repeat_nobody_came: ["niekas neatvyko", "niekas neatvažiavo", "neatvažiavo", "
 # --- agent/decide/rules/requests.py --------------------------------------------------------
 
 # The caller disputes the debt they were told about, or does not understand it (D-11).
-debt_dispute: ["nesutink", "neteising", "klaid", "sumokėjau", "sumokejau", "apmokėjau", "apmokejau", "mokėjau", "mokejau", "nesuprantu", "neaišku", "neaisku", "kodėl tiek", "kodel tiek", "kodėl tokia", "kodel tokia", "per didel", "ne mano skola", "neturiu skol", "iš kur skola", "is kur skola", "kaip tai skola"]
+debt_dispute: ["mokiau", "sumokiau", "mokėjom", "mokejom", "sumokėjom", "sumokejom", "pervedžiau", "pervedziau", "nematot", "nematote", "neužskait", "neuzskait", "neįskait", "neiskait", "kur mano pinig", "nesutink", "neteising", "klaid", "sumokėjau", "sumokejau", "apmokėjau", "apmokejau", "mokėjau", "mokejau", "nesuprantu", "neaišku", "neaisku", "kodėl tiek", "kodel tiek", "kodėl tokia", "kodel tokia", "per didel", "ne mano skola", "neturiu skol", "iš kur skola", "is kur skola", "kaip tai skola"]
+# Skolos ginčas: kliento teiginys, kad mokėjo. Pagal šiuos duomenis atsakingas asmuo ieško
+# mokėjimo (Andrius, 2026-10-30): kada, kokiu būdu, kokia suma.
+payment_claim_words: ["mokėj", "mokej", "mokiau", "sumok", "apmok", "pervedž", "pervedz", "pinig"]
+payment_months:
+  saus: "sausio mėn."
+  vasar: "vasario mėn."
+  kov: "kovo mėn."
+  baland: "balandžio mėn."
+  geguž: "gegužės mėn."
+  geguz: "gegužės mėn."
+  biržel: "birželio mėn."
+  birzel: "birželio mėn."
+  liep: "liepos mėn."
+  rugpj: "rugpjūčio mėn."
+  rugsėj: "rugsėjo mėn."
+  rugsej: "rugsėjo mėn."
+  spal: "spalio mėn."
+  lapkr: "lapkričio mėn."
+  gruod: "gruodžio mėn."
+payment_relative_days: ["vakar", "užvakar", "uzvakar", "šiandien", "siandien", "prieš", "pries", "praeit"]
+payment_relative_needs_next: ["prieš", "pries", "praeit"]
+payment_methods:
+  pavedim: "banko pavedimu"
+  pervedž: "banko pavedimu"
+  pervedz: "banko pavedimu"
+  internet bank: "per internetinę bankininkystę"
+  bank: "per banką"
+  swedbank: "per Swedbank"
+  luminor: "per Luminor"
+  seb: "per SEB"
+  revolut: "per Revolut"
+  savitarn: "per savitarną"
+  programėl: "per programėlę"
+  programel: "per programėlę"
+  kortel: "kortele"
+  grynais: "grynais"
+  kasoj: "grynais kasoje"
+  pašt: "pašte"
+  past: "pašte"
+  perl: "Perlo terminale"
+  maxim: "Maximoje"
+  narvesen: "Narvesen"
+# Atsakymas į „Ar registruoti?" ginčo metu: „pasižiūrėkit", „patikrinkit" — prašo patikrinti, t. y. taip.
+debt_consent_extra: ["žinoma", "zinoma", "pasižiūrėk", "pasiziurek", "patikrink", "išsiaiškink", "issiaiskink", "perduok", "sujunk", "perjunk"]
+# Aiškus prašymas perduoti žmogui, kai agentas pats nebeklausia.
+debt_handover_request: ["užregistruok", "uzregistruok", "registruok", "sujunk", "perjunk", "su žmogumi", "su zmogumi", "su operator", "su buhalter", "noriu, kad paskambint", "noriu kad paskambint", "noriu, kad pasakyt", "noriu kad pasakyt", "perduok"]
 # „Kiek…?" after the news asks for the amount, not a dispute — unless a clear objection is there too.
 debt_amount_question: ["kiek"]
-debt_dispute_strong: ["nesutink", "neteising", "klaid", "sumokėjau", "sumokejau", "apmokėjau", "apmokejau", "aš mokėjau", "as mokejau", "per didel", "ne mano skola", "neturiu skol", "iš kur skola", "is kur skola", "kaip tai skola", "kodėl tiek", "kodel tiek", "kodėl tokia", "kodel tokia"]
+debt_dispute_strong: ["mokiau", "sumokiau", "mokėjom", "mokejom", "sumokėjom", "sumokejom", "pervedžiau", "pervedziau", "nematot", "neužskait", "neuzskait", "nesutink", "neteising", "klaid", "sumokėjau", "sumokejau", "apmokėjau", "apmokejau", "aš mokėjau", "as mokejau", "per didel", "ne mano skola", "neturiu skol", "iš kur skola", "is kur skola", "kaip tai skola", "kodėl tiek", "kodel tiek", "kodėl tokia", "kodel tokia"]
 
 # --- agent/intents.py ------------------------------------------------------------------------
 

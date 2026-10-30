@@ -61,6 +61,7 @@ reply_stop_chars: 200               # past this, a streamed reply ends at its ne
 side_topic_streak_max: 3            # side-topic turns in a row before the fixed "back to the issue" reply
 wrap_content_turns_max: 2           # content turns in the inform wrap-up that still get an LLM reaction
 required_redeliver_max: 2           # times a cut required sentence (news, disclosure) is said again before the narrator takes over
+debt_claim_asks_max: 2              # times the agent asks when/how/how much the caller paid before offering anyway
 nlu_street_match_threshold: 0.75    # registry match score that accepts a street
 nlu_city_match_threshold: 0.85      # registry match score that accepts a city
 

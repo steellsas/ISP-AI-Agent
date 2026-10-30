@@ -221,14 +221,35 @@ def test_name_fragments_do_not_use_up_the_reminder(diagnosing):
     assert c.rule == "inform.remind" and not c.state.closing.case_closed
 
 
-def test_a_question_in_the_debt_offer_is_answered_from_the_facts(diagnosing):
-    """„Kodėl nematote mano mokėjimo?" — atsakymas iš faktų, tada vėl pasiūlymas"""
+def test_a_disputed_payment_goes_to_the_accounting_with_its_details(diagnosing):
+    """Ginčas: kada, kiek, kaip mokėjo → pasiūlymas → tiketas su faktais buhalterijai"""
     c = diagnosing("billing_suspended")
     c.say("Gerai")
-    assert "Ar registruoti?" in c.say("Aš liepos mėnesį mokėjau 40 eurų.")
-    reply = c.say("O kodėl jūs nematote tą mokėjimą?")
-    assert c.rule == "inform.debt_explain"
-    assert reply.startswith("Matau tik sąskaitos būseną: skola 49")
-    assert reply.endswith("Ar užregistruoti jūsų klausimą?")
-    c.say("Gerai, užregistruokit")
-    assert c.state.ticket.request_type == "billing_request"
+    asked = c.say("Žinokit, aš sumokėjau liepos mėnesį 40 eurų.")
+    assert c.rule == "inform.debt_claim" and "kokiu būdu" in asked and "kada" not in asked
+    offer = c.say("Pavedimu per Swedbank.")
+    assert "(liepos mėn., banko pavedimu, 40 €)" in offer and offer.endswith("Ar registruoti?")
+    explained = c.say("O kodėl jūs nematote mano mokėjimo?")
+    assert c.rule == "inform.debt_explain" and explained.endswith("Ar registruoti?")
+    for said in ("Pasižiūrėkit.", "Taip, tinka.", "Bet kada"):
+        c.say(said)
+    assert c.state.ticket.ticket_id
+    from agent.tools import get_db
+
+    with get_db().cursor() as cur:
+        cur.execute("SELECT details FROM tickets WHERE ticket_id = ?", (c.state.ticket.ticket_id,))
+        text = dict(cur.fetchone())["details"]
+    assert text.startswith("Skolos ginčas. Klientas atjungtas už skolą 49")
+    assert "Kliento teiginys: mokėjo liepos mėn., banko pavedimu, 40 €" in text
+    assert "Kliento klausimai: O kodėl jūs nematote mano mokėjimo? Kontaktas" in text
+
+
+def test_the_call_is_not_ended_while_the_caller_talks(diagnosing):
+    """Po ribos agentas klausia „Ar dar kuo galiu padėti?", o ne atsisveikina"""
+    c = diagnosing("billing_suspended")
+    c.say("Gerai")
+    for said in ("Labas", "Kažkas", "Dar kažkas"):
+        c.say(said)
+    assert not c.state.closing.case_closed
+    c.say("Ne, viso gero")
+    assert c.state.closing.case_closed

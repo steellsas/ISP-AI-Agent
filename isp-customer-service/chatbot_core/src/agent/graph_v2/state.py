@@ -350,9 +350,15 @@ class ClosingState(BaseModel):
     secondary_problems_asked: bool = False
     # A repeat call's note went onto this open ticket instead of a new one (D-12).
     appended_ticket_id: str | None = None
-    # A disputed debt (D-11): None | "asked" (the offer to register it is out) | "clarify"
-    # (the answer was unclear, asked once more) | "answered".
+    # A disputed debt (D-11): None | "facts" (asking when/how/how much they paid) | "asked"
+    # (the offer to register it is out) | "answered" (yes) | "declined" (a clear no).
     debt_offer: str | None = None
+    # The caller's payment as they told it — {"when", "how", "amount"}; the ticket carries it.
+    debt_claim: dict[str, str] = Field(default_factory=dict)
+    debt_claim_asks: int = 0
+    # The caller's questions the agent could not answer — the responsible person answers them.
+    debt_questions: list[str] = Field(default_factory=list)
+    debt_offer_unclear: int = 0
     # Why a call ended before the caller was identified ("stuck", "not_a_customer") —
     # the contact record's unidentified_reason (D-14).
     unidentified_reason: str | None = None

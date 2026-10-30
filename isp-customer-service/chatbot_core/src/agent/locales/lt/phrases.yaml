@@ -34,8 +34,18 @@ identification:
   # The caller disputes the debt or does not understand it (D-11): not explained — offered
   # to the responsible person.
   debt_dispute_offer: "Suprantu. Sąskaitų detalių aš nematau, bet galiu užregistruoti jūsų klausimą — atsakingas žmogus su jumis susisieks ir aptars skolą. Ar registruoti?"
-  # Neaiškus atsakymas į pasiūlymą — pasitikslinama vieną kartą, ne laikoma atsisakymu.
+  # Klientas sako, kad mokėjo: atsakingas asmuo ieško mokėjimo pagal šiuos duomenis (Andrius, 2026-10-30).
+  debt_claim_ask: "Suprantu. Kad atsakingas asmuo galėtų rasti jūsų mokėjimą, pasakykite — {parts}?"
+  debt_claim_ask_again: "Dar pasakykite — {parts}?"
+  debt_claim_part_when: "kada mokėjote"
+  debt_claim_part_how: "kokiu būdu — banku, savitarnoje ar grynais"
+  debt_claim_part_amount: "kokią sumą"
+  debt_offer_claim: "Ačiū. {seen} Jūsų nurodyto mokėjimo ({claim}) sistemoje nematau. Galiu perduoti jūsų klausimą atsakingam asmeniui — jis paieškos mokėjimo pagal šiuos duomenis ir jums paskambins. Ar registruoti?"
+  debt_cannot_answer: "Į tai atsakyti negaliu — galiu perduoti jūsų klausimą atsakingam asmeniui, jis paaiškins. Ar registruoti?"
   debt_dispute_ask_again: "Ar užregistruoti jūsų klausimą?"
+  debt_declined: "Gerai, neregistruoju. Ar dar kuo galiu padėti?"
+  # Neaiškus atsakymas į pasiūlymą — klausiama dar kartą, niekada nelaikoma atsisakymu.
+  debt_dispute_clarify_short: "Užregistruoti jūsų klausimą atsakingam asmeniui — taip ar ne?"
   debt_dispute_clarify: "Atsiprašau, noriu įsitikinti — ar užregistruoti jūsų klausimą dėl sąskaitos, kad atsakingas žmogus su jumis susisiektų?"
   outage_eta: "Numatomas atstatymas iki {eta}."
   anything_else: "Ar dar kuo galiu padėti?"
@@ -527,7 +537,7 @@ inform:
     # Ką sakyti, kai klientas pokalbio gale pasako, kad susimokėjo. DEMO: „per valandą".
     # Produkcijoje — tikras terminas; keičiama čia, be kodo (Andrius, 2026-09-23).
     paid_just_now: "paslauga atsistato automatiškai per valandą po apmokėjimo"
-    dispute: "Matau tik sąskaitos būseną: skola {amount} už {months}. Paskutinis gautas mokėjimas — {last_payment}. Jei mokėjote vėliau, mokėjimas galėjo dar neįsiskaityti — tai patikrins atsakingas žmogus."
+    dispute: "Sistemoje matau skolą {amount} už {months}. Paskutinis gautas mokėjimas — {last_payment}."
   active_outage:
     template: "Patikrinau — jūsų rajone įvykusi tinklo avarija ({location}). Meistrai jau dirba, numatomas atstatymas iki {eta}. Jums nieko daryti nereikia — kai gedimas bus pašalintas, gausite pranešimą."
     fallback: "Patikrinau — jūsų rajone įvykusi tinklo avarija, meistrai jau dirba. Jums nieko daryti nereikia — kai gedimas bus pašalintas, gausite pranešimą."
@@ -873,6 +883,11 @@ ticket:
     stuck: "Pokalbis užstrigo — agentas kelis kartus nesuprato kliento."
   details:
     request: "Kliento klausimas ({type}): {text}."
+    # Skolos ginčas buhalterijai (Andrius, 2026-10-30): sistemos faktai, kliento teiginys, klausimai.
+    debt_system: "Skolos ginčas. Klientas atjungtas už skolą {amount} už {months}. Sistemoje paskutinis mokėjimas — {last_payment}."
+    debt_claim: " Kliento teiginys: mokėjo {claim}; sistemoje šio mokėjimo nematyti."
+    debt_said: " Klientas: {text}."
+    debt_questions: " Kliento klausimai: {questions}"
     fault: "Gedimas: {problem} — {gloss}."
     default_problem: "internetas"
     unknown_cause: "nenustatyta"

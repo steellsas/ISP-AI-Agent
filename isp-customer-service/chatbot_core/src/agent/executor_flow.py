@@ -250,6 +250,32 @@ def _unanswered_and_assumed(s: Any) -> str:
     return phrase("ticket.details.unanswered", items="; ".join(bits))
 
 
+def _debt_dispute_details(state: Any, rt: Any, said: str) -> str:
+    """A disputed debt for the accounting: what the system shows, what the caller says they
+    paid (when, how, how much) and their questions — the payment is searched by these."""
+    from .contract.locale import phrase
+    from .inform import inform_text
+
+    s = state
+    reason = (s.diagnosis.verdicts.get("network") or {}).get("reason")
+    system = inform_text(state, rt, reason, key="ticket_key")
+    if s.ticket.request_type != "billing_request" or not system:
+        return ""
+    from .decide.rules.requests import debt_claim_text
+
+    claim = debt_claim_text(state)
+    out = system
+    out += (
+        phrase("ticket.details.debt_claim", claim=claim)
+        if claim
+        else phrase("ticket.details.debt_said", text=said.rstrip("."))
+    )
+    if s.closing.debt_questions:
+        qs = " ".join(q.rstrip("?.") + "?" for q in s.closing.debt_questions)
+        out += phrase("ticket.details.debt_questions", questions=qs)
+    return out
+
+
 def _register_request(state: Any, rt: Any) -> None:
     """A question for the responsible person: the caller's own words, typed by intent, with
     who to call and when — nothing interpreted (the agent does not know this area)."""
@@ -262,7 +288,7 @@ def _register_request(state: Any, rt: Any) -> None:
     heard = s.intake.heard_utterances
     about = [u for u in heard if classify_problem(u) == s.intake.problem_type] or heard[:1]
     said = s.ticket.request_note or " / ".join(about[:3]) or s.intake.problem_type or ""
-    details = phrase(
+    details = _debt_dispute_details(state, rt, said) or phrase(
         "ticket.details.request",
         type=phrase_or(f"request_label.{s.ticket.request_type}", s.ticket.request_type),
         text=said,

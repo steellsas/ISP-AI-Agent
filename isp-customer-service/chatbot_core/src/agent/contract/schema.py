@@ -119,6 +119,8 @@ class InformEntry(_Model):
     # What to say when the caller questions the news while the registration is offered
     # („O kodėl jūs nematote mano mokėjimo?") — what the agent sees, from the same facts.
     dispute_key: str | None = None
+    # The system's facts for the responsible person's ticket (a disputed debt).
+    ticket_key: str | None = None
     clarity_requirements: list[
         Literal[
             "what_is_wrong", "what_to_do", "what_is_being_done", "when_restored", "how_notified"
