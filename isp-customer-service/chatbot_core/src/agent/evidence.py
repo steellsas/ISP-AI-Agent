@@ -86,12 +86,14 @@ def set_fact(
         entry.update(stamp)
         entry["conflict"] = False
         entry["resolved"] = True
+        entry.pop("seeded", None)
         return entry
     if entry["value"] != value:
         entry["conflict"] = True
         entry["pending"] = value
         return entry
     entry["turn"] = turn  # same value repeated — refresh recency
+    entry.pop("seeded", None)  # said again when asked: now the caller's checked answer
     return entry
 
 

@@ -161,12 +161,20 @@ def _seed_evidence_from_call(state, rt) -> None:
     if not spec:
         return
     low = _fold(raw)
+    # „Nėra interneto" names the service, not the WAN port: such marks are no answer in passing.
+    service = [_fold(w) for w in vocab("service_mentions_internet")]
     for key, item in (spec.get("client") or {}).items():
         if key in s.diagnosis.evidence:
             continue
         for value, name in ((item or {}).get("answers") or {}).items():
             marks = vocab(name)
-            hits = [m for m in marks if len(str(m)) >= 5 and _mark_hit(low, _fold(str(m)))]
+            hits = [
+                m
+                for m in marks
+                if len(str(m)) >= 5
+                and not any(w in _fold(str(m)) for w in service)
+                and _mark_hit(low, _fold(str(m)))
+            ]
             if hits:
                 set_fact(s.diagnosis.evidence, key, str(value), CLIENT, s.dialog.turn_count)
                 # Volunteered, not asked: the step that would ask it checks it back

@@ -117,6 +117,11 @@ class TestDebtDispute:
         assert state.closing.debt_offer_unclear == 0
         assert requests.debt_offer_turn(state, rt, "Taip") == "start"
 
+    def test_asr_variants_of_a_bank_are_the_bank(self):
+        from agent.perceive.payment_claim import read_payment_claim
+
+        assert read_payment_claim("Per banką, per satbanką mokiau.")["how"] == "per Swedbank"
+
     def test_a_sum_after_the_month_is_no_day(self, make_state, make_runtime):
         state = self._told_debt(make_state)
         requests.debt_offer_turn(state, make_runtime(), "Aš mokėjau liepą 40 eur per banką")

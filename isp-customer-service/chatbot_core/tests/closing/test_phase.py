@@ -255,3 +255,30 @@ def test_the_call_is_not_ended_while_the_caller_talks(diagnosing):
     assert not c.state.closing.case_closed
     c.say("Ne, viso gero")
     assert c.state.closing.case_closed
+
+
+def test_the_fault_ticket_claims_only_what_the_caller_was_asked(diagnosing):
+    """„Nėra interneto" nėra atsakymas apie WAN lizdą; vaidmuo tikete — lietuviškai"""
+    c = diagnosing("node_fault_unregistered")
+    c.state.intake.anamnesis_raw = "Nėra interneto."
+    c.say("Gerai")
+    assert c.state.ticket.ticket_id
+    from agent.tools import get_db
+
+    with get_db().cursor() as cur:
+        cur.execute("SELECT details FROM tickets WHERE ticket_id = ?", (c.state.ticket.ticket_id,))
+        text = dict(cur.fetchone())["details"]
+    assert "WAN" not in text and "Patikrinta su klientu" not in text
+    assert "Kontaktas: Tomas (sutarties savininkas), tel." in text
+
+
+@pytest.mark.parametrize(
+    "relation, said",
+    [("tenant", " (nuomininkas)"), ("unknown", ""), (None, "")],
+)
+def test_the_contact_says_who_the_caller_is_in_lithuanian(relation, said):
+    from types import SimpleNamespace
+
+    from agent.executor_flow import _relation
+
+    assert _relation(SimpleNamespace(identity=SimpleNamespace(caller_relation=relation))) == said

@@ -1292,6 +1292,21 @@ hour_words:
   trij: "3"
   dviej: "2"
   vienos: "1"
+  # Ordinals („nuo dvyliktos iki pirmos") — whole forms: „pirmadienį", „antradienį" are days.
+  pirmos: "1"
+  pirmą: "1"
+  antros: "2"
+  antrą: "2"
+  trečios: "3"
+  trecios: "3"
+  ketvirtos: "4"
+  penktos: "5"
+  šeštos: "6"
+  sestos: "6"
+  septintos: "7"
+  aštuntos: "8"
+  astuntos: "8"
+  devintos: "9"
 
 # Dienos dalys ir dienos, kurias verta išsaugoti tikete.
 # „Kada tik norit", „nesvarbu" — tiketui tai ta pati „bet kada".
@@ -1506,6 +1521,9 @@ payment_methods:
   swedbank: "per Swedbank"
   svedbank: "per Swedbank"
   svetbank: "per Swedbank"
+  satbank: "per Swedbank"
+  sedbank: "per Swedbank"
+  suedbank: "per Swedbank"
   luminor: "per Luminor"
   seb: "per SEB"
   revolut: "per Revolut"

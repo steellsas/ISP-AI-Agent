@@ -366,6 +366,8 @@ def hours_words(text: str) -> str:
     span = _NUO_IKI_RE.search(low) or _DASH_RE.search(low)
     if span:
         first, second = int(span.group(1)), int(span.group(2))
+        if second < first and second + 12 <= 24:
+            second += 12  # „nuo 12 iki 1" runs into the afternoon: 12–13
         if first <= 24 and second <= 24:
             return f"{prefix}nuo {_clock(first)} iki {_clock(second)} val."
     one = _PO_RE.search(low) or _IKI_RE.search(low) or _APIE_RE.search(low)

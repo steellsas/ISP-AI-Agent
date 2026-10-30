@@ -896,6 +896,13 @@ ticket:
     bridge_failed: "Laikinai pajungti internetą per kompiuterį NEPAVYKO (LAN: {lan})."
     default_contact: "skambinęs asmuo"
     contact: " Kontaktas: {who}{relation}, tel. {phone}"
+    # Who the caller is to the contract; an unknown relation is left out.
+    relation:
+      holder: "sutarties savininkas"
+      family: "šeimos narys"
+      tenant: "nuomininkas"
+      helper: "padeda klientui"
+      other: "ne sutarties savininkas"
     contact_hours: ", skambinti: {hours}"
     anamnesis_when: "dingo {when}"
     anamnesis_trigger: "po: {trigger}"

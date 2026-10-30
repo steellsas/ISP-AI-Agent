@@ -79,11 +79,10 @@ def register_ticket_from_state(state: Any, rt: Any) -> None:
     # Contacts from the ticket dialogue (2026-08-04): who to reach and when.
     if s.ticket.contact_phone or s.identity.caller_name:
         kas = s.identity.caller_name or phrase("ticket.details.default_contact")
-        rel = f" ({s.identity.caller_relation})" if s.identity.caller_relation else ""
         details += phrase(
             "ticket.details.contact",
             who=kas,
-            relation=rel,
+            relation=_relation(s),
             phone=s.ticket.contact_phone or s.identity.caller_phone,
         )
         if s.ticket.contact_hours:
@@ -124,7 +123,8 @@ def register_ticket_from_state(state: Any, rt: Any) -> None:
     from .evidence import gloss_label, gloss_value
 
     for key, e in s.diagnosis.evidence.items():
-        if e.get("source") == _EV_CLIENT and not e.get("conflict"):
+        # A fact only heard in passing („seeded") was never checked with the caller.
+        if e.get("source") == _EV_CLIENT and not e.get("conflict") and not e.get("seeded"):
             client_bits.append(f"{gloss_label(key)}: {gloss_value(e['value'], key)}")
     if client_bits:
         details += phrase("ticket.details.checked", facts="; ".join(client_bits))
@@ -250,6 +250,15 @@ def _unanswered_and_assumed(s: Any) -> str:
     return phrase("ticket.details.unanswered", items="; ".join(bits))
 
 
+def _relation(s: Any) -> str:
+    """„ (nuomininkas)" — the caller's relation to the contract as the ticket reads it."""
+    from .contract.locale import phrase_or
+
+    rel = s.identity.caller_relation
+    words = phrase_or(f"ticket.details.relation.{rel}", None) if rel else None
+    return f" ({words})" if words else ""
+
+
 def _debt_dispute_details(state: Any, rt: Any, said: str) -> str:
     """A disputed debt for the accounting: what the system shows, what the caller says they
     paid (when, how, how much) and their questions — the payment is searched by these."""
@@ -297,7 +306,7 @@ def _register_request(state: Any, rt: Any) -> None:
         details += phrase(
             "ticket.details.contact",
             who=s.identity.caller_name or phrase("ticket.details.default_contact"),
-            relation=f" ({s.identity.caller_relation})" if s.identity.caller_relation else "",
+            relation=_relation(s),
             phone=s.ticket.contact_phone or s.identity.caller_phone,
         )
         if s.ticket.contact_hours:

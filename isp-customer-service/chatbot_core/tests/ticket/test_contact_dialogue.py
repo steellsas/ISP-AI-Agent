@@ -60,7 +60,6 @@ HOURS = [
         "Nuo dvylikos iki pirmos",
         "nuo 12 iki 13 val.",
         id="nuo dvylikos iki pirmos (val. šnekamąja)",
-        marks=pytest.mark.xfail(strict=True, reason="„iki pirmos“ pametama — lieka „apie 12 val.“"),
     ),
     pytest.param("Vakare", "Vakare", id="vakare"),
 ]
@@ -174,6 +173,13 @@ class TestTheHoursAnswerIsAssembled:
         assert hours_words("na dvylikos, iki trilykos, valandos") == "nuo 12 iki 13 val."
         assert hours_words("nuo septyniolikos iki astuoniolikos") == "nuo 17 iki 18 val."
         assert hours_words("17-18") == "nuo 17 iki 18 val."
+
+    def test_ordinal_hours_and_a_span_into_the_afternoon(self):
+        from agent.decide.rules.ticket import hours_words
+
+        assert hours_words("Nuo dvyliktos iki pirmos.") == "nuo 12 iki 13 val."
+        assert hours_words("Nuo 12 iki 1") == "nuo 12 iki 13 val."
+        assert hours_words("Pirmadienį nuo 10 iki 2") == "pirmadienį nuo 10 iki 14 val."
 
     def test_one_edge_keeps_its_word(self):
         from agent.decide.rules.ticket import hours_words
