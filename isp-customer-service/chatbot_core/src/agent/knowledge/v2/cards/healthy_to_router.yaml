@@ -16,6 +16,8 @@ symptom: internet_down
 # Tinklas iki kliento įrangos tvarkingas. Tai skaito paslauga, kuri JOJA ant kitos (IPTV per
 # internetą): jei ši kortelė laikosi, televizija — savas gedimas; jei ne, pirma internetas.
 line_ok: true
+# Sprendimas vyksta kliento įrenginyje: agentas veda po žingsnį ir neskuba (2026-11-04).
+pace: guided
 explain:
   conclusion: "verdict.healthy_to_router.gloss"
   confirm: "pack.healthy_to_router.confirm"

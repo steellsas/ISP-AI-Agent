@@ -205,6 +205,18 @@ pack:
           "no": "vis tiek trūkinėja / neveikia"
   healthy_to_router:
     confirm: "Ar internetas veikia bent viename jūsų įrenginyje?"
+    # Ką supratome — sakoma šakos pradžioje, kad klientas spėtų pataisyti (2026-11-04).
+    understood:
+      one:
+        phone: "Supratau — kituose įrenginiuose internetas veikia, o telefone neveikia."
+        computer:
+          wifi: "Supratau — kituose įrenginiuose internetas veikia, o kompiuteryje, kuris jungiasi per Wi-Fi, neveikia."
+          wired: "Supratau — kituose įrenginiuose internetas veikia, o kompiuteryje, kuris jungiasi laidu, neveikia."
+      single:
+        phone: "Supratau — internetas neveikia telefone, ir kito įrenginio patikrinti neturite."
+        computer:
+          wifi: "Supratau — internetas neveikia kompiuteryje, kuris jungiasi per Wi-Fi, ir kito įrenginio patikrinti neturite."
+          wired: "Supratau — internetas neveikia kompiuteryje, kuris jungiasi laidu, ir kito įrenginio patikrinti neturite."
     fail_scope:
       label: "kur neveikia"
       values:
@@ -680,6 +692,10 @@ modules:
     announce: "Perkrauju jūsų prievadą, kad naujas įrenginys gautų adresą — užtruks kelias sekundes."
   # Kliento pusės kopėčios (knowledge/v2/ladders). Įrenginio žodžiai — `equipment.*`; čia tik
   # atsarginiai, kai katalogas įrenginio neaprašo.
+  wifi_ready:
+    question: "Pirmiausia reikia patikrinti, ar įrenginys prisijungęs prie jūsų Wi-Fi. Ar galite tai padaryti dabar?"
+  cable_ready:
+    question: "Pirmiausia reikia patikrinti laidą ir tinklo jungtį. Ar galite tai padaryti dabar?"
   wifi_state:
     question: "Ar įrenginyje įjungtas Wi-Fi?"
   wifi_network:
@@ -725,9 +741,10 @@ equipment:
     check:
       wifi: "Telefone atidarykite nustatymus ir pažiūrėkite, ar Wi-Fi įjungtas ir prisijungęs prie jūsų namų tinklo."
       reconnect: "Telefone paspauskite ant savo namų tinklo, pasirinkite „pamiršti šį tinklą“ ir prisijunkite iš naujo su slaptažodžiu."
-    wifi_state: "Ar telefone įjungtas Wi-Fi — ekrano viršuje matote bangelių ženkliuką?"
+    wifi_ready: "Pirmiausia reikia patikrinti, ar telefonas prisijungęs prie jūsų Wi-Fi. Ar galite dabar pasižiūrėti telefono nustatymuose?"
+    wifi_state: "Atidarykite telefono nustatymus — „Nustatymai“ arba „Settings“ — ir suraskite Wi-Fi. Ką ten rašo — Wi-Fi įjungtas ar išjungtas?"
     wifi_enable: "Įjunkite telefone Wi-Fi ir patikrinkite, kad neįjungtas lėktuvo režimas."
-    wifi_network: "Ar telefonas prisijungęs prie jūsų tinklo — to, kurio pavadinimas užrašytas ant routerio lipduko?"
+    wifi_network: "Ar po Wi-Fi rašo, prie kokio tinklo prisijungta? Ar tai jūsų tinklas — toks pat pavadinimas kaip ant routerio lipduko?"
     wifi_join_own: "Wi-Fi sąraše pasirinkite savo tinklą — pavadinimas ant routerio lipduko; stovint prie routerio jis stipriausias."
     wifi_reconnect: "Pabandykime prisijungti iš naujo: Wi-Fi sąraše paspauskite savo tinklą, pasirinkite „Pamiršti“ ir prisijunkite vėl su slaptažodžiu nuo routerio lipduko."
     device_restart: "Perkraukite telefoną — išjunkite ir vėl įjunkite."
@@ -758,7 +775,9 @@ equipment:
       wifi: "Kompiuteryje pažiūrėkite, ar Wi-Fi įjungtas ir prisijungęs prie jūsų namų tinklo."
       reconnect: "Kompiuteryje atsijunkite nuo savo Wi-Fi tinklo ir prisijunkite iš naujo."
       cable: "Patikrinkite laidą tarp kompiuterio ir routerio — ištraukite ir tvirtai įkiškite atgal į abu galus."
-    wifi_state: "Ar kompiuteryje įjungtas Wi-Fi — prie laikrodžio matote bangelių ženkliuką?"
+    wifi_ready: "Pirmiausia reikia patikrinti, ar kompiuteris prisijungęs prie jūsų Wi-Fi. Ar galite dabar prieiti prie kompiuterio?"
+    cable_ready: "Pirmiausia reikia patikrinti laidą tarp kompiuterio ir routerio ir kompiuterio tinklo jungtį. Ar galite dabar prieiti prie kompiuterio?"
+    wifi_state: "Paspauskite tinklo ženkliuką prie laikrodžio. Ką ten rodo — Wi-Fi įjungtas ar išjungtas?"
     wifi_enable: "Įjunkite kompiuteryje Wi-Fi ir patikrinkite, kad neįjungtas lėktuvo režimas."
     wifi_network: "Ar kompiuteris prisijungęs prie jūsų tinklo — to, kurio pavadinimas užrašytas ant routerio lipduko?"
     wifi_join_own: "Wi-Fi sąraše pasirinkite savo tinklą — pavadinimas ant routerio lipduko; arčiausiai routerio jis stipriausias."
@@ -805,6 +824,9 @@ equipment:
 case:
   heard: "Gerai — {said}."
   say_when_done: "Pasakykite, kai padarysite."
+  # Vedamas sprendimas (`pace: guided`): klientas daro savo įrenginyje, agentas neskuba.
+  say_when_done_guided: "Neskubėkite — pasakykite, kai padarysite, ar ką matote."
+  guided_offer: "Neskubėkime — pasakykite, ką dabar matote ekrane, ir eisime toliau kartu. O jei norite, galiu užregistruoti, kad meistras padėtų."
   # Patikslinimas vietoj spėjimo (Andrius, 2026-10-12): kai atsakymą perskaitė tik modelis, be
   # kliento žodžių, agentas pasako, ką suprato, ir paklausia, ar teisingai.
   # v3 D: analitikas išgirdo, kad klientas mieliau norėtų meistro — variklis paklausia.
@@ -829,6 +851,9 @@ case:
     lights:
       "off": "Noriu įsitikinti: routerio lemputės visai nedega — ar teisingai?"
       "on": "Noriu įsitikinti: routerio lemputės dega — ar teisingai?"
+    restored:
+      "yes": "Noriu įsitikinti: internetas dabar veikia — ar teisingai?"
+      "no": "Noriu įsitikinti: internetas vis dar neveikia — ar teisingai?"
     done: "Ar jau tai padarėte?"
     # Tik apie VEIKSMĄ — lemputes ir liniją patikrina kitas žingsnis. Dviejų dalykų klausimas
     # gyvai 2026-10-12 gavo „įkišau, bet nedega" — nei taip, nei ne — ir nuskambėjo du kartus.
@@ -897,7 +922,11 @@ evidence:
     nic_enabled: "tinklo jungtis"
     fix_wanted: "mokama pagalba"
     device_os: "įrenginio sistema"
+    # Klausimas, ne teiginys — atgal klientui nekartojamas.
+    device_ready: "ar galite pasižiūrėti"
+    bridge_agreed: "laikinas prijungimas be routerio"
   fact_value:
+    bridge_agreed: {"yes": "jums tinka", "no": "jums netinka"}
     fail_scope: {all: "visuose įrenginiuose", one: "tik viename įrenginyje (kituose veikia)", single: "vienintelis įrenginys"}
     wifi_on: {"yes": "Wi-Fi įjungtas", "no": "Wi-Fi buvo išjungtas"}
     wifi_network: {own: "prisijungęs prie savo tinklo", other: "buvo prisijungęs ne prie savo tinklo"}

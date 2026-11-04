@@ -14,6 +14,12 @@ ASKED = "Patikrinau — paslauga sustabdyta. Ar registruoti?"
 NEWS = "Patikrinau — paslauga sustabdyta dėl neapmokėtų sąskaitų."
 
 
+@pytest.fixture(autouse=True)
+def barge_in_on(monkeypatch):
+    """These tests are about barge-in itself; the demo default (off) has its own below."""
+    monkeypatch.setenv("BARGE_IN", "1")
+
+
 @pytest.mark.parametrize(
     "said, agent_text, asked, decision",
     [
@@ -107,7 +113,7 @@ class FakeSession:
         self.tracer = Tracer()
 
 
-def run_strategy(gate, tracker, said):
+def run_strategy(gate, tracker, said, *, stop_busy=None):
     from app.pipecat_call import FinishThenDecideUserTurnStartStrategy
     from pipecat.frames.frames import (
         TranscriptionFrame,
@@ -126,6 +132,8 @@ def run_strategy(gate, tracker, said):
 
     async def go():
         first = await strategy.process_frame(VADUserStartedSpeakingFrame())
+        if stop_busy is not None:
+            gate.busy = stop_busy
         await strategy.process_frame(VADUserStoppedSpeakingFrame())
         last = await strategy.process_frame(TranscriptionFrame(said, "caller", "now"))
         return first, last
@@ -211,3 +219,61 @@ def test_the_gate_stops_at_the_phrase_pause_and_goes_on_after_release():
     held_at, total, _ = asyncio.run(go())
     assert len(voiced) <= held_at < len(voiced) + len(pause)  # stopped at the pause
     assert total == len(voiced) + len(pause) + len(phrase2)  # and nothing was lost
+
+
+def test_without_barge_in_the_agent_never_stops(monkeypatch):
+    """The demo mode: a voice over the agent holds nothing; its words, when they arrive
+    (the STT let them through — the caller went on past the agent's end), are the turn."""
+    monkeypatch.setenv("BARGE_IN", "0")
+    gate = FakeGate(busy=True)
+    _, _, started, events = run_strategy(gate, FakeTracker(ASKED, True), "Taip, galiu.")
+    assert gate.calls == [] and started == [True] and events == []
+
+
+def _stt_drops(monkeypatch, *, start_busy, stop_busy, barge="0"):
+    from app.pipecat_call import EngineSTT
+    from pipecat.frames.frames import VADUserStartedSpeakingFrame, VADUserStoppedSpeakingFrame
+    from pipecat.processors.frame_processor import FrameDirection
+
+    monkeypatch.setenv("BARGE_IN", barge)
+
+    class Asr:
+        def transcribe(self, *_a, **_k):
+            return "Mhm, taip"
+
+    session = FakeSession()
+    session.asr_context = lambda: ""
+    gate = FakeGate(busy=start_busy)
+    stt = EngineSTT(session, Asr(), type("R", (), {"caller": lambda *_a: None})(), gate)
+
+    async def passthrough(*_a, **_k):
+        return None
+
+    monkeypatch.setattr(
+        "pipecat.services.stt_service.SegmentedSTTService.process_frame", passthrough
+    )
+
+    async def go():
+        await stt.process_frame(VADUserStartedSpeakingFrame(), FrameDirection.UPSTREAM)
+        gate.busy = stop_busy
+        await stt.process_frame(VADUserStoppedSpeakingFrame(), FrameDirection.UPSTREAM)
+        stt.start_processing_metrics = passthrough
+        stt.stop_processing_metrics = passthrough
+        return [f async for f in stt.run_stt(b"")]
+
+    return asyncio.run(go()), session.events
+
+
+def test_without_barge_in_words_said_wholly_over_the_agent_are_not_heard(monkeypatch):
+    frames, events = _stt_drops(monkeypatch, start_busy=True, stop_busy=True)
+    assert frames == [] and ("barge_in", "ignored") in events
+
+
+def test_without_barge_in_words_going_on_past_the_agent_are_the_answer(monkeypatch):
+    frames, _ = _stt_drops(monkeypatch, start_busy=True, stop_busy=False)
+    assert [f.text for f in frames] == ["Mhm, taip"]
+
+
+def test_with_barge_in_the_stt_keeps_every_segment(monkeypatch):
+    frames, _ = _stt_drops(monkeypatch, start_busy=True, stop_busy=True, barge="1")
+    assert len(frames) == 1

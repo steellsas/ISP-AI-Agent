@@ -14,6 +14,7 @@ actions:
   device_check.reconnect: equipment.phone.check.reconnect
   reach: equipment.phone.reach
   # Wi-Fi kopėčios
+  wifi_ready: equipment.phone.wifi_ready
   wifi_state: equipment.phone.wifi_state
   wifi_enable: equipment.phone.wifi_enable
   wifi_network: equipment.phone.wifi_network

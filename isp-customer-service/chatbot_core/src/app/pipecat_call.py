@@ -166,14 +166,30 @@ class EngineSTT(SegmentedSTTService):
     """Our ASR on each VAD segment: Lithuanian domain prompt + the agent's last question
     as context, numbers normalised, noise dropped."""
 
-    def __init__(self, session, asr, recorder: CallRecorder, **kwargs) -> None:
+    def __init__(
+        self, session, asr, recorder: CallRecorder, gate: PacedHoldGate | None = None, **kwargs
+    ) -> None:
         super().__init__(settings=STTSettings(model=None, language=None), **kwargs)
         self._session = session
         self._asr = asr
         self._recorder = recorder
+        self._gate = gate
+        self._started_over = False
+        self._over_agent = False
 
     def can_generate_metrics(self) -> bool:
         return True
+
+    async def process_frame(self, frame: Frame, direction: FrameDirection):
+        # Without barge-in a segment begun AND ended while the agent spoke is not heard: noise,
+        # an „aha" or a word to someone in the room must not answer the next question (live
+        # 2026-11-04). One still going on when the agent ends is the caller's answer.
+        if self._gate is not None:
+            if isinstance(frame, VADUserStartedSpeakingFrame):
+                self._started_over = self._gate.busy
+            elif isinstance(frame, VADUserStoppedSpeakingFrame):
+                self._over_agent = self._started_over and self._gate.busy
+        await super().process_frame(frame, direction)
 
     async def run_stt(self, audio: bytes):
         from adapters.asr.lt_text import is_asr_noise, normalize_lt_numbers
@@ -192,6 +208,11 @@ class EngineSTT(SegmentedSTTService):
         await self.stop_processing_metrics()
         text = normalize_lt_numbers(raw or "")
         dropped = not text or is_asr_noise(text)
+        if not dropped and self._over_agent and not barge_in_enabled():
+            self._session.tracer.emit(
+                "barge_in", verdict="ignored", transcript=text, transport="pipecat"
+            )
+            dropped = True
         self._session.tracer.emit(
             "asr",
             raw=raw,
@@ -377,6 +398,13 @@ class PacedHoldGate(FrameProcessor):
                 await self.push_frame(frame)
 
 
+def barge_in_enabled() -> bool:
+    """`BARGE_IN=1` lets the caller interrupt the agent; off (the demo) it always finishes."""
+    from agent.contract import limits
+
+    return bool(limits.get("barge_in_enabled"))
+
+
 class FinishThenDecideUserTurnStartStrategy(BaseUserTurnStartStrategy):
     """Who takes the turn when the caller speaks (PERZIURA §6 I-3).
 
@@ -396,6 +424,8 @@ class FinishThenDecideUserTurnStartStrategy(BaseUserTurnStartStrategy):
         self._timer = None
 
     async def process_frame(self, frame: Frame) -> ProcessFrameResult:
+        if not barge_in_enabled():
+            return await self._without_barge_in(frame)
         if isinstance(frame, VADUserStartedSpeakingFrame):
             if self._gate.busy:
                 self._pending = True
@@ -426,6 +456,22 @@ class FinishThenDecideUserTurnStartStrategy(BaseUserTurnStartStrategy):
                 await self.trigger_user_turn_started()
                 return ProcessFrameResult.STOP
             self._gate.release()
+        return ProcessFrameResult.CONTINUE
+
+    async def _without_barge_in(self, frame: Frame) -> ProcessFrameResult:
+        """The demo mode: the agent never stops. A voice over it waits for its words — the
+        STT drops a segment said wholly over the agent, so words that do arrive are a turn."""
+        if isinstance(frame, VADUserStartedSpeakingFrame):
+            if self._gate.busy:
+                self._pending = True
+                return ProcessFrameResult.CONTINUE
+            self._pending = False
+            await self.trigger_user_turn_started()
+            return ProcessFrameResult.STOP
+        if isinstance(frame, TranscriptionFrame) and self._pending:
+            self._pending = False
+            await self.trigger_user_turn_started()
+            return ProcessFrameResult.STOP
         return ProcessFrameResult.CONTINUE
 
     async def _give_up(self) -> None:
@@ -801,7 +847,7 @@ def build_call(connection, session, asr, tts_provider, turns, greeting: str | No
     pipeline = Pipeline(
         [
             transport.input(),
-            EngineSTT(session, asr, recorder),
+            EngineSTT(session, asr, recorder, gate),
             user_agg,
             engine,
             EnginePiperTTS(session, tts_provider, recorder),

@@ -75,6 +75,10 @@ def plan(state: Any, rt: Any) -> TurnPlan | None:
         # sprendimas baigiamas SĄŽININGAI: pasakom, ką padarėm, ir registruojam meistrą. Tai
         # sprendimo kelio darbas, ne identifikacijos kopėčios (7f banga).
         return _escalate(state, rt, state.case.fault, why="nesusikalbame")
+    _hear_late_answer(state, rt)
+    facts = ledger.facts_of(state)
+    if _branch_changed(state, rt, facts):
+        facts = ledger.facts_of(state)
     if state.case.fault is not None:
         status = _absorb(state, rt, facts)
         # The caller's physical action must reach the line BEFORE anything reads it again,
@@ -386,7 +390,7 @@ def _learn(state: Any, rt: Any, move: Any, facts: dict[str, str]) -> TurnPlan:
         # A caller who knows WHY answers better, and follows the instruction that comes next.
         goal = f"{goal}. Say why in half a sentence: {why}"
     asked = state.case.asks.setdefault(move.fact, [])
-    if state.dialog.turn_count not in asked:
+    if state.dialog.turn_count not in asked and not (asked and _still_on_it(state)):
         asked.append(state.dialog.turn_count)
     words = maybe_phrase(source.ask)
     need = card.needs.get(move.fact) if card and move.fact else None
@@ -499,6 +503,90 @@ def _call_for(module: str, state: Any):
 # --- running a solution ---------------------------------------------------------------
 
 
+def _still_on_it(state: Any) -> bool:
+    """„Patikrinsiu", „palaukit", „mhm", a noise — the caller is still on the question, so
+    asking it again does not count as asked twice (live 2026-11-04: „Nežinau… Patikrinsiu" and
+    an „A. A." made the engine assume and jump ahead while the caller was going to look)."""
+    from adapters.asr.lt_text import is_asr_noise
+
+    from ...perceive.detectors import INTENT_IN_PROGRESS
+
+    heard = (state.dialog.last_heard or "").strip()
+    if not heard:
+        return False  # silence has its own patience; it is not an answer either
+    if is_asr_noise(heard) or state.dialog.last_intent == INTENT_IN_PROGRESS:
+        return True
+    low = heard.lower()
+    if any(m in low for m in vocab("in_progress")):
+        return True
+    words = [w.strip(".,!?…") for w in low.split() if w.strip(".,!?…")]
+    return len(words) <= 2 and all(w in vocab("barge_consent_tokens") for w in words)
+
+
+def _branch_changed(state: Any, rt: Any, facts: dict[str, str]) -> bool:
+    """A late answer no longer fits the branch being walked, and nothing was done in it yet.
+
+    „Kompiuteryje veikia" said after the engine had assumed one device only: the branch is
+    chosen again from what the caller said (live 2026-11-04). Once something was DONE, the
+    branch stays — the new fact is only recorded."""
+    if state.case.fault is None or state.case.solution is None:
+        return False
+    if state.case.worked or state.case.did or state.case.step > _readiness_steps(state):
+        return False
+    card = catalog.card(state.case.fault)
+    if card is None:
+        return False
+    from ...contract.schema import Condition
+
+    when = card.solution[state.case.solution].when
+    if all(Condition.parse(t).holds(facts) is not False for t in when):
+        return False
+    rt.tracer.emit("case", move="rebranch", fault=state.case.fault, was=state.case.solution)
+    state.case.solution, state.case.step = None, 0
+    state.case.awaiting, state.case.step_said = None, -1
+    return True
+
+
+def _hear_late_answer(state: Any, rt: Any) -> None:
+    """A question we gave up on and ASSUMED, answered later („Aa, kompiuteryje veikia"): the
+    caller's word replaces the assumption. Read with the card's own answer words."""
+    if not state.case.assumed or state.case.fault is None or not state.dialog.last_heard:
+        return
+    from ...evidence import read_pending_answer, spec_for
+
+    client = (spec_for(state.case.fault) or {}).get("client") or {}
+    for fact in list(state.case.assumed):
+        value = read_pending_answer(fact, state.dialog.last_heard, client.get(fact))
+        if value and ledger.record_client(state, rt, fact, value):
+            state.case.assumed.pop(fact, None)
+            state.case.unavailable = [f for f in state.case.unavailable if f != fact]
+            rt.tracer.emit("case", move="late_answer", fact=fact, value=value)
+
+
+def _readiness_steps(state: Any) -> int:
+    """How many asks at the start of the branch only prepare it (`wifi_ready`) — nothing done."""
+    count = 0
+    for call in _solution_steps(state):
+        spec = catalog.module(call.module)
+        if spec is None or spec.kind != "ask":
+            break
+        count += 1
+    return count
+
+
+def _understood(state: Any) -> str:
+    """„Supratau — kituose įrenginiuose veikia, o telefone ne." The branch's first step says
+    back what the caller told us, so a mistake is corrected before anything is done
+    (Andrius, 2026-11-04). Words: `pack.<fault>.understood.<the branch's values>`."""
+    from ...contract.locale import phrase_or
+
+    card = catalog.card(state.case.fault) if state.case.fault else None
+    if card is None or state.case.solution is None or state.case.step != 0:
+        return ""
+    values = [t.split("=", 1)[1] for t in card.solution[state.case.solution].when if "!=" not in t]
+    return phrase_or(f"pack.{card.fault}.understood.{'.'.join(values)}", None) or ""
+
+
 def _begin(state: Any, rt: Any, fault: str | None, facts: dict[str, str]) -> None:
     """Start the fault's solution: the branch whose conditions the facts satisfy."""
     card = catalog.card(fault) if fault else None
@@ -511,6 +599,7 @@ def _begin(state: Any, rt: Any, fault: str | None, facts: dict[str, str]) -> Non
         if all(c.holds(facts) is True for c in conditions) and solution.steps:
             state.case.fault, state.case.solution, state.case.step = fault, index, 0
             state.case.awaiting = None
+            state.case.step_said = -1  # the diagnosis questions were not this step's
             state.case.guide_step, state.case.guide_said = 0, -1
             # The fault the Case settled on IS the call's verdict — what the record, the
             # ticket and the eval all read (wave 4: the tree that used to name it is gone).
@@ -692,6 +781,9 @@ def _absorb(state: Any, rt: Any, facts: dict[str, str]) -> str:
         return _advance(state, rt)
     if state.case.awaiting_probe:
         return "waiting"  # its own reading has not come back yet
+    back = _not_done_yet(state, rt, call)
+    if back is not None:
+        return back
     settled = modules.step_done(call, facts)
     if settled is True and call.args.get("ask") and not _verify_must_be_told(state, call):
         # THE GUARD (Andrius, 2026-10-13): the line showing it works is half of it — the
@@ -980,15 +1072,16 @@ def _read_confirmation(state: Any, rt: Any, call: Any) -> str:
 def _confirm_plan(state: Any, rt: Any) -> TurnPlan:
     """„Noriu įsitikinti, kad gerai supratau: … — ar teisingai?" in the locale's words."""
     from ...contract.locale import phrase, phrase_or
-    from ...evidence import gloss_label, gloss_value
 
     held = state.case.confirming or {}
     fact, value = held.get("fact"), held.get("value")
     call = _current(state)
     if fact:
-        said = f"{gloss_label(fact)} {gloss_value(value, fact)}".strip()
+        from ...evidence import gloss_label, gloss_value
+
+        said = fact_words(fact, value or "") or f"{gloss_label(fact)} {gloss_value(value, fact)}"
         text = phrase_or(f"case.confirm.{fact}.{value}", None) or phrase(
-            "case.confirm.fact", said=said
+            "case.confirm.fact", said=said.strip()
         )
     else:
         module = call.module if call is not None else ""
@@ -1484,7 +1577,20 @@ def _remember_what_we_heard(state: Any) -> None:
     # nieko, nei sulūžęs sakinys.
     if not label or not said or "?" in label or label.lower().startswith("ar "):
         return
-    state.turn.heard_said = f"{label} {said}".strip() or None
+    state.turn.heard_said = fact_words(key, value) or None
+
+
+def fact_words(key: str, value: str) -> str:
+    """A fact said back to the caller: „Wi-Fi išjungtas", never „Wi-Fi Wi-Fi išjungtas" (the
+    value already names it) nor „restored turite" (no words for it — then nothing)."""
+    from ...evidence import gloss_label, gloss_value
+
+    label, said = gloss_label(key), gloss_value(value, key)
+    if not said or label == key:
+        return ""
+    if label and label.lower() in said.lower():
+        return said
+    return f"{label} {said}".strip()
 
 
 def _asked_to_repeat(state: Any) -> bool:
@@ -1511,7 +1617,9 @@ def _say_as_written(state: Any, step: Any, rt: Any = None) -> bool:
 
     d = state.turn.directives
     why = None
-    if not limits.get("scripted_step_words"):
+    if not limits.get("scripted_step_words") and not _guided(state):
+        # A guided fix on the caller's own device always says the catalogue's words: the model
+        # invented a symbol to look for there (live 2026-11-04).
         why = "off"
     elif step.kind not in ("ask", "instruct"):
         why = f"kind={step.kind}"
@@ -1552,8 +1660,11 @@ def _written_words(state: Any, step: Any, asked: str | None) -> str:
     """Parašytas atsakymas: ką ką tik išgirdom + žingsnio sakinys + („pasakykite, kai
     padarysite") nurodymui. Visos trys dalys — iš frazių katalogo, ne iš kodo."""
     said = (asked or step.text or "").strip()
-    lead = phrase("case.heard", said=state.turn.heard_said) if state.turn.heard_said else ""
-    tail = phrase("case.say_when_done") if step.kind == "instruct" else ""
+    lead = _understood(state)
+    if not lead and state.turn.heard_said:
+        lead = phrase("case.heard", said=state.turn.heard_said)
+    done = "case.say_when_done_guided" if _guided(state) else "case.say_when_done"
+    tail = phrase(done) if step.kind == "instruct" else ""
     return " ".join(part for part in (lead, said, tail) if part).strip()
 
 
@@ -1714,6 +1825,18 @@ def _last_chance(state: Any, rt: Any, call: Any, step: Any) -> TurnPlan | None:
     if state.case.chances.get(key):
         return None
     state.case.chances[key] = True
+    if _guided(state):
+        # On their own device the caller decides: go on together, or a technician helps. The
+        # words are written — the model used to improvise a step here (live 2026-11-04).
+        rt.tracer.emit("case", move="guided_offer", module=call.module, fact=step.awaits)
+        return TurnPlan(
+            owner="procedure",
+            rule="case.guided_offer",
+            say=Say(
+                kind="phrase", text=phrase("case.guided_offer"), stage="diagnosis", written=True
+            ),
+            awaiting=step.awaits,
+        )
     state.turn.directives.last_chance = {
         "kas": _need_words(state, step.awaits) or "",
         "kodel": _why_words(state, step.awaits) or "",
@@ -1736,12 +1859,59 @@ def _no_way_forward(state: Any) -> bool:
     """
     from ...contract import limits
 
+    if _guided(state):
+        stall = limits.get("guided_stall_before_offer")
+        silence = limits.get("guided_silence_before_offer")
+    else:
+        stall = limits.get("stall_before_last_chance")
+        silence = limits.get("silence_before_last_chance")
     return (
-        state.case.stall >= limits.get("stall_before_last_chance")
-        or state.case.silence_asks >= limits.get("silence_before_last_chance")
+        state.case.stall >= stall
+        or state.case.silence_asks >= silence
         # the analyst saw this very step going round in circles (v3 D)
         or state.case.dead_end_step == state.case.step
     )
+
+
+def _not_done_yet(state: Any, rt: Any, call: Any) -> str | None:
+    """„Dar neįjungiau" to „ar dabar veikia?" — the instruction before it is not done yet.
+
+    Back to that instruction, said again — not the check asked once more, and never a „ne"
+    that says the fix failed (live 2026-11-04: the check went round while the caller had not
+    yet found the switch, and the model invented a symbol to look for)."""
+    from ...perceive.detectors import says_not_done_yet
+
+    if call.module != "verify" or not _step_was_asked(state):
+        return None
+    if not says_not_done_yet(state.dialog.last_heard):
+        return None
+    steps = _solution_steps(state)
+    before = state.case.step - 1
+    if not (0 <= before < len(steps)):
+        return None
+    spec = catalog.module(steps[before].module)
+    if spec is None or spec.kind != "instruct":
+        return None
+    state.case.step = before
+    state.case.awaiting = None
+    state.case.step_said = -1
+    state.case.stall = 0
+    state.turn.heard_said = ""
+    state.case.facts.pop("restored", None)
+    state.case.said = [f for f in state.case.said if f != "restored"]
+    rt.tracer.emit("case", move="back_to_step", module=steps[before].module)
+    return "moved"
+
+
+def _guided(state: Any) -> bool:
+    """Is the caller being led through a fix on their own device (`pace: guided`)?
+
+    Diagnosis keeps its quick pace; once the solution runs, the agent waits as long as the
+    caller works, and a step may take many turns (Andrius, 2026-11-04)."""
+    if state.case.fault is None or state.case.solution is None:
+        return False
+    card = catalog.card(state.case.fault)
+    return card is not None and card.pace == "guided"
 
 
 def _need_words(state: Any, fact: str | None) -> str | None:
@@ -2044,12 +2214,8 @@ def _module_plan_inner(state: Any, rt: Any, call, facts: dict[str, str], *, rule
     if insists and step.awaits and _client_said(state, step.awaits):
         # Klientas tai jau užsiminė, bet klausimas yra per svarbus, kad eitume iš spėjimo:
         # patikslinam, o ne klausiam tuščiai („jūs sakėte, kad… patikslinu").
-        from ...evidence import gloss_label, gloss_value
-
-        value = state.case.facts.get(step.awaits)
-        state.turn.directives.recheck = {
-            "faktas": f"{gloss_label(step.awaits)} {gloss_value(value, step.awaits)}".strip()
-        }
+        value = state.case.facts.get(step.awaits) or ""
+        state.turn.directives.recheck = {"faktas": fact_words(step.awaits, value)}
     asked = modules.question_of(call, model=model)
     if step.kind == "instruct" and _just_acknowledged(state):
         # They said "gerai" — they are doing it. Repeating the instruction is what makes an
@@ -2722,6 +2888,12 @@ def _how_to_plan(state: Any, rt: Any) -> TurnPlan | None:
     device = str(call.args.get("device"))
     heard = state.dialog.last_heard
     facts = state.case.facts
+    if "device_os" not in facts and facts.get("_os_asked") != "pending":
+        # „Androidinis" said in passing, before or after we asked — taken whenever it comes
+        # (live 2026-11-04 the late answer was dropped).
+        named = detect_device_os(heard, device)
+        if named:
+            ledger.record_client(state, rt, "device_os", named)
     if facts.get("_os_asked") == "pending":
         facts["_os_asked"] = "done"
         named = detect_device_os(heard, device)

@@ -525,8 +525,22 @@ def detect_switched(text: str | None) -> str | None:
         return "no"
     if any(m in low for m in vocab("switched_on")):
         return "yes"
+    if _not_looked(low):
+        return None
     outcome = detect_yes_no(text)
     return outcome.value.lower() if outcome is not None else None
+
+
+def _not_looked(low: str) -> bool:
+    """„Aš netikrinau, nežinau" carries a „ne" that is no answer: the caller has not looked yet
+    (live 2026-11-04 it became „Wi-Fi off"). Unknown is never a fact."""
+    return any(m in low for m in vocab("shrug")) or any(m in low for m in vocab("not_looked"))
+
+
+def says_not_done_yet(text: str | None) -> bool:
+    """„Dar neįjungiau", „nespėjau" — the instruction before the check is not done yet."""
+    low = (text or "").lower()
+    return any(m in low for m in vocab("not_done_yet"))
 
 
 def detect_wifi_network(text: str | None) -> str | None:
@@ -538,6 +552,8 @@ def detect_wifi_network(text: str | None) -> str | None:
         return "other"
     if any(m in low for m in vocab("wifi_network_own")):
         return "own"
+    if _not_looked(low):
+        return None
     outcome = detect_yes_no(text)
     if outcome is None:
         return None

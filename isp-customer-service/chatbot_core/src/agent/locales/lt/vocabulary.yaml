@@ -331,6 +331,10 @@ in_progress:
   - "bandysiu"
   - "darau"
   - "darysiu"
+  # „Patikrinsiu", „pažiūrėsiu" — klientas eina žiūrėti, tai dar ne atsakymas (2026-11-04).
+  - "patikrinsiu"
+  - "pažiūrėsiu"
+  - "paziuresiu"
   - "žiūriu"
   - "ziuriu"
   - "ieškau"
@@ -1593,6 +1597,10 @@ wifi_network_own: ["savo", "mano", "mūsų", "musu", "namų", "namu", "tp-link",
 wifi_network_other: ["kaimyn", "svetim", "kitas tinklas", "kito tinklo", "ne mano", "ne savo", "ne prie savo", "nesutampa", "joks", "jokio", "neprisijung", "nieko nėra", "nieko nera"]
 # Klientas klausia, KAIP padaryti ar KUR žiūrėti — tai pagalba esamam žingsniui, ne pašalinė
 # tema (gyvai 2026-11-03: „kur man reikia eiti?" gavo išgalvotą atsakymą).
+# „Netikrinau" — klientas dar nežiūrėjo; tai ne atsakymas „ne" (2026-11-04).
+not_looked: ["netikrin", "nepatikrin", "nežiūrėj", "neziurej", "nepažiūrėj", "nepaziurej", "dar nežiūr", "dar neziur"]
+# „Dar neįjungiau" per patikrą — grįžtame prie nurodymo (2026-11-04).
+not_done_yet: ["neįjungiau", "neijungiau", "nepadariau", "nespėjau", "nespejau", "nebandžiau", "nebandziau", "neperkroviau", "neprisijungiau", "dar ne padar", "dar neįjung", "dar neijung", "dar nepadar"]
 how_to_request: ["kaip tai", "kaip padaryt", "kaip man", "kaip įjungt", "kaip ijungt", "kaip pažiūrėt", "kaip paziuret", "kaip patikrint", "kaip rast", "kur man", "kur eiti", "kur reikia", "kur spaust", "kur paspaust", "kur rasti", "kur žiūrėt", "kur ziuret", "kur tai", "nežinau kaip", "nezinau kaip", "nežinau kur", "nezinau kur", "nemoku", "nesuprantu kur", "padėkit", "padekit", "padėkite", "padekite", "parodykit", "pasakykit kur", "nerandu"]
 # Įrenginio sistema — „nežinau kaip" atveju; žodžiai sutampa su įrangos katalogo `matches`.
 device_os_android: ["android", "samsung", "galaxy", "xiaomi", "redmi", "huawei", "honor", "motorola", "nokia", "oppo", "realme", "pixel", "oneplus", "sony", "lenovo"]

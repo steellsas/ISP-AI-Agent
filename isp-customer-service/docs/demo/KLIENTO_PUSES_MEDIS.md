@@ -9,6 +9,37 @@ Būsena: **įgyvendinta** šakoje `feat/client-side-ladders` (2026-11-04). Skirt
 | planšetė — atskiras įrenginys | planšetė = telefonas (tos pačios sistemos) | Android / iPad žodžiai tie patys |
 | `conclude` su tiketu paprašius | `offer_fix` (pasiūlymas) → `escalate` tik sutikus → `conclude` atsisakius | tiketas `client_side_help`, priežastis `kliento_pagalba` |
 
+### Vedamas sprendimas (2026-11-04, po skambučio 0002)
+
+Analizė klausia greitai; sprendimas **veda** kantriai (kortelės `pace: guided`):
+
+```
+šakos pradžia:  „Supratau — kituose įrenginiuose veikia, o telefone ne." (pakartoja, ką suprato)
+                „Pirmiausia reikia patikrinti, ar telefonas prisijungęs prie Wi-Fi. Ar galite dabar?"
+                  ├─ ne dabar → kada galės / meistras (kaip `reach`)
+                  └─ galiu ↓
+atviras klausimas: „Atidarykite Nustatymai (Settings) → Wi-Fi. Ką ten rašo?"
+                  ├─ „nežinau kur" → koks telefonas → tikslus kelias (Android / iPhone / Windows / Mac)
+                  ├─ „netikrinau, nežinau" → NE faktas, klausimas lieka
+                  └─ „išjungta" → nurodymas → „ar dabar veikia?"
+                                     └─ „dar neįjungiau" → atgal į nurodymą
+```
+
+| # | Kas pakeista |
+|---|---|
+| P8 | `BARGE_IN=0` (numatyta): agentas visada pasako atsakymą iki galo; tai, kas pasakyta visiškai per agento kalbą, negirdima; kalba, besitęsianti po agento — atsakymas |
+| P9 | vedamame režime ribos `guided_stall_before_offer: 5`, `guided_silence_before_offer: 4`; vietoj LLM „paskutinės progos" — parašytas pasiūlymas „tęsiame kartu ar užregistruoti meistrą?"; žingsnių žodžiai visada iš katalogo (ne LLM) |
+| P1 | „patikrinsiu", „palaukit", „mhm", triukšmas nesiskaito kaip neatsakytas klausimas |
+| P2 | vėlyvas atsakymas į klausimą, kuriam padaryta prielaida, pakeičia prielaidą; jei šakoje dar nieko nepadaryta — šaka perrenkama |
+| P3 | šakos pradžioje — „Supratau — …" (`pack.healthy_to_router.understood.*`) ir pasirengimo klausimas (`wifi_ready`, `cable_ready`) |
+| P4 | „netikrinau / nežinau" nebėra „ne" |
+| P5 | „dar neįjungiau" per patikrą grąžina į nurodymą |
+| P6 | įrenginio sistema („Samsung", „Androidinis") priimama bet kada |
+| P7 | patvirtinimas be dubliavimo („Wi-Fi įjungtas", ne „Wi-Fi Wi-Fi įjungtas"); „restored" turi savo frazę |
+
+Rasta pakeliui: parašytų žodžių kelias nedidino ėjimų skaitliuko, todėl kitas kliento atsakymas
+nebuvo skaitomas (`execute/say.py`).
+
 Failai: `knowledge/v2/ladders/` (wifi, cable, device, router), nauji moduliai
 `knowledge/v2/modules/`, įranga `android`, `iphone`, `windows`, `mac`; testai
 `tests/diagnosis/test_client_side.py`. Demo — `phone_only` (`app/scenarios.yaml`).

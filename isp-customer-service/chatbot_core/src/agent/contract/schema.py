@@ -537,6 +537,10 @@ class FaultCard(_Model):
     # RIDES on another one (IPTV over the internet) reads it to tell "fix the internet
     # first" from "the TV is its own fault" — wave 4: it used to read the verdict tree.
     line_ok: bool = False
+    # How its solution is walked: "quick" (the default — a few empty turns end in a ticket) or
+    # "guided" (the caller does things on their own device: the agent waits, leads step by step
+    # and never gives up for them — Andrius, 2026-11-04).
+    pace: Literal["quick", "guided"] = "quick"
     when: Candidacy = Candidacy()
     rules_out: list[str] = []
     needs: dict[str, Need] = {}

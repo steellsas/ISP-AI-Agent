@@ -4,6 +4,9 @@
 ladder: cable
 params: [device]
 steps:
+# K0 — ką tikrinsime ir ar klientas gali tai padaryti dabar.
+- module: cable_ready
+  args: {device: "{device}"}
 # K1 — laidas įkištas abiejuose galuose?
 - module: cable_seated
   args: {device: "{device}"}

@@ -7,6 +7,9 @@
 ladder: wifi
 params: [device]
 steps:
+# W0 — ką tikrinsime ir ar klientas gali tai padaryti dabar.
+- module: wifi_ready
+  args: {device: "{device}"}
 # W1 — Wi-Fi įjungtas?
 - module: wifi_state
   args: {device: "{device}"}
