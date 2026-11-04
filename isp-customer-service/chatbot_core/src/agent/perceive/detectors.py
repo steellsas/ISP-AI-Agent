@@ -511,6 +511,58 @@ def detect_power_cable(text: str | None) -> str | None:
     return outcome.value.lower() if outcome is not None else None
 
 
+def detect_switched(text: str | None) -> str | None:
+    """„Ar įjungtas Wi-Fi?" / „ar tinklo jungtis įjungta?" — „yes" įjungta, „no" išjungta.
+
+    Klientas dažnai skaito, kas parašyta ekrane: „Disable parašyta", „pilkas" yra atsakymas
+    „išjungta" (gyvai 2026-11-03 jis liko neperskaitytas). Neiginys pirmas: „neįjungtas" savyje
+    turi „įjungtas". Be šių žodžių — įprastas taip / ne.
+    """
+    if not text:
+        return None
+    low = f" {text.lower()} "
+    if any(m in low for m in vocab("switched_off")):
+        return "no"
+    if any(m in low for m in vocab("switched_on")):
+        return "yes"
+    outcome = detect_yes_no(text)
+    return outcome.value.lower() if outcome is not None else None
+
+
+def detect_wifi_network(text: str | None) -> str | None:
+    """„Ar prisijungęs prie savo tinklo?" — „own" savas, „other" kaimyno arba jokio."""
+    if not text:
+        return None
+    low = text.lower()
+    if any(m in low for m in vocab("wifi_network_other")):
+        return "other"
+    if any(m in low for m in vocab("wifi_network_own")):
+        return "own"
+    outcome = detect_yes_no(text)
+    if outcome is None:
+        return None
+    return "own" if outcome.value.lower() == "yes" else "other"
+
+
+def detect_how_to(text: str | None) -> bool:
+    """The caller asks HOW to do the step or WHERE to look („kur man eiti?", „nemoku")."""
+    low = (text or "").lower()
+    return any(m in low for m in vocab("how_to_request"))
+
+
+def detect_device_os(text: str | None, device_type: str) -> str | None:
+    """Which system the caller's device runs, from their words („Samsung" → android)."""
+    low = f" {(text or '').lower()} "
+    if device_type == "phone":
+        choices = {"android": vocab("device_os_android"), "iphone": vocab("device_os_iphone")}
+    else:
+        choices = {"windows": vocab("device_os_windows"), "mac": vocab("device_os_mac")}
+    for name, words in choices.items():
+        if any(m in low for m in words):
+            return name
+    return None
+
+
 def detect_reach(text: str | None) -> str | None:
     """„Ar galite dabar prieiti prie routerio?" — „einu / tuoj" dar NĖRA atsakymas.
 

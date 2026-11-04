@@ -1,0 +1,7 @@
+# K2 rasta: tinklo jungtis išjungta — įjungiama.
+module: nic_enable
+kind: instruct
+params:
+  device: {required: true}
+goal: "the {device}'s wired network connection enabled"
+produces: []

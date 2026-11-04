@@ -1459,8 +1459,11 @@ faq_keywords_working_hours: ["darbo laik", "kada dirbat", "iki keliu", "iki keli
 
 # How a short reply to THIS evidence question reads (value -> markers). The names
 # still carry the v1 pack verdicts they were first written for.
-answers_healthy_to_router_fail_scope_all: ["visuose", "visur", "nė viename", "ne viename neveikia", "abiejuose", "niekur"]
-answers_healthy_to_router_fail_scope_one: ["viename", "tik ", "telefone", "kompiuteryje", "planšetėje", "plansete"]
+# „Ar turite kitą įrenginį — ir ar jame veikia?" (2026-11-04): single — kito nėra; all — ir ten
+# neveikia; one — kituose veikia. Kortelė skaito ta eile, todėl „tik vienas" yra single.
+answers_healthy_to_router_fail_scope_single: ["neturiu kito", "kito neturiu", "kito nėra", "kito nera", "nėra kito", "nera kito", "tik vienas", "tik viena", "vienintel", "tik šitas", "tik sitas", "tik šitą", "tik sita", "daugiau neturiu", "daugiau nėra", "daugiau nera"]
+answers_healthy_to_router_fail_scope_all: ["visuose", "visur", "nė viename", "ne viename neveikia", "abiejuose", "niekur", "irgi neveikia", "irgi nėra", "irgi nera", "ten irgi ne", "taip pat neveikia"]
+answers_healthy_to_router_fail_scope_one: ["tik viename", "tik telefone", "tik kompiuteryje", "tik planšetėje", "tik plansete", "tik nešiojam", "tik nesiojam", "tik šitame", "tik sitame", "veikia", "kituose veikia", "ten veikia", "ten yra", "ten internetas yra"]
 answers_healthy_to_router_fail_device_phone: ["telefon", "planšet", "planset", "mobil"]
 answers_healthy_to_router_fail_device_computer: ["kompiuter", "nešiojam", "nesiojam", "laptop", "pc"]
 answers_healthy_to_router_connection_type_wired: ["laidu", "laidas", "kabeliu", "kabelis", "per laidą"]
@@ -1579,3 +1582,20 @@ acknowledge:
   - eisiu
   - pažiūrėsiu
   - patikrinsiu
+
+# --- Kliento pusės kopėčios (knowledge/v2/ladders, 2026-11-04) ----------------------------
+# Jungiklis įjungtas / išjungtas — Wi-Fi ar tinklo jungtis. Klientai skaito, kas parašyta
+# ekrane: „disable", „off", pilkas mygtukas (gyvai 2026-11-03: „Disable parašyta").
+switched_off: ["išjung", "isjung", "neįjung", "neijung", "disable", "disabled", "off", "pilk", "lėktuv", "lektuv", "airplane", "flight", "nedega", "nešviečia", "nesviecia", "nėra ženkl", "nera zenkl", "nematau ženkl", "nematau zenkl", "neprijung", "atjung", "not connected", "unplugged"]
+switched_on: ["įjungt", "ijungt", "enable", "enabled", "mėlyn", "melyn", "žali", "zali", "dega", "šviečia", "svieci", "matau ženkl", "matau zenkl", "bangel", "prijungt", "connected", " on"]
+# Savas tinklas ar ne.
+wifi_network_own: ["savo", "mano", "mūsų", "musu", "namų", "namu", "tp-link", "tplink", "kaip lipduk", "tas pats", "toks pat", "sutampa"]
+wifi_network_other: ["kaimyn", "svetim", "kitas tinklas", "kito tinklo", "ne mano", "ne savo", "ne prie savo", "nesutampa", "joks", "jokio", "neprisijung", "nieko nėra", "nieko nera"]
+# Klientas klausia, KAIP padaryti ar KUR žiūrėti — tai pagalba esamam žingsniui, ne pašalinė
+# tema (gyvai 2026-11-03: „kur man reikia eiti?" gavo išgalvotą atsakymą).
+how_to_request: ["kaip tai", "kaip padaryt", "kaip man", "kaip įjungt", "kaip ijungt", "kaip pažiūrėt", "kaip paziuret", "kaip patikrint", "kaip rast", "kur man", "kur eiti", "kur reikia", "kur spaust", "kur paspaust", "kur rasti", "kur žiūrėt", "kur ziuret", "kur tai", "nežinau kaip", "nezinau kaip", "nežinau kur", "nezinau kur", "nemoku", "nesuprantu kur", "padėkit", "padekit", "padėkite", "padekite", "parodykit", "pasakykit kur", "nerandu"]
+# Įrenginio sistema — „nežinau kaip" atveju; žodžiai sutampa su įrangos katalogo `matches`.
+device_os_android: ["android", "samsung", "galaxy", "xiaomi", "redmi", "huawei", "honor", "motorola", "nokia", "oppo", "realme", "pixel", "oneplus", "sony", "lenovo"]
+device_os_iphone: ["iphone", "ipad", "aifon", "aipon", "ajfon", "apple", "obuol"]
+device_os_windows: ["windows", "vindows", "vindovs", "langai", "asus", "acer", "dell", "lenovo", "hp "]
+device_os_mac: ["mac", "makbuk", "macbook", "imac", "apple", "obuol"]

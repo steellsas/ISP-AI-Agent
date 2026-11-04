@@ -95,7 +95,19 @@ def _words(spec: ModuleSpec, args: dict[str, Any], device) -> str | None:
         return device.how_to(action)
     if spec.module == "reach":
         return maybe_phrase(device.locate_key)
-    return None
+    # A module with no special key is worded under its own name (`wifi_enable`, `nic_enable`).
+    return device.how_to(spec.module)
+
+
+def how_words(call: ModuleCall, *, model: str | None = None) -> str | None:
+    """Where exactly to tap for this step on this device — the catalogue's `how.<module>`,
+    from the caller's system when it is known, else the basic device's words."""
+    spec = catalog.module(call.module)
+    if spec is None:
+        return None
+    args = _with_defaults(spec, call)
+    device = for_device(str(args.get("device") or "router"), model)
+    return device.how_to(f"how.{call.module}") if device else None
 
 
 def _guide_written(args: dict[str, Any]) -> list[str]:

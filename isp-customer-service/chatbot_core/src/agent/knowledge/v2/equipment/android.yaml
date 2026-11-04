@@ -1,0 +1,14 @@
+# ANDROID TELEFONAS / PLANŠETĖ (Samsung, Xiaomi, Huawei…) — paveldi bazinį telefoną ir perrašo
+# tik „kaip" žodžius: kur paspausti. `matches` skaito ir kliento žodžius („Samsung").
+equipment: android
+type: phone
+extends: phone
+matches: [android, samsung, galaxy, xiaomi, redmi, huawei, honor, motorola, nokia, oppo, realme, pixel, oneplus, lenovo, sony]
+
+actions:
+  how.wifi_state: equipment.android.how.wifi_state
+  how.wifi_enable: equipment.android.how.wifi_state
+  how.wifi_network: equipment.android.how.wifi_network
+  how.wifi_join_own: equipment.android.how.wifi_network
+  how.wifi_reconnect: equipment.android.how.wifi_reconnect
+  how.device_restart: equipment.android.how.device_restart

@@ -1,16 +1,20 @@
-# TINKLAS IKI ROUTERIO VEIKIA — problema kliento pusėje (v2 kortelė, 3 banga)
+# TINKLAS IKI ROUTERIO VEIKIA — problema kliento pusėje (v2 kortelė).
 #
-# Telemetrija sako, kad srautas iki routerio vaikšto, o klientui internetas neveikia.
-# Toliau klausimai atskiria, KUR problema: visuose įrenginiuose (routeris) ar viename
-# (tas įrenginys), ir kaip tas įrenginys prisijungęs (kabelis ar Wi-Fi).
+# Telemetrija sako, kad srautas iki routerio vaikšto, o klientui internetas neveikia. Agentas
+# pasako, ką mato, ir klausimais ieško, KUR namuose nutrūksta (Andrius, 2026-11-04):
 #
-# v1: internet_kliento_puse.yaml, 267 eil., 13 žingsnių.
+#   ar kituose įrenginiuose veikia? ── niekur ──────────► routeris
+#        │ kituose veikia / įrenginys vienas
+#   koks įrenginys, kaip jungiasi ───► Wi-Fi arba laido kopėčios ─► įrenginio perkrovimas
+#        kituose veikia ─► paslauga teikiama, bėda įrenginyje: pasiūloma mokama pagalba
+#        įrenginys vienas ─► routerio kopėčios ─► tiketas
+#
+# Kopėčios — `knowledge/v2/ladders/`, žodžiai pagal įrenginį ir jo sistemą — įrangos kataloge.
 fault: healthy_to_router
 service: internet
 symptom: internet_down
 # Tinklas iki kliento įrangos tvarkingas. Tai skaito paslauga, kuri JOJA ant kitos (IPTV per
-# internetą): jei ši kortelė laikosi, televizija — savas gedimas; jei ne, pirma internetas
-# (4 banga: anksčiau tą pasakydavo `verdicts.yaml` žymė per ištrintą medį).
+# internetą): jei ši kortelė laikosi, televizija — savas gedimas; jei ne, pirma internetas.
 line_ok: true
 explain:
   conclusion: "verdict.healthy_to_router.gloss"
@@ -25,30 +29,34 @@ rules_out:
   - device_registered=foreign
   - line_errors=high
   # Jei linijoje jokio įrenginio nematome, „tinklas iki routerio veikia" neturi prasmės —
-  # tai miręs routeris (S4 eval'e ši kortelė konkuravo su no_mac_observed ir laimėdavo).
+  # tai miręs routeris.
   - device_seen=no
-  # Įrenginys adreso net neprašo: srautas linijoje gali vaikščioti, bet kliento pusė čia
-  # nekalta — tai routerio nustatymų kortelė (dhcp_silent).
+  # Įrenginys adreso net neprašo: tai routerio nustatymų kortelė (dhcp_silent).
   - dhcp=silent
 
 needs:
+  # Kur nutrūksta: kituose įrenginiuose veikia (one), niekur neveikia (all), ar įrenginys
+  # vienintelis (single) — tada nežinome, ar kaltas įrenginys, ar routeris.
   fail_scope:
     ask: "pack.healthy_to_router.fail_scope.question"
     again: "pack.healthy_to_router.fail_scope.simpler"
     why: "pack.healthy_to_router.fail_scope.why"
     clarify: "pack.healthy_to_router.fail_scope.clarify"
-    # Srautas iki routerio VAIKŠTO, o klientas interneto neturi: vadinasi, jo nėra galutiniame
-    # taške — kažkuriame įrenginyje (Andrius, 2026-09-23). Tai prielaida, ne kliento atsakymas.
-    assume: one
+    # Neatsakė — einame atsargiausiu keliu: įrenginys, tada routeris, tada tiketas. Niekada
+    # nesakoma „kituose veikia", jei klientas to nepasakė.
+    assume: single
     values:
+      single: confirms
       all: confirms
       one: confirms
+    # Eilė svarbi: „tik vienas" turi „tik ", kurį skaito ir `one`.
     answers:
-      "all": answers_healthy_to_router_fail_scope_all
-      "one": answers_healthy_to_router_fail_scope_one
+      single: answers_healthy_to_router_fail_scope_single
+      all: answers_healthy_to_router_fail_scope_all
+      one: answers_healthy_to_router_fail_scope_one
   fail_device:
     ask: "pack.healthy_to_router.fail_device.question"
-    when: [fail_scope=one]
+    when: [fail_scope!=all]
     values: {phone: confirms, computer: confirms}
     answers:
       "phone": answers_healthy_to_router_fail_device_phone
@@ -72,7 +80,7 @@ needs:
       "no": answers_healthy_to_router_rebooted_no
 
 solution:
-# Neveikia visur, routeris dar neperkrautas — perkrovimas yra pigiausias žingsnis.
+# Niekur neveikia, routeris dar neperkrautas — perkrovimas yra pigiausias žingsnis.
 - when: [fail_scope=all, rebooted=no]
   steps:
   - module: reach
@@ -83,42 +91,85 @@ solution:
     args:
       evidence: [traffic=flowing]
       ask: restored
-# Neveikia visur, jau perkrovė — telefonu nebeliko ko daryti.
+# Niekur neveikia, jau perkrovė — telefonu nebeliko ko daryti.
 - when: [fail_scope=all, rebooted=yes]
   steps:
   - module: escalate
     args: {note: "klientas jau perkrovė routerį, tinklas iki routerio veikia"}
-# Telefonas / planšetė: Wi-Fi tas įrenginys.
-- when: [fail_device=phone]
+
+# Kituose įrenginiuose veikia — bėda TAME įrenginyje. Nepavyko: paslauga teikiama, siūloma
+# mokama pagalba; registruojama tik klientui sutikus.
+- when: [fail_scope=one, fail_device=phone]
   steps:
-  - module: device_check
-    args: {device: phone, what: wifi}
-    # Nepadėjo — tada prijungiam iš naujo. Tai `on_fail`, ne eilinis žingsnis: kitaip agentas
-    # prašo prisijungti iš naujo net tada, kai internetas jau veikia (S9 eval'e).
-    on_fail:
-      module: device_check
-      args: {device: phone, what: reconnect}
-  - module: verify
-    args: {ask: restored}
-# Kompiuteris kabeliu: laidas iki įrenginio.
-- when: [connection_type=wired]
+  - ladder: wifi
+    args: {device: phone}
+  - ladder: device
+    args: {device: phone}
+  - module: offer_fix
+    args: {device: phone}
+  - module: escalate
+    args: {why: kliento_pagalba, note: "kituose įrenginiuose internetas veikia, telefone Wi-Fi patikra nepadėjo — klientas prašo mokamos pagalbos"}
+    run_when: [fix_wanted=yes]
+  - module: conclude
+    args: {device: phone}
+- when: [fail_scope=one, fail_device=computer, connection_type=wifi]
   steps:
-  - module: device_check
-    args: {device: computer, what: cable}
-  - module: verify
-    args: {ask: restored}
-# Kompiuteris per Wi-Fi: tas pats kelias kaip telefonui.
-- when: [connection_type=wifi]
+  - ladder: wifi
+    args: {device: computer}
+  - ladder: device
+    args: {device: computer}
+  - module: offer_fix
+    args: {device: computer}
+  - module: escalate
+    args: {why: kliento_pagalba, note: "kituose įrenginiuose internetas veikia, kompiuterio Wi-Fi patikra nepadėjo — klientas prašo mokamos pagalbos"}
+    run_when: [fix_wanted=yes]
+  - module: conclude
+    args: {device: computer}
+- when: [fail_scope=one, fail_device=computer, connection_type=wired]
   steps:
-  - module: device_check
-    args: {device: computer, what: wifi}
-    on_fail:
-      module: device_check
-      args: {device: computer, what: reconnect}
-  - module: verify
-    args: {ask: restored}
+  - ladder: cable
+    args: {device: computer}
+  - ladder: device
+    args: {device: computer}
+  - module: offer_fix
+    args: {device: computer}
+  - module: escalate
+    args: {why: kliento_pagalba, note: "kituose įrenginiuose internetas veikia, kompiuterio laido ir tinklo plokštės patikra nepadėjo — klientas prašo mokamos pagalbos"}
+    run_when: [fix_wanted=yes]
+  - module: conclude
+    args: {device: computer}
+
+# Įrenginys vienintelis — nežinome, ar kaltas jis, ar routeris: įrenginys, tada routeris, tada
+# tiketas su nueitu keliu.
+- when: [fail_scope=single, fail_device=phone]
+  steps:
+  - ladder: wifi
+    args: {device: phone}
+  - ladder: device
+    args: {device: phone}
+  - ladder: router
+  - module: escalate
+    args: {note: "vienintelis įrenginys (telefonas): Wi-Fi patikra ir routerio perkrovimas nepadėjo"}
+- when: [fail_scope=single, fail_device=computer, connection_type=wifi]
+  steps:
+  - ladder: wifi
+    args: {device: computer}
+  - ladder: device
+    args: {device: computer}
+  - ladder: router
+  - module: escalate
+    args: {note: "vienintelis įrenginys (kompiuteris per Wi-Fi): Wi-Fi patikra ir routerio perkrovimas nepadėjo"}
+- when: [fail_scope=single, fail_device=computer, connection_type=wired]
+  steps:
+  - ladder: cable
+    args: {device: computer}
+  - ladder: device
+    args: {device: computer}
+  - ladder: router
+  - module: escalate
+    args: {note: "vienintelis įrenginys (kompiuteris laidu): laido, tinklo plokštės patikra ir routerio perkrovimas nepadėjo"}
 
 escalate:
-  note: "tinklas iki routerio veikia, kliento įrenginio patikra nepadėjo"
+  note: "tinklas iki routerio veikia, kliento pusės patikra nepadėjo"
 
 knowledge: troubleshooting/kliento_puse_internetas

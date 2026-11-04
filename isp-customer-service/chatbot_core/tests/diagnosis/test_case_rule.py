@@ -77,7 +77,7 @@ class TestTheCaseWalksTheCall:
         plan = case_rule.plan(state, rt)
 
         assert plan.rule == "case.ask" and plan.awaiting == "fail_scope"
-        assert "visuose" in plan.say.text
+        assert "kitą įrenginį" in plan.say.text
 
     def test_a_caller_already_at_the_router_is_not_asked_to_go_there(self, call):
         """`done_when` on the step: "esu prie routerio" was said, so the engine moves on to
@@ -362,14 +362,14 @@ class TestWhenTheCallerDoesNotAnswerTheQuestion:
         assert "Pažiūrėkite" in second.say.text
 
     def test_the_call_goes_on_with_what_the_card_assumes(self, client_side):
-        """Andrius 2026-09-23: traffic reaches the router, so the internet is there — it is
-        missing at the end device. That is the assumption, said out loud, not an answer."""
+        """No answer about the other devices: the careful road — this device, then the router
+        (Andrius, 2026-11-04). The assumption is said out loud, not taken as an answer."""
         state, rt = client_side
         state.case.asks["fail_scope"] = [1, 2]
 
         plan = case_rule.plan(state, rt)
 
-        assert state.case.assumed == {"fail_scope": "one"}
+        assert state.case.assumed == {"fail_scope": "single"}
         # The call carries on down the client-side road (which device fails), not to a ticket.
         assert plan.awaiting in ("fail_device", "connection_type", "rebooted")
         assert state.ticket.stage != "phone"

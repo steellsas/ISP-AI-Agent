@@ -1,6 +1,9 @@
 # KLIENTO TELEFONAS / PLANŠETĖ — bazinis lygis (P-8: kiekvienas tipas turi bazinį).
 # Jokių laidų: telefonas prie interneto prisijungia tik per Wi-Fi, ir būtent dėl to
 # instrukcijos turi būti kataloge, o ne naratoriaus improvizacija (S9: „laidas" telefone).
+#
+# Bazinis lygis kalba be sistemos pavadinimų. Kai klientas „nežino kaip", agentas paklausia,
+# koks telefonas, ir `how.*` žodžius duoda `android` arba `iphone` lygis.
 equipment: phone
 type: phone
 name_key: equipment.phone.name
@@ -10,3 +13,17 @@ actions:
   device_check.wifi: equipment.phone.check.wifi
   device_check.reconnect: equipment.phone.check.reconnect
   reach: equipment.phone.reach
+  # Wi-Fi kopėčios
+  wifi_state: equipment.phone.wifi_state
+  wifi_enable: equipment.phone.wifi_enable
+  wifi_network: equipment.phone.wifi_network
+  wifi_join_own: equipment.phone.wifi_join_own
+  wifi_reconnect: equipment.phone.wifi_reconnect
+  device_restart: equipment.phone.device_restart
+  offer_fix: equipment.phone.offer_fix
+  how.wifi_state: equipment.phone.how.wifi_state
+  how.wifi_enable: equipment.phone.how.wifi_state
+  how.wifi_network: equipment.phone.how.wifi_network
+  how.wifi_join_own: equipment.phone.how.wifi_network
+  how.wifi_reconnect: equipment.phone.how.wifi_reconnect
+  how.device_restart: equipment.phone.how.device_restart

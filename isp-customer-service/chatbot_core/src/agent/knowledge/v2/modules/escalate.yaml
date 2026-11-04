@@ -4,5 +4,6 @@ module: escalate
 kind: escalate
 params:
   note: {}                          # ką turi matyti meistras
+  why: {}                           # registracijos priežastis (registracija.yaml), kai ne įprasta
 goal: "the fault registered for a technician, and the caller told what happens next"
 produces: []

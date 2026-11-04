@@ -1,0 +1,16 @@
+# ROUTERIO KOPĖČIOS — kai bėda gali būti routeryje (niekas neveikia, arba įrenginys vienas ir
+# jo kopėčios nepadėjo — Andrius, 2026-11-04: prieš tiketą perkraunam routerį).
+#
+# Patikra — kliento žodis: srautas iki routerio vaikšto ir prieš perkrovimą, tad linija čia
+# nieko neįrodo.
+ladder: router
+params: []
+steps:
+- module: reach
+  args: {device: router}
+  done_when: [reachable=yes]
+- module: reboot
+  args: {device: router, method: power}
+- module: verify
+  args: {ask: restored}
+  fixes: pack.healthy_to_router.cause.router_reboot

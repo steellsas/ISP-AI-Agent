@@ -29,6 +29,11 @@ ticket_types:
   fault_unclear:
     department: customer_service
     priority: medium
+  # Paslauga teikiama, bėda kliento įrenginyje, ir klientas sutiko su MOKAMA pagalba (Andrius,
+  # 2026-11-04). Meistras informuoja apie kainą arba pasiūlo alternatyvas.
+  client_side_help:
+    department: technical
+    priority: low
   billing_request:
     department: billing
     priority: medium
@@ -57,3 +62,4 @@ by_verdict:
 # Kuri registracijos priežastis pati nulemia tiketo tipą (`knowledge/registracija.yaml`).
 by_reason:
   nebaigtas: call_unfinished
+  kliento_pagalba: client_side_help

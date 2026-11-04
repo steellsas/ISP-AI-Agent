@@ -1,0 +1,7 @@
+# W1 rasta: Wi-Fi išjungtas — įjungiamas (ir išjungiamas lėktuvo režimas).
+module: wifi_enable
+kind: instruct
+params:
+  device: {required: true}
+goal: "Wi-Fi switched on on the caller's {device}"
+produces: []

@@ -1,0 +1,15 @@
+# W1 — ar įrenginyje įjungtas Wi-Fi (ir neįjungtas lėktuvo režimas).
+#
+# „Disable parašyta", „pilkas", „išjungtas" yra rastas gedimas, ne neaiškus atsakymas
+# (gyvai 2026-11-03: klientė pasakė „disable", o agentas klausė toliau).
+module: wifi_state
+kind: ask
+params:
+  device: {required: true}
+ask: modules.wifi_state.question
+detector: switched
+answers:
+  "yes": wifi_on=yes
+  "no": wifi_on=no
+produces: [wifi_on]
+goal: "clear whether Wi-Fi is switched on on the caller's {device} (and flight mode is off)"

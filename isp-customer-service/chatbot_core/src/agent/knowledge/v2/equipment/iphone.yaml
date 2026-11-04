@@ -1,0 +1,13 @@
+# IPHONE / IPAD — paveldi bazinį telefoną ir perrašo tik „kaip" žodžius.
+equipment: iphone
+type: phone
+extends: phone
+matches: [iphone, ipad, apple, aifon, aipon, ajfon]
+
+actions:
+  how.wifi_state: equipment.iphone.how.wifi_state
+  how.wifi_enable: equipment.iphone.how.wifi_state
+  how.wifi_network: equipment.iphone.how.wifi_network
+  how.wifi_join_own: equipment.iphone.how.wifi_network
+  how.wifi_reconnect: equipment.iphone.how.wifi_reconnect
+  how.device_restart: equipment.iphone.how.device_restart

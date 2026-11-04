@@ -41,6 +41,9 @@ def plan(state: Any, rt: Any) -> TurnPlan | None:
     reflect = _reflect_plan(state, rt)
     if reflect is not None:
         return reflect
+    how = _how_to_plan(state, rt)
+    if how is not None:
+        return how
     facts = ledger.facts_of(state)
     if _hear_cannot_now(state, rt):
         facts = ledger.facts_of(state)
@@ -350,6 +353,13 @@ def _learn(state: Any, rt: Any, move: Any, facts: dict[str, str]) -> TurnPlan:
     """Look, act together, or ask — whichever the index offered as cheapest."""
     source = move.source
     state.case.awaiting = move.fact
+    if move.fault and source.kind == "ask":
+        # The fault is settled and only its branch is still open: the caller hears what we
+        # see on the line before the first question (Andrius, 2026-11-03: „patikrinau ryšį iki
+        # jūsų ir matau…"). Live that day the first thing they heard was „visuose ar viename?".
+        card = catalog.card(move.fault)
+        if card is not None:
+            _announce_finding(state, rt, card, facts)
     if source.kind == "probe":
         # The engine looks and decides again in the SAME turn: the caller is not asked to
         # wait for something we can read ourselves.
@@ -789,6 +799,15 @@ def _absorb(state: Any, rt: Any, facts: dict[str, str]) -> str:
         # paskui gedimas konstatuotas be lempučių. Perklausiame paprastai.
         return _answer_was_unclear(state, rt, call)
     if awaited and awaited in facts:
+        if awaited == "restored" and getattr(call, "fixes", None) and not call.args.get("evidence"):
+            # A fix check only the caller can answer (nothing on the line shows a phone's
+            # Wi-Fi): „veikia" solves the fault with its cause, „ne" sends the card on.
+            if facts[awaited] == "yes":
+                state.case.cause = call.fixes
+                rt.tracer.emit("case", move="fixed_by", fault=state.case.fault, cause=call.fixes)
+                return "solved"
+            rt.tracer.emit("case", move="fix_check_negative", fault=state.case.fault)
+            return _advance(state, rt, by_words=True)
         if awaited == "restored" and facts[awaited] == "no":
             # Their own answer says it did not work: the card decides what that means.
             return _retry_or_give_up(state, rt)
@@ -1232,6 +1251,14 @@ def _jumped_ahead(state: Any, rt: Any) -> str | None:
     here = state.case.step
     said = _reported_index(state, steps)
     if said is None or said <= here or said >= len(steps):
+        return None
+    out = catalog.module(steps[here].module)
+    if state.case.moved_on_turn == state.dialog.turn_count or (
+        out is not None and out.kind == "instruct" and _step_was_asked(state)
+    ):
+        # „Perkroviau" answered the instruction that was out — the phone they were asked to
+        # restart — and the same words do not walk on to the router two steps later (the
+        # client-side ladders, 2026-11-04).
         return None
     blocking = None
     for index in range(here, said):
@@ -1962,7 +1989,7 @@ def _module_plan_inner(state: Any, rt: Any, call, facts: dict[str, str], *, rule
     step the equipment catalogue cannot word is skipped rather than improvised."""
     from ...contract import limits
 
-    model = _device_model(state)
+    model = _model_for(state, call)
     call = _at_guide_step(state, call)
     step = modules.plan_step(call, model=model)
     if step is None or (step.kind == "instruct" and not step.text):
@@ -2067,7 +2094,17 @@ def _module_plan_inner(state: Any, rt: Any, call, facts: dict[str, str], *, rule
     state.case.delivered = state.case.step
     if step.kind == "escalate":
         # The card itself ends with a technician (a dead router): not fixable by phone.
-        return _escalate(state, rt, state.case.fault, note=step.note, why="telefonu_nepataisoma")
+        why = str(call.args.get("why") or "telefonu_nepataisoma")
+        return _escalate(state, rt, state.case.fault, note=step.note, why=why)
+    if step.kind == "inform":
+        # The conclusion with nothing registered: the service works, the caller declined help.
+        rt.tracer.emit("case", move="conclude", module=call.module)
+        return TurnPlan(
+            owner="procedure",
+            rule="case.conclude",
+            action=Action(type="close", name="inform"),
+            say=Say(kind="phrase", text=asked or "", stage="closing", written=True),
+        )
     if step.kind == "action":
         waits = _line_does_not_show(state, rt, call, facts)
         if waits is not None:
@@ -2249,7 +2286,8 @@ def _escalate(
         # aprašymas apie tiltą buvo tamsūs: gyvai 2026-10-02 klientas išgirdo „telefonu
         # neišspręsime", o paskui dar ir kad internetas neveiks, nors kompiuteris buvo pririštas.
         state.resolution.bridge_bound = True
-    if not state.case.summarised:
+    if not state.case.summarised and why != "kliento_pagalba":
+        # (Paid help the caller has just agreed to: they heard the conclusion with the offer.)
         told = _summary_words(state, card, live_facts)
         state.case.summarised = True
         state.case.facts["_escalate_why"] = why
@@ -2267,7 +2305,12 @@ def _escalate(
     request_ticket(state, rt, why)
     rt.tracer.emit("case", move="escalate", fault=fault, note=note)
     goal = "say WHY the phone cannot fix this and that a technician will be registered"
-    if _callback_card(fault) or why == "nebaigtas":
+    if why == "kliento_pagalba":
+        goal = (
+            "say you are registering the paid help they agreed to: a technician will call them "
+            "and tell the price and the options — promise nothing else"
+        )
+    elif _callback_card(fault) or why == "nebaigtas":
         goal = (
             "say plainly that the line shows it working but it does not work for them, and that "
             "you are registering it so a colleague reviews it and calls them back — no "
@@ -2301,6 +2344,11 @@ def _technician_wanted(state: Any, rt: Any) -> TurnPlan | None:
     from ...perceive.detectors import detect_refuse_or_ticket, detect_ticket_consent
 
     heard = s.dialog.last_heard
+    out = _current(state)
+    if out is not None and out.module == "offer_fix" and _step_was_asked(state):
+        # „Taip, registruokite" answers the paid-help offer that is out: the Case reads it and
+        # registers as that help, not as a technician the caller demanded.
+        return None
     offered = s.case.facts.get("_phone_work_offer")
     if offered and offered not in ("accepted", "declined"):
         return _answer_to_the_phone_work_offer(state, rt, offered, heard)
@@ -2622,6 +2670,96 @@ def _device_type(state: Any) -> str:
 
 def _device_model(state: Any) -> str | None:
     return _signals(state).get("device_model")
+
+
+# The caller's own devices: their words depend on the system the caller named, not on the
+# router the CRM knows.
+_OS_DEVICES = ("phone", "computer")
+
+
+def _model_for(state: Any, call: Any) -> str | None:
+    device = str((call.args or {}).get("device") or "") if call is not None else ""
+    if device in _OS_DEVICES:
+        return state.case.facts.get("device_os")
+    return _device_model(state)
+
+
+def _how_to_call(state: Any):
+    """The step on the caller's own device whose question or instruction is out, if any."""
+    if state.case.fault is None or state.ticket.stage:
+        return None
+    call = _current(state)
+    if call is None or state.case.step_said != state.case.step:
+        return None
+    spec = catalog.module(call.module)
+    if str(call.args.get("device") or "") not in _OS_DEVICES:
+        return None
+    return call if spec is not None and spec.kind in ("ask", "instruct") else None
+
+
+def how_to_due(state: Any) -> bool:
+    """„Kur man eiti?" belongs to the device step that is out — not a side topic."""
+    from ...perceive.detectors import detect_how_to
+
+    if _how_to_call(state) is None:
+        return False
+    return state.case.facts.get("_os_asked") == "pending" or detect_how_to(state.dialog.last_heard)
+
+
+def _how_to_plan(state: Any, rt: Any) -> TurnPlan | None:
+    """„Kur man eiti?", „nemoku" while a step on the caller's device is out: where exactly to
+    tap, for THEIR device.
+
+    The system (Android, iPhone, Windows, Mac) is asked only now, when an instruction needs it
+    (Andrius, 2026-11-04). Live 2026-11-03 these questions went to the narrator as a side topic,
+    and the caller heard an invented „padėsiu nustatyti routerį iš naujo".
+    """
+    from ...perceive.detectors import detect_device_os, detect_how_to
+
+    call = _how_to_call(state)
+    if call is None:
+        return None
+    device = str(call.args.get("device"))
+    heard = state.dialog.last_heard
+    facts = state.case.facts
+    if facts.get("_os_asked") == "pending":
+        facts["_os_asked"] = "done"
+        named = detect_device_os(heard, device)
+        if named:
+            ledger.record_client(state, rt, "device_os", named)
+        elif modules.read_answer(call, heard) is not None:
+            return None  # they answered the step itself — that is the Case's to read
+    elif not detect_how_to(heard):
+        return None
+    elif "device_os" not in facts and facts.get("_os_asked") != "done":
+        facts["_os_asked"] = "pending"
+        rt.tracer.emit("case", move="ask_os", module=call.module, device=device)
+        return TurnPlan(
+            owner="procedure",
+            rule="case.how_to_os",
+            say=Say(
+                kind="phrase",
+                text=phrase(f"case.device_os_question.{device}"),
+                stage="diagnosis",
+                written=True,
+            ),
+            awaiting=state.case.awaiting,
+        )
+    words = modules.how_words(call, model=facts.get("device_os"))
+    if not words:
+        return None
+    rt.tracer.emit("case", move="how_to", module=call.module, os=facts.get("device_os"))
+    return TurnPlan(
+        owner="procedure",
+        rule="case.how_to",
+        say=Say(
+            kind="phrase",
+            text=f"{words} {phrase('case.how_to_tell')}",
+            stage="diagnosis",
+            written=True,
+        ),
+        awaiting=state.case.awaiting,
+    )
 
 
 def _cid(state: Any) -> str | None:

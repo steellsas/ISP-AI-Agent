@@ -361,12 +361,60 @@ class ModuleCall(_Model):
     fixes: str | None = None
 
 
+class Ladder(_Model):
+    """A reusable run of steps (`knowledge/v2/ladders/`): the Wi-Fi checks are the same for
+    a phone and a computer, so a card names the ladder and its device instead of repeating
+    them. `{device}` in an argument is filled from the card's `args`."""
+
+    ladder: str
+    params: list[str] = []
+    steps: list[ModuleCall] = []
+
+
+def _fill(value: Any, args: dict[str, Any]) -> Any:
+    if isinstance(value, str):
+        return value.format(**args) if "{" in value else value
+    if isinstance(value, list):
+        return [_fill(v, args) for v in value]
+    if isinstance(value, dict):
+        return {k: _fill(v, args) for k, v in value.items()}
+    return value
+
+
+def expand_ladders(steps: list[Any]) -> list[Any]:
+    """`{ladder: wifi, args: {device: phone}}` -> the ladder's own steps for that device."""
+    from . import ladders
+
+    out: list[Any] = []
+    for raw in steps:
+        if not (isinstance(raw, dict) and "ladder" in raw):
+            out.append(raw)
+            continue
+        found = ladders.get().get(str(raw["ladder"]))
+        if found is None:
+            raise ValueError(f"unknown ladder '{raw['ladder']}'")
+        args = dict(raw.get("args") or {})
+        missing = [p for p in found.params if p not in args]
+        if missing:
+            raise ValueError(f"ladder '{found.ladder}' needs {missing}")
+        for step in found.steps:
+            out.append(_fill(step.model_dump(exclude_defaults=True), args))
+    return out
+
+
 class Solution(_Model):
     """What to DO once the card is confirmed — or which card takes over instead."""
 
     when: list[str] = []
     steps: list[ModuleCall] = []
     hands_to: str | None = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def _ladders(cls, data: Any) -> Any:
+        if isinstance(data, dict) and isinstance(data.get("steps"), list):
+            return {**data, "steps": expand_ladders(data["steps"])}
+        return data
 
     @model_validator(mode="after")
     def _does_something(self) -> Solution:
@@ -415,7 +463,8 @@ class ModuleSpec(_Model):
     module speaks differently for a TP-Link router and a TV box."""
 
     module: str
-    kind: Literal["ask", "instruct", "action", "verify", "escalate"]
+    # inform — the engine's conclusion is said and the call goes on to its end, nothing to do
+    kind: Literal["ask", "instruct", "action", "verify", "escalate", "inform"]
     params: dict[str, ParamSpec] = {}
     goal: str
     text: str | None = None  # equipment:… / device:… / procedure:… reference

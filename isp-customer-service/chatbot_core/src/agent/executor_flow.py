@@ -126,6 +126,13 @@ def register_ticket_from_state(state: Any, rt: Any) -> None:
         # A fact only heard in passing („seeded") was never checked with the caller.
         if e.get("source") == _EV_CLIENT and not e.get("conflict") and not e.get("seeded"):
             client_bits.append(f"{gloss_label(key)}: {gloss_value(e['value'], key)}")
+    # The answers to the Case's own steps (Wi-Fi on, own network, cable in) are the caller's
+    # too — the person taking over must not ask them again.
+    for key in s.case.said or []:
+        value = s.case.facts.get(key)
+        if key in s.diagnosis.evidence or key.startswith("_") or key == "restored" or not value:
+            continue
+        client_bits.append(f"{gloss_label(key)}: {gloss_value(value, key)}")
     if client_bits:
         details += phrase("ticket.details.checked", facts="; ".join(client_bits))
     # Ta pati išvada, kurią išgirdo klientas, keliauja ir meistrui: kas PADARYTA, kas veikia
@@ -134,6 +141,13 @@ def register_ticket_from_state(state: Any, rt: Any) -> None:
     told = s.case.summary or {}
     if told.get("padaryta"):
         details += phrase("ticket.details.done", works=told["padaryta"])
+    elif s.case.worked:
+        # No conclusion turn (the caller agreed to paid help right after the offer): the work
+        # done on the phone is still the ticket's.
+        did = [phrase_or(f"summary.did.{m}", "") for m in s.case.worked]
+        did = [d for d in dict.fromkeys(did) if d]
+        if did:
+            details += phrase("ticket.details.done", works=", ".join(did))
     if told.get("dabar"):
         details += phrase("ticket.details.bridge_live")
     if told.get("nepavyko"):

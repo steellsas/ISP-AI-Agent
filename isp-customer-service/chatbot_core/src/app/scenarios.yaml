@@ -86,8 +86,8 @@ scenarios:
     phone: "+37060020109"
     client: Aldona
     address: Ginkūnai, Žeimių g. 12-6
-    say: ["Neveikia internetas telefone", "Taip", "Aldona", "Kompiuteryje veikia", "Taip, įjungtas", "Taip, savo tinkle", "Jau veikia!", "Ne, ačiū, viso gero"]
-    actions: ["Šaka: „Niekur neveikia“ → perkrovimo kelias kaip pakibęs routeris."]
+    say: ["Neveikia internetas telefone", "Taip", "Aldona", "Kompiuteryje veikia", "Nežinau, kur žiūrėti", "Samsung", "Pilkas, parašyta disable", "Įjungiau", "Taip, veikia!", "Ne, ačiū, viso gero"]
+    actions: ["Prieš skambutį telefone IŠJUNK Wi-Fi; kai agentas pasako, kur spausti — įjunk.", "Agentas pirma pasako, ką mato: internetas iki routerio ateina.", "Šaka: kopėčios nepadeda → paslauga veikia, siūloma mokama pagalba („Ne“ → be tiketo).", "Šaka: „Kito įrenginio neturiu“ → įrenginys, tada routerio perkrovimas, tada tiketas."]
     expect: {verdict: healthy_to_router, outcome: resolved}
 
   - id: repeat_call

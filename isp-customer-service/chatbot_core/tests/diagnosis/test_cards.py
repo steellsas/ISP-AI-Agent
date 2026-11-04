@@ -210,16 +210,18 @@ class TestWhatToAssumeWhenNobodyAnswers:
         devices fail is what tells us where to look. It may be asked twice, in two wordings,
         and then the call goes on with the assumption."""
         need = catalog.card("healthy_to_router").needs["fail_scope"]
-        assert need.ask and need.again and need.assume == "one"
+        assert need.ask and need.again and need.assume == "single"
 
-    def test_a_line_that_carries_traffic_points_at_one_device(self):
-        assert catalog.card("healthy_to_router").needs["fail_scope"].assume == "one"
+    def test_no_answer_never_claims_the_other_devices_work(self):
+        """Neatsakė — einame atsargiausiu keliu (įrenginys, routeris, tiketas): „kituose
+        veikia" niekada nesakoma, jei klientas to nepasakė (Andrius, 2026-11-04)."""
+        assert catalog.card("healthy_to_router").needs["fail_scope"].assume == "single"
 
 
 def test_every_module_a_card_can_call_declares_what_it_does():
     for name, spec in catalog.modules().items():
         assert spec.goal, name
-        assert spec.kind in ("ask", "instruct", "action", "verify", "escalate"), name
+        assert spec.kind in ("ask", "instruct", "action", "verify", "escalate", "inform"), name
         # An action runs a tool; a verification reads one; the rest speak.
         if spec.kind == "action":
             assert spec.tool, name
@@ -272,7 +274,7 @@ class TestWhatTheCardsDeclare:
         card = catalog.card("healthy_to_router")
         assert card.needs["connection_type"].when == ["fail_device=computer"]
         assert card.needs["rebooted"].when == ["fail_scope=all"]
-        assert card.needs["fail_device"].when == ["fail_scope=one"]
+        assert card.needs["fail_device"].when == ["fail_scope!=all"]
 
     def test_every_question_can_be_asked_and_read(self):
         """A need must have the words to ask it and a way to read the answer — otherwise the

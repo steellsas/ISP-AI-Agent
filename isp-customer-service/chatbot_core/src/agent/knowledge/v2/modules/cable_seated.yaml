@@ -1,0 +1,13 @@
+# K1 — ar laidas įkištas į routerio LAN lizdą ir į kompiuterį.
+module: cable_seated
+kind: ask
+params:
+  device: {required: true}
+ask: modules.cable_seated.question
+# „įkištas / ištrauktas" — tie patys žodžiai kaip maitinimo laidui.
+detector: power_cable
+answers:
+  "yes": cable_seated=yes
+  "no": cable_seated=no
+produces: [cable_seated]
+goal: "clear whether the cable is firmly in a LAN socket of the router and in the {device}"

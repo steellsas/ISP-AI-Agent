@@ -583,6 +583,9 @@ def ticket_stage_reply(state: Any, rt: Any) -> str:
         # states the success and registers the ROUTER replacement.
         if state.ticket.request_type:
             parts.append(phrase("identification.ticket_intro_request"))
+        elif state.ticket.reason == "kliento_pagalba":
+            # The caller agreed to PAID help with their own device: no „neišspręsime", no fault.
+            parts.append(phrase("identification.ticket_intro_paid_help"))
         elif state.resolution.bridge_bound:
             parts.append(phrase("identification.ticket_intro_bridge"))
         elif _callback_only(state):

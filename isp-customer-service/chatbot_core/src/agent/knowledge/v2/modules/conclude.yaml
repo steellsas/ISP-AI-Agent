@@ -1,0 +1,8 @@
+# Išvada be tiketo: klientas pagalbos atsisakė. Paslauga veikia, ką rado — pasakyta.
+module: conclude
+kind: inform
+params:
+  device: {required: true}
+announce: modules.conclude.text
+goal: "nothing is registered; if they change their mind or the internet drops again, they call back"
+produces: []

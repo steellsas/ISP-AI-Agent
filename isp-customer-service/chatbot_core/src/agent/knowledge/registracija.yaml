@@ -51,6 +51,10 @@ priezastys:
     kada: "mūsų sistemos (patikra, CRM) nepasiekiamos"
     sutikimas: ne
     tiketui: "patikros sistemos skambučio metu neveikė"
+  kliento_pagalba:
+    kada: "tiekėjo pusėje viskas veikia (kituose įrenginiuose internetas yra), bėda kliento įrenginyje, ir klientas sutiko su mokama meistro pagalba"
+    sutikimas: taip
+    tiketui: "klientas prašo mokamos pagalbos — bėda kliento įrenginyje, paslauga teikiama"
   ne_musu_klausimas:
     kada: "klausimas ne agento srities (sąskaita, sutartis) — atsakingam žmogui"
     sutikimas: taip
