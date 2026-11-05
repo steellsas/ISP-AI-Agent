@@ -1,7 +1,7 @@
-"""Kliento pusės gedimas (Andrius, 2026-11-04): internetas iki routerio ateina, o klientui
-neveikia. Agentas išsiaiškina, kur nutrūksta (kiti įrenginiai, koks įrenginys, kaip jungiasi),
-ir eina universaliomis kopėčiomis — Wi-Fi, laidas, įrenginys, routeris. Žodžius duoda įrangos
-katalogas pagal įrenginį ir jo sistemą; sistemos klausiama tik kai klientas „nežino kaip"."""
+"""Kliento pusės gedimas (Andrius, 2026-11-04/05): internetas iki routerio ateina, o klientui
+neveikia. Agentas padeda su tuo įrenginiu, dėl kurio skambina (Wi-Fi arba laidas, perkrovimas);
+nepavykus — kiti įrenginiai (tinklų palyginimas) arba routeris; tik tada tiketas. Žodžius duoda
+įrangos katalogas pagal įrenginį ir jo sistemą; sistemos klausiama tik kai klientas „nežino kaip"."""
 
 import sqlite3
 
@@ -12,6 +12,8 @@ FUNCTION = "Kliento pusė"
 # The last answer is to „ar galite dabar pasižiūrėti?" — the guided step starts with it.
 OTHERS_WORK_PHONE = ["Gerai", "Kompiuteryje veikia, telefone ne", "Telefone", "Taip, galiu"]
 LADDER_FAILS = ["Įjungtas", "Taip, savo", "Padariau", "Ne, neveikia", "Perkroviau", "Ne, vis tiek"]
+# The phone's ladder did not help: other devices work, on the same network.
+OTHERS_SAME_NETWORK = ["Kompiuteryje veikia", "Taip, tas pats"]
 
 
 def walk(c, turns):
@@ -37,20 +39,24 @@ class TestLadders:
         from agent.contract import cards
 
         card = cards.card("healthy_to_router")
-        phone = next(s for s in card.solution if "fail_device=phone" in s.when)
-        assert [s.module for s in phone.steps[:2]] == ["wifi_ready", "wifi_state"]
+        phone = next(s for s in card.solution if s.when == ["fail_device=phone"])
+        modules = [s.module for s in phone.steps]
+        assert modules[:2] == ["wifi_ready", "wifi_state"]
         assert phone.steps[1].args == {"device": "phone"}
-        assert [s.module for s in phone.steps[-3:]] == ["offer_fix", "escalate", "conclude"]
+        # The other devices only after the phone's own ladder; the ticket last.
+        assert modules.index("device_restart") < modules.index("other_devices")
+        assert modules.index("other_devices") < modules.index("wifi_compare")
+        assert modules[-1] == "escalate"
 
     def test_a_single_device_reboots_the_router_before_a_ticket(self):
         from agent.contract import cards
 
         card = cards.card("healthy_to_router")
-        single = next(
-            s for s in card.solution if s.when == ["fail_scope=single", "fail_device=phone"]
-        )
-        modules = [s.module for s in single.steps]
-        assert modules.index("reboot") < modules.index("escalate") == len(modules) - 1
+        phone = next(s for s in card.solution if s.when == ["fail_device=phone"])
+        reboot = next(s for s in phone.steps if s.module == "reboot")
+        assert reboot.run_when == ["fail_scope!=one"]
+        modules = [s.module for s in phone.steps]
+        assert modules.index("reboot") < len(modules) - 1 and modules[-1] == "escalate"
 
     def test_how_words_follow_the_callers_system(self):
         from agent.contract.schema import ModuleCall
@@ -111,7 +117,9 @@ def test_how_asks_the_system_once_then_says_where_to_tap(diagnosing):
 
 def test_others_work_and_help_declined_ends_without_a_ticket(diagnosing):
     """Kituose veikia, kopėčios nepadėjo, pagalbos nenori — paaiškinta, nieko neregistruota"""
-    c = walk(diagnosing("healthy_to_router"), [*OTHERS_WORK_PHONE, *LADDER_FAILS])
+    c = walk(
+        diagnosing("healthy_to_router"), [*OTHERS_WORK_PHONE, *LADDER_FAILS, *OTHERS_SAME_NETWORK]
+    )
     assert c.rule == "case.offer_fix"
     c.say("Ne, nereikia")
     assert c.rule == "case.conclude" and "nieko neregistruoju" in c.replies[-1]
@@ -121,7 +129,9 @@ def test_others_work_and_help_declined_ends_without_a_ticket(diagnosing):
 
 def test_paid_help_agreed_registers_its_own_ticket(diagnosing):
     """Sutiko su mokama pagalba — savas tiketo tipas, be „neišspręsime", su nueitu keliu"""
-    c = walk(diagnosing("healthy_to_router"), [*OTHERS_WORK_PHONE, *LADDER_FAILS])
+    c = walk(
+        diagnosing("healthy_to_router"), [*OTHERS_WORK_PHONE, *LADDER_FAILS, *OTHERS_SAME_NETWORK]
+    )
     c.say("Taip, registruokite")
     assert c.rule == "ticket.phone_intro"
     assert "kainą" in c.replies[-1] and "neišspręsime" not in c.replies[-1]
@@ -183,7 +193,8 @@ class TestGuidedSolution:
             rules.append(c.rule)
         assert "case.guided_offer" in rules and "case.last_chance" not in rules
         assert not c.state.ticket.stage
-        assert "meistras" in c.replies[rules.index("case.guided_offer") - 6]
+        offer = c.replies[rules.index("case.guided_offer") - 6]
+        assert "padėsiu" in offer and "meistr" not in offer  # help, not a technician
 
     def test_cannot_now_at_the_guided_step_takes_the_later_path(self, diagnosing):
         c = walk(diagnosing("healthy_to_router"), OTHERS_WORK_PHONE[:-1])
@@ -198,26 +209,24 @@ class TestAnalysisPace:
     def test_going_to_check_is_not_an_unanswered_question(self, diagnosing):
         c = diagnosing("healthy_to_router")
         walk(c, ["Gerai", "Nežinau, patikrinsiu", "Mhm", "Palaukit, žiūriu"])
-        assert "fail_scope" not in c.state.case.assumed
-        assert c.state.case.awaiting == "fail_scope"
+        assert "fail_device" not in c.state.case.assumed
+        assert c.state.case.awaiting == "fail_device"
 
     def test_a_late_answer_chooses_the_branch_again(self, diagnosing):
-        """Prielaida „vienintelis", paskui „kompiuteryje veikia" — šaka „kituose veikia\""""
-        c = diagnosing("healthy_to_router")
-        walk(c, ["Gerai", "Nežinau", "Nežinau", "Telefone"])
-        assert c.state.case.facts.get("fail_scope") == "single"
-        c.say("Aa, kompiuteryje veikia, tik telefone ne")
+        """Prielaida „nepatikslintas įrenginys", paskui „telefone neveikia" — telefono šaka"""
         from agent.contract import cards
 
-        assert c.state.case.facts["fail_scope"] == "one"
+        c = walk(diagnosing("healthy_to_router"), ["Gerai", "Nežinau", "Nežinau"])
+        assert c.state.case.facts.get("fail_device") == "other"
+        c.say("Aa, čia telefone neveikia")
+        assert c.state.case.facts["fail_device"] == "phone"
         branch = cards.card("healthy_to_router").solution[c.state.case.solution]
-        assert "fail_scope=one" in branch.when
+        assert branch.when == ["fail_device=phone"]
 
     def test_the_branch_starts_by_saying_what_was_understood(self, diagnosing):
-        # „Kompiuteryje veikia, telefone ne" says both: the branch starts on that very turn.
-        c = walk(diagnosing("healthy_to_router"), OTHERS_WORK_PHONE[:2])
+        c = walk(diagnosing("healthy_to_router"), ["Gerai", "Telefone"])
         assert c.rule == "case.wifi_ready"
-        assert c.replies[-1].startswith("Supratau — kituose įrenginiuose internetas veikia")
+        assert c.replies[-1].startswith("Supratau — internetas neveikia telefone.")
         assert c.replies[-1].endswith("Ar galite dabar pasižiūrėti telefono nustatymuose?")
 
     def test_the_system_said_in_passing_is_kept(self, diagnosing):
@@ -264,7 +273,58 @@ def test_the_ticket_tells_the_technician_what_to_check(diagnosing):
     """Tiketas — užduotis meistrui: kas nepatikrinta telefonu ir ką tikrinti (2026-11-05)"""
     c = walk(diagnosing("healthy_to_router"), ["Gerai", "Neturiu", "Telefone", "Taip, galiu"])
     walk(c, ["Registruokite meistrą", "Taip, tinka", "Bet kada"])
-    _, details = _ticket(c.state.ticket.ticket_id)
+    ticket_type, details = _ticket(c.state.ticket.ticket_id)
+    assert ticket_type == "fault_technician"  # asked for — a technician, not a call-back
     assert "Meistrui patikrinti:" in details and "DHCP" in details
     assert "Telefonu nespėta patikrinti:" in details and "Wi-Fi įjungimas" in details
     assert "telefonu nebeliko" not in details
+
+
+class TestTheNewTree:
+    """Andrius (2026-11-05): įrenginys → jo kopėčios → kiti įrenginiai → routeris → tiketas."""
+
+    def test_a_different_network_on_the_working_device_is_joined(self, diagnosing):
+        c = walk(diagnosing("healthy_to_router"), [*OTHERS_WORK_PHONE, *LADDER_FAILS])
+        assert c.rule == "case.other_devices"
+        walk(c, ["Kompiuteryje veikia", "Ne, kitas pavadinimas"])
+        assert c.rule == "case.wifi_join_same"
+        walk(c, ["Prisijungiau", "Taip, veikia"])
+        assert c.rule == "case.resolved"
+        assert c.state.case.cause == "pack.healthy_to_router.cause.wrong_network"
+
+    def test_no_other_device_reboots_the_router_then_registers(self, diagnosing):
+        c = walk(diagnosing("healthy_to_router"), [*OTHERS_WORK_PHONE, *LADDER_FAILS])
+        c.say("Neturiu kito")
+        assert c.rule == "case.reach"
+        walk(c, ["Taip, galiu", "Perkroviau routerį", "Ne, vis tiek ne", "Gerai"])
+        assert "reboot" in c.state.case.worked
+        # Everything was done together: a technician, not „a colleague calls back".
+        assert c.rule == "ticket.phone_intro" and c.state.ticket.reason == "visi_veiksmai"
+        assert c.replies[-1].startswith("Atlikome visus veiksmus")
+
+    def test_a_finding_during_the_registration_goes_back_to_the_fix(self, diagnosing):
+        """„Aš dabar patikrinau, Wi-Fi išjungtas" per kontaktus — atgal į sprendimą"""
+        c = walk(diagnosing("healthy_to_router"), [*OTHERS_WORK_PHONE, *LADDER_FAILS])
+        walk(c, ["Neturiu kito", "Taip, galiu", "Perkroviau routerį", "Ne, vis tiek ne", "Gerai"])
+        assert c.state.ticket.stage == "phone"
+        c.say("Aš dabar patikrinau, Wi-Fi išjungtas")
+        assert c.rule == "case.wifi_enable" and not c.state.ticket.stage
+        walk(c, ["Įjungiau", "Taip, veikia"])
+        assert c.rule == "case.resolved" and not c.state.ticket.ticket_id
+
+    def test_nowhere_working_said_up_front_goes_to_the_router(self, diagnosing):
+        c = walk(diagnosing("healthy_to_router"), ["Gerai", "Visuose įrenginiuose neveikia"])
+        assert c.state.case.facts["fail_scope"] == "all"
+        assert c.state.case.awaiting == "rebooted"
+
+    def test_how_at_the_readiness_step_goes_to_where_to_tap(self, diagnosing):
+        c = walk(diagnosing("healthy_to_router"), ["Gerai", "Telefone", "Kaip tai padaryti?"])
+        assert c.rule == "case.how_to_os"
+        c.say("OnePlus")
+        assert c.rule == "case.how_to" and not c.state.ticket.stage
+
+    def test_now_is_ready(self):
+        from agent.perceive.detectors import detect_ready
+
+        assert detect_ready("Dabar.") == "yes"
+        assert detect_ready("Ne dabar, esu darbe") == "no"

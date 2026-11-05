@@ -598,6 +598,43 @@ def detect_reach(text: str | None) -> str | None:
     return outcome.value.lower() if outcome is not None else None
 
 
+def detect_others(text: str | None) -> str | None:
+    """„Ar turite kitų įrenginių — ar juose veikia?" — „one" kituose veikia, „all" irgi
+    neveikia, „single" kito nėra. Read with the negation guard: „neveikia" is not „veikia"."""
+    from ..evidence import read_pending_answer
+
+    spec = {
+        "answers": {
+            "single": "answers_healthy_to_router_fail_scope_single",
+            "all": "answers_healthy_to_router_fail_scope_all",
+            "one": "answers_healthy_to_router_fail_scope_one",
+        }
+    }
+    if not text:
+        return None
+    found = read_pending_answer("fail_scope", text, spec)
+    if found in ("single", "all"):
+        return found
+    if any(m in text.lower() for m in vocab("others_fail")):
+        return "all"  # „Ne, neveikia" — answering THIS question, it is „irgi neveikia"
+    return found
+
+
+def detect_ready(text: str | None) -> str | None:
+    """„Ar galite dabar pasižiūrėti?" before a guided check: „dabar", „gerai", „kaip tai
+    padaryti?" all mean yes — the caller is ready, and „how" is answered by the next step
+    (live 2026-11-05: „Dabar." was not read and the agent gave up)."""
+    if not text:
+        return None
+    low = f" {text.lower()} "
+    if any(m in low for m in vocab("ready_not_now")):
+        return "no"
+    if any(m in low for m in vocab("ready_yes")) or any(m in low for m in vocab("how_to_request")):
+        return "yes"
+    outcome = detect_yes_no(text)
+    return outcome.value.lower() if outcome is not None else None
+
+
 def detect_bridge_consent(text: str | None) -> str | None:
     """Atsakymas į PASIŪLYMĄ laikinai paleisti internetą į vieną įrenginį.
 

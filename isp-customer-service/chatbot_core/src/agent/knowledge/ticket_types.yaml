@@ -63,3 +63,5 @@ by_verdict:
 by_reason:
   nebaigtas: call_unfinished
   kliento_pagalba: client_side_help
+  # Kliento pusės kopėčios nueitos iki galo — meistras, ne perskambinimas (2026-11-05).
+  visi_veiksmai: fault_technician

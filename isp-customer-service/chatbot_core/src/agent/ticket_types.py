@@ -47,7 +47,12 @@ def for_call(cause: str | None, reason: str | None) -> str:
     mapped = _by_reason().get(reason or "")
     if mapped and known(str(mapped)):
         return str(mapped)
-    return fault_type(cause)
+    by_fault = fault_type(cause)
+    if by_fault == "call_unfinished" and reason == "klientas_praso":
+        # The caller asked for a technician mid-fix (a client-side card): a technician, not „a
+        # colleague reviews it and calls back" (Andrius, 2026-11-05).
+        return "fault_technician"
+    return by_fault
 
 
 def callback_only(cause: str | None, reason: str | None) -> bool:

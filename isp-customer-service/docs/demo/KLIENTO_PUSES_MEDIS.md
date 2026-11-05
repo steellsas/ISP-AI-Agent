@@ -48,6 +48,25 @@ atviras klausimas: „Atidarykite Nustatymai (Settings) → Wi-Fi. Ką ten rašo
 | Tiketas | „Telefonu nespėta patikrinti: …" (nenueiti kopėčių žingsniai) ir „Meistrui patikrinti: …" (`escalate.checks`); „telefonu nebeliko ką patikrinti" — tik kai tikrai nebeliko |
 | Dvigubas tiketas | skambučio pabaiga laukia vykstančio ėjimo (`AgentSession._turn_running`) |
 
+### Medis pertvarkytas (2026-11-05, antras skambutis): pirma įrenginys, kiti — tik nepavykus
+
+```
+koks įrenginys ─► jo kopėčios (Wi-Fi / laidas, perkrovimas) ─► pavyko: išspręsta
+     │ nepavyko
+ar turite kitų įrenginių, ar juose veikia?   (`isolate` kopėčios, modulis `other_devices`)
+     ├─ veikia ──► tas pats Wi-Fi? (`wifi_compare`) ─ ne: `wifi_join_same` ─ taip: mokama pagalba
+     └─ irgi neveikia / kito nėra ──► routeris ──► „atlikome visus veiksmus" → meistras (`visi_veiksmai`)
+```
+
+| Kas | Pakeista |
+|---|---|
+| Nepasiduoda | vedamame režime išjungta analitiko „aklavietė", „klientas pasimetęs → tiketas" ir kartojimų sargas (tik po 10 tuščių ėjimų) |
+| Pasiūlymas | be meistro: „Neskubėkite… padėsiu žingsnis po žingsnio" |
+| Pasirengimas | „dabar", „gerai", „kaip tai padaryti?" = taip (`detect_ready`); „kaip?" iškart veda į „kur spausti" |
+| Formuluotės | pakartotas žingsnis — kiti parašyti žodžiai: paprastesnis („taip ar ne?") → kur spausti → pradinis (`modules.<m>.again`, `equipment.<d>.again.<m>`) |
+| Pabaiga | nueitos kopėčios → meistras, ne perskambinimas: „Atlikome visus veiksmus, kuriuos galima telefonu…" |
+| Registracijos metu | radinys („Wi-Fi išjungtas") grąžina į taisymą; „nenoriu jokių…" — atsisakymas; paprašius meistro — „kaip prašote", tipas `fault_technician` |
+
 Rasta pakeliui: parašytų žodžių kelias nedidino ėjimų skaitliuko, todėl kitas kliento atsakymas
 nebuvo skaitomas (`execute/say.py`).
 

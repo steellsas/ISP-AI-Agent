@@ -322,8 +322,9 @@ class TestPendingFallback:
             atsakymo_kokybe="pilnas",
         )
         with patch("agent.perceive.understand.understand", return_value=canned):
-            ingest_client_evidence(agent.state, agent.runtime, "Visuose įrenginiuose")
-        assert agent.state.diagnosis.evidence["fail_scope"]["value"] == "all"
+            ingest_client_evidence(agent.state, agent.runtime, "Telefone")
+        # 2026-11-05: the device is the client-side card's first question now.
+        assert agent.state.diagnosis.evidence["fail_device"]["value"] == "phone"
 
     def test_unrelated_utterance_commits_nothing(self, db_connection):
         from unittest.mock import patch

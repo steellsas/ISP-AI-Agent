@@ -73,6 +73,9 @@ identification:
   ticket_intro_unfinished: "Linija rodo, kad internetas iki routerio veikia, o jums neveikia — telefonu nebeturiu, ką dar patikrinti. Užregistruosiu, kad kolega peržiūrėtų ir jums paskambintų."
   # A question outside the agent's knowledge, registered for the responsible person.
   # Mokama pagalba kliento įrenginiui (2026-11-04): kainą praneša meistras, ne agentas.
+  # Kliento pusės kopėčios nueitos iki galo (Andrius, 2026-11-05).
+  ticket_intro_all_done: "Atlikome visus veiksmus, kuriuos galima padaryti telefonu, bet internetas vis tiek neveikia. Registruoju meistrą — jis žinos, ką jau patikrinome."
+  ticket_intro_asked: "Gerai, užregistruosiu meistrą, kaip prašote — jis žinos, ką jau patikrinome."
   ticket_intro_paid_help: "Gerai — užregistruosiu, kad meistras su jumis susisiektų, pasakytų kainą ir galimybes."
   ticket_intro_request: "Šiuo klausimu jums geriausiai atsakys atsakingas žmogus — užregistruosiu jūsų klausimą, ir jis su jumis susisieks."
   ticket_done_request: "Užregistravau jūsų klausimą. Atsakingas žmogus paskambins {phone}, {hours}. Ar dar kuo padėti?"
@@ -212,18 +215,11 @@ pack:
       other_device: "prijungti savo įrenginį prie kliento routerio — atskirti routerį nuo kliento įrenginio"
     # Ką supratome — sakoma šakos pradžioje, kad klientas spėtų pataisyti (2026-11-04).
     understood:
-      one:
-        phone: "Supratau — kituose įrenginiuose internetas veikia, o telefone neveikia."
-        computer:
-          wifi: "Supratau — kituose įrenginiuose internetas veikia, o kompiuteryje, kuris jungiasi per Wi-Fi, neveikia."
-          wired: "Supratau — kituose įrenginiuose internetas veikia, o kompiuteryje, kuris jungiasi laidu, neveikia."
-        other: "Supratau — kituose įrenginiuose internetas veikia, o viename neveikia."
-      single:
-        phone: "Supratau — internetas neveikia telefone, ir kito įrenginio patikrinti neturite."
-        other: "Supratau — internetas neveikia, ir kito įrenginio patikrinti neturite."
-        computer:
-          wifi: "Supratau — internetas neveikia kompiuteryje, kuris jungiasi per Wi-Fi, ir kito įrenginio patikrinti neturite."
-          wired: "Supratau — internetas neveikia kompiuteryje, kuris jungiasi laidu, ir kito įrenginio patikrinti neturite."
+      phone: "Supratau — internetas neveikia telefone."
+      computer:
+        wifi: "Supratau — internetas neveikia kompiuteryje, kuris jungiasi per Wi-Fi."
+        wired: "Supratau — internetas neveikia kompiuteryje, kuris jungiasi laidu."
+      other: "Supratau — internetas neveikia jūsų įrenginyje."
     fail_scope:
       label: "kur neveikia"
       values:
@@ -704,12 +700,25 @@ modules:
   # atsarginiai, kai katalogas įrenginio neaprašo.
   wifi_ready:
     question: "Pirmiausia reikia patikrinti, ar įrenginys prisijungęs prie jūsų Wi-Fi. Ar galite tai padaryti dabar?"
+    again: "Ar galite dabar paimti įrenginį ir atidaryti jo nustatymus?"
   cable_ready:
     question: "Pirmiausia reikia patikrinti laidą ir tinklo jungtį. Ar galite tai padaryti dabar?"
   wifi_state:
     question: "Ar įrenginyje įjungtas Wi-Fi?"
+    again: "Ar Wi-Fi įjungtas — taip ar ne?"
   wifi_network:
     question: "Ar įrenginys prisijungęs prie jūsų tinklo — to, kurio pavadinimas ant routerio lipduko?"
+    again: "Ar prie Wi-Fi parašytas jūsų tinklo pavadinimas — toks pat kaip ant routerio lipduko? Taip ar ne?"
+  device_restart:
+    again: "Išjunkite įrenginį ir vėl įjunkite — pasakykite, kai įsijungs."
+  wifi_reconnect:
+    again: "Pabandykite iš Wi-Fi sąrašo vėl pasirinkti savo tinklą ir įvesti slaptažodį nuo routerio lipduko — pasakykite, kas parašyta."
+  other_devices:
+    question: "Ryšio šiame įrenginyje atkurti kol kas nepavyko. Ar turite kitų įrenginių, kurie jungiasi prie interneto — ir ar juose internetas veikia?"
+    again: "Ar namuose turite dar kokį įrenginį su internetu — kompiuterį, planšetę, kitą telefoną? Ar jame internetas veikia?"
+  wifi_compare:
+    question: "Pažiūrėkite veikiančiame įrenginyje, prie kokio Wi-Fi tinklo jis prisijungęs. Ar pavadinimas toks pat kaip tame, kuriame neveikia?"
+    again: "Ar veikiančio įrenginio Wi-Fi pavadinimas toks pat kaip tame, kuriame neveikia — taip ar ne?"
   cable_seated:
     question: "Ar laidas tvirtai įkištas ir į routerio lizdą, ir į kompiuterį?"
   nic_enabled:
@@ -752,10 +761,15 @@ equipment:
       wifi: "Telefone atidarykite nustatymus ir pažiūrėkite, ar Wi-Fi įjungtas ir prisijungęs prie jūsų namų tinklo."
       reconnect: "Telefone paspauskite ant savo namų tinklo, pasirinkite „pamiršti šį tinklą“ ir prisijunkite iš naujo su slaptažodžiu."
     wifi_ready: "Pirmiausia reikia patikrinti, ar telefonas prisijungęs prie jūsų Wi-Fi. Ar galite dabar pasižiūrėti telefono nustatymuose?"
+    again:
+      wifi_ready: "Ar galite dabar atsidaryti telefono nustatymus — krumpliaračio ženkliukas?"
+      wifi_state: "Ar telefone Wi-Fi įjungtas — taip ar ne?"
+      device_restart: "Išjunkite telefoną šoniniu mygtuku ir vėl įjunkite — pasakykite, kai įsijungs."
     wifi_state: "Atidarykite telefono nustatymus — „Nustatymai“ arba „Settings“ — ir suraskite Wi-Fi. Ką ten rašo — Wi-Fi įjungtas ar išjungtas?"
     wifi_enable: "Įjunkite telefone Wi-Fi ir patikrinkite, kad neįjungtas lėktuvo režimas."
     wifi_network: "Ar po Wi-Fi rašo, prie kokio tinklo prisijungta? Ar tai jūsų tinklas — toks pat pavadinimas kaip ant routerio lipduko?"
     wifi_join_own: "Wi-Fi sąraše pasirinkite savo tinklą — pavadinimas ant routerio lipduko; stovint prie routerio jis stipriausias."
+    wifi_join_same: "Telefone Wi-Fi sąraše pasirinkite tą patį tinklą, prie kurio prisijungęs veikiantis įrenginys, ir įveskite slaptažodį nuo routerio lipduko."
     wifi_reconnect: "Pabandykime prisijungti iš naujo: Wi-Fi sąraše paspauskite savo tinklą, pasirinkite „Pamiršti“ ir prisijunkite vėl su slaptažodžiu nuo routerio lipduko."
     device_restart: "Perkraukite telefoną — išjunkite ir vėl įjunkite."
     offer_fix: "Iš mūsų pusės internetas veikia — kituose įrenginiuose jis yra, tad bėda greičiausiai pačiame telefone. Galime pasiūlyti mokamą meistro pagalbą, kainą pasakys meistras. Užregistruoti?"
@@ -784,6 +798,7 @@ equipment:
     wifi_enable: "Įjunkite Wi-Fi ir patikrinkite, kad neįjungtas lėktuvo režimas."
     wifi_network: "Ar rašo, prie kokio tinklo prisijungta? Ar tai jūsų tinklas — toks pat pavadinimas kaip ant routerio lipduko?"
     wifi_join_own: "Wi-Fi sąraše pasirinkite savo tinklą — pavadinimas ant routerio lipduko; arčiausiai routerio jis stipriausias."
+    wifi_join_same: "Wi-Fi sąraše pasirinkite tą patį tinklą, prie kurio prisijungęs veikiantis įrenginys, ir įveskite slaptažodį nuo routerio lipduko."
     wifi_reconnect: "Pabandykime prisijungti iš naujo: Wi-Fi sąraše paspauskite savo tinklą, pasirinkite „Pamiršti“ ir prisijunkite vėl su slaptažodžiu nuo routerio lipduko."
     device_restart: "Perkraukite įrenginį — išjunkite ir vėl įjunkite."
     offer_fix: "Iš mūsų pusės internetas veikia — kituose įrenginiuose jis yra, tad bėda greičiausiai pačiame įrenginyje. Galime pasiūlyti mokamą meistro pagalbą, kainą pasakys meistras. Užregistruoti?"
@@ -806,6 +821,7 @@ equipment:
     wifi_enable: "Įjunkite kompiuteryje Wi-Fi ir patikrinkite, kad neįjungtas lėktuvo režimas."
     wifi_network: "Ar kompiuteris prisijungęs prie jūsų tinklo — to, kurio pavadinimas užrašytas ant routerio lipduko?"
     wifi_join_own: "Wi-Fi sąraše pasirinkite savo tinklą — pavadinimas ant routerio lipduko; arčiausiai routerio jis stipriausias."
+    wifi_join_same: "Kompiuteryje paspauskite tinklo ženkliuką ir pasirinkite tą patį tinklą, prie kurio prisijungęs veikiantis įrenginys; slaptažodis — ant routerio lipduko."
     wifi_reconnect: "Pabandykime prisijungti iš naujo: pamirškite savo Wi-Fi tinklą ir prisijunkite vėl su slaptažodžiu nuo routerio lipduko."
     cable_seated: "Ar laidas tarp kompiuterio ir routerio tvirtai įkištas abiejuose galuose — routeryje į LAN lizdą?"
     cable_reseat: "Ištraukite laidą ir tvirtai įkiškite atgal — į kompiuterį ir į routerio LAN lizdą, kol spragtelės."
@@ -851,7 +867,8 @@ case:
   say_when_done: "Pasakykite, kai padarysite."
   # Vedamas sprendimas (`pace: guided`): klientas daro savo įrenginyje, agentas neskuba.
   say_when_done_guided: "Neskubėkite — pasakykite, kai padarysite, ar ką matote."
-  guided_offer: "Neskubėkime — pasakykite, ką dabar matote ekrane, ir eisime toliau kartu. O jei norite, galiu užregistruoti, kad meistras padėtų."
+  # Pagalba, ne meistras: meistrą klientas gali paprašyti pats (Andrius, 2026-11-05).
+  guided_offer: "Neskubėkite. Kai atsidarysite, pasakykite, ką matote ekrane — padėsiu žingsnis po žingsnio."
   # Patikslinimas vietoj spėjimo (Andrius, 2026-10-12): kai atsakymą perskaitė tik modelis, be
   # kliento žodžių, agentas pasako, ką suprato, ir paklausia, ar teisingai.
   # v3 D: analitikas išgirdo, kad klientas mieliau norėtų meistro — variklis paklausia.
@@ -950,7 +967,13 @@ evidence:
     # Klausimas, ne teiginys — atgal klientui nekartojamas.
     device_ready: "ar galite pasižiūrėti"
     bridge_agreed: "laikinas prijungimas be routerio"
+    same_network: "tinklas, palyginus su veikiančiu įrenginiu"
+  # Faktas, pasakytas atgal klientui vienu sakiniu, kai „etiketė + reikšmė" skamba kreivai.
+  said_back:
+    fail_scope: {one: "kituose įrenginiuose internetas veikia", all: "kituose įrenginiuose irgi neveikia", single: "kito įrenginio neturite"}
+    same_network: {"yes": "tinklas tas pats", "no": "tinklai skiriasi"}
   fact_value:
+    same_network: {"yes": "tas pats tinklas", "no": "buvo kitas tinklas"}
     bridge_agreed: {"yes": "jums tinka", "no": "jums netinka"}
     fail_scope: {all: "visuose įrenginiuose", one: "tik viename įrenginyje (kituose veikia)", single: "vienintelis įrenginys"}
     wifi_on: {"yes": "Wi-Fi įjungtas", "no": "Wi-Fi buvo išjungtas"}
@@ -1129,6 +1152,13 @@ detector:
   panel_device:
     "yes": "turi kompiuterį, telefoną ar planšetę, prijungtą prie to routerio — nustatymus bus kuo atidaryti"
     "no": "neturi jokio įrenginio su naršykle tame routeryje"
+  others:
+    one: "kituose įrenginiuose internetas veikia"
+    all: "kituose įrenginiuose irgi neveikia"
+    single: "kito įrenginio neturi"
+  ready:
+    "yes": "gali dabar pasižiūrėti — „dabar“, „gerai“, „galiu“, arba klausia, kaip tai padaryti"
+    "no": "negali dabar — ne namie, darbe, vėliau"
   switched:
     "yes": "įjungta — jungiklis įjungtas, ženkliukas matosi, rodo „prijungta“"
     "no": "išjungta — parašyta „disable“ / „off“, mygtukas pilkas, įjungtas lėktuvo režimas, rodo „neprijungta“"
@@ -1158,6 +1188,7 @@ summary:
     homework: "susitarėme, ką patikrinsite, kai būsite namuose"
     wifi_enable: "įjungėme Wi-Fi"
     wifi_join_own: "prisijungėme prie jūsų tinklo"
+    wifi_join_same: "prijungėme prie to paties tinklo kaip veikiantį įrenginį"
     wifi_reconnect: "prisijungėme prie tinklo iš naujo"
     cable_reseat: "įkišome laidą iš naujo"
     nic_enable: "įjungėme tinklo jungtį"
@@ -1200,6 +1231,8 @@ summary:
     cable_seated: "laidas iki kompiuterio"
     nic_enabled: "kompiuterio tinklo jungtis"
     device_restart: "įrenginio perkrovimas"
+    other_devices: "ar veikia kituose įrenginiuose"
+    wifi_compare: "Wi-Fi tinklų palyginimas su veikiančiu įrenginiu"
   # Išspręsto gedimo išvada (Andrius, 2026-10-13: „visuomet išvada, koks gedimas čia buvo"):
   # KAS buvo — kliento kalba; KĄ padarėm — `did`; ir kad veikia. Priežastis iš `fixes:`
   # patikros (pvz., ištrauktas maitinimo laidas) yra tikslesnė ir eina vietoj šios.

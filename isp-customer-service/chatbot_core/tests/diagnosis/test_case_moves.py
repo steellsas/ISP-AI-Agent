@@ -30,12 +30,13 @@ class TestLookBeforeAsking:
         assert move.source.tool == "diagnose_connection"
 
     def test_a_fact_only_the_caller_knows_is_asked(self):
-        """Telemetry cannot see how many devices fail at home. It is asked where it decides
-        something: the line carries traffic and the caller still has nothing."""
+        """Telemetry cannot see which device fails at home. It is asked where it decides
+        something: the line carries traffic and the caller still has nothing — the device
+        first (Andrius, 2026-11-05)."""
         move = next_move(_facts(traffic="flowing"))
-        assert move.kind == "learn" and move.fact == "fail_scope"
+        assert move.kind == "learn" and move.fact == "fail_device"
         assert move.source.kind == "ask"
-        assert move.source.ask == "pack.healthy_to_router.fail_scope.question"
+        assert move.source.ask == "pack.healthy_to_router.fail_device.question"
 
     def test_a_silent_line_asks_nothing_and_reboots(self):
         """Wave 4a: with no traffic at all the reboot is the first move — a question before it
@@ -116,7 +117,7 @@ class TestWhenNothingFits:
         facts = _facts(traffic="flowing")
         first = next_move(facts)
         again = next_move(facts, unavailable=frozenset({first.fact}))
-        assert first.fact == "fail_scope" and again.fact != first.fact
+        assert first.fact == "fail_device" and again.fact != first.fact
 
     def test_a_fault_whose_branches_all_need_an_answer_we_cannot_get_ends_honestly(self):
         facts = {**_facts(), "fail_scope": "one"}

@@ -1263,7 +1263,7 @@ will_call_back_first_person: ["paskambinsiu", "perskambinsiu", "pats paskambin"]
 # Keyword question-divert in the ticket dialogue (fallback when the reader did not run).
 ticket_offscript_question: ["kodėl", "kodel", "kiek", "kam ", "kas čia", "kas cia", "kokiu", "koks ", "kokia ", "galima", "ar "]
 # An explicit "do not register" (one confirm round first).
-ticket_cancel: ["neregistruok", "nereikia regi", "nereikia tiket", "atšauk", "atsauk"]
+ticket_cancel: ["neregistruok", "nereikia regi", "nereikia tiket", "atšauk", "atsauk", "nenoriu jokių", "nenoriu jokiu", "nereikia jokių", "nereikia jokiu", "nenoriu registr", "nereikia meistr"]
 # A plausible call-back-hours answer (a digit or one of these).
 # VALANDOS, pasakytos žodžiais. ASR jas dažnai darko („trilykos" = trylikos, „penkiu" = penkių),
 # tad lyginama PRADŽIA — 5–6 pirmos raidės. Gyvai 2026-10-05 į tiketą pakliuvo „na dvylikos, iki
@@ -1466,6 +1466,8 @@ faq_keywords_working_hours: ["darbo laik", "kada dirbat", "iki keliu", "iki keli
 # „Ar turite kitą įrenginį — ir ar jame veikia?" (2026-11-04): single — kito nėra; all — ir ten
 # neveikia; one — kituose veikia. Kortelė skaito ta eile, todėl „tik vienas" yra single.
 answers_healthy_to_router_fail_scope_single: ["neturiu", "kitų įrenginių", "kitu irenginiu", "kitų nėra", "kitu nera", "tik telefoną", "tik telefona", "tik kompiuterį", "tik kompiuteri", "naudoju tik", "tik naudoj", "neturiu kito", "kito neturiu", "kito nėra", "kito nera", "nėra kito", "nera kito", "tik vienas", "tik viena", "vienintel", "tik šitas", "tik sitas", "tik šitą", "tik sita", "daugiau neturiu", "daugiau nėra", "daugiau nera"]
+# Atsakant į „ar kituose įrenginiuose veikia?" — „ne, neveikia" reiškia „irgi neveikia".
+others_fail: ["neveikia", "nėra interneto", "nera interneto", "ne, ne"]
 answers_healthy_to_router_fail_scope_all: ["visuose", "visur", "nė viename", "ne viename neveikia", "abiejuose", "niekur", "irgi neveikia", "irgi nėra", "irgi nera", "ten irgi ne", "taip pat neveikia"]
 answers_healthy_to_router_fail_scope_one: ["tik viename", "tik telefone", "tik kompiuteryje", "tik planšetėje", "tik plansete", "tik nešiojam", "tik nesiojam", "tik šitame", "tik sitame", "veikia", "kituose veikia", "ten veikia", "ten yra", "ten internetas yra"]
 answers_healthy_to_router_fail_device_phone: ["telefon", "planšet", "planset", "mobil"]
@@ -1604,6 +1606,9 @@ fails_marks: ["neveik", "nėra", "nera", "nebėra", "nebera", "dingo", "nesijung
 not_looked: ["netikrin", "nepatikrin", "nežiūrėj", "neziurej", "nepažiūrėj", "nepaziurej", "dar nežiūr", "dar neziur"]
 # „Dar neįjungiau" per patikrą — grįžtame prie nurodymo (2026-11-04).
 not_done_yet: ["neįjungiau", "neijungiau", "nepadariau", "nespėjau", "nespejau", "nebandžiau", "nebandziau", "neperkroviau", "neprisijungiau", "dar ne padar", "dar neįjung", "dar neijung", "dar nepadar"]
+# „Ar galite dabar pasižiūrėti?" — pasirengęs (2026-11-05).
+ready_yes: [" dabar", "galiu", "gerai", "pabandysiu", "pabandom", "žiūriu", "ziuriu", "atsidariau", "atsidarau", "einu", "jau ", "taip", "aha", "mhm", "ok"]
+ready_not_now: ["ne dabar", "negaliu", "vėliau", "veliau", "nesu namie", "nesu namuose", "esu darbe", "negalėsiu", "negalesiu"]
 how_to_request: ["kaip tai", "kaip padaryt", "kaip man", "kaip įjungt", "kaip ijungt", "kaip pažiūrėt", "kaip paziuret", "kaip patikrint", "kaip rast", "kur man", "kur eiti", "kur reikia", "kur spaust", "kur paspaust", "kur rasti", "kur žiūrėt", "kur ziuret", "kur tai", "nežinau kaip", "nezinau kaip", "nežinau kur", "nezinau kur", "nemoku", "nesuprantu kur", "padėkit", "padekit", "padėkite", "padekite", "parodykit", "pasakykit kur", "nerandu"]
 # Įrenginio sistema — „nežinau kaip" atveju; žodžiai sutampa su įrangos katalogo `matches`.
 device_os_android: ["android", "samsung", "galaxy", "xiaomi", "redmi", "huawei", "honor", "motorola", "nokia", "oppo", "realme", "pixel", "oneplus", "sony", "lenovo"]

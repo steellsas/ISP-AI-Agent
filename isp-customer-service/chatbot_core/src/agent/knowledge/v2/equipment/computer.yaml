@@ -21,6 +21,7 @@ actions:
   wifi_enable: equipment.computer.wifi_enable
   wifi_network: equipment.computer.wifi_network
   wifi_join_own: equipment.computer.wifi_join_own
+  wifi_join_same: equipment.computer.wifi_join_same
   wifi_reconnect: equipment.computer.wifi_reconnect
   # Laido kopėčios
   cable_ready: equipment.computer.cable_ready

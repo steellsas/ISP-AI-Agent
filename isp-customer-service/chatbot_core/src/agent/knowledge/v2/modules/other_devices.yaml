@@ -1,0 +1,16 @@
+# Įrenginio kopėčios nepadėjo — tik DABAR klausiama apie kitus įrenginius (Andrius, 2026-11-05):
+# „Jūsų telefone ryšio atkurti nepavyko. Ar turite kitų įrenginių, kurie jungiasi prie
+# interneto, — ar juose veikia?" Atsakymas pasako, kur nutrūksta: kituose veikia (bėda
+# įrenginyje), irgi neveikia (routeris), kito nėra (routeris, tada tiketas).
+module: other_devices
+kind: ask
+params:
+  device: {required: true}
+ask: modules.other_devices.question
+detector: others
+answers:
+  one: fail_scope=one
+  all: fail_scope=all
+  single: fail_scope=single
+produces: [fail_scope]
+goal: "hear whether the caller has other devices on the same router and whether the internet works on them"

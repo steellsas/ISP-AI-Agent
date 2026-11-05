@@ -19,6 +19,7 @@ actions:
   wifi_enable: equipment.phone.wifi_enable
   wifi_network: equipment.phone.wifi_network
   wifi_join_own: equipment.phone.wifi_join_own
+  wifi_join_same: equipment.phone.wifi_join_same
   wifi_reconnect: equipment.phone.wifi_reconnect
   device_restart: equipment.phone.device_restart
   offer_fix: equipment.phone.offer_fix

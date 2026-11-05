@@ -611,6 +611,7 @@ def _begin(state: Any, rt: Any, fault: str | None, facts: dict[str, str]) -> Non
             state.case.fault, state.case.solution, state.case.step = fault, index, 0
             state.case.awaiting = None
             state.case.step_said = -1  # the diagnosis questions were not this step's
+            state.case.dead_end_step = -1  # a dead end seen while diagnosing is not this step's
             state.case.guide_step, state.case.guide_said = 0, -1
             # The fault the Case settled on IS the call's verdict — what the record, the
             # ticket and the eval all read (wave 4: the tree that used to name it is gone).
@@ -1594,8 +1595,12 @@ def _remember_what_we_heard(state: Any) -> None:
 def fact_words(key: str, value: str) -> str:
     """A fact said back to the caller: „Wi-Fi išjungtas", never „Wi-Fi Wi-Fi išjungtas" (the
     value already names it) nor „restored turite" (no words for it — then nothing)."""
+    from ...contract.locale import phrase_or
     from ...evidence import gloss_label, gloss_value
 
+    whole = phrase_or(f"evidence.said_back.{key}.{value}", None)
+    if whole:
+        return whole  # the fact as one phrase („kituose įrenginiuose internetas veikia")
     label, said = gloss_label(key), gloss_value(value, key)
     if not said or label == key:
         return ""
@@ -1879,8 +1884,9 @@ def _no_way_forward(state: Any) -> bool:
     return (
         state.case.stall >= stall
         or state.case.silence_asks >= silence
-        # the analyst saw this very step going round in circles (v3 D)
-        or state.case.dead_end_step == state.case.step
+        # the analyst saw this very step going round in circles (v3 D) — not in a guided fix:
+        # it called „I only have one phone" a dead end and the agent gave up (live 2026-11-05)
+        or (state.case.dead_end_step == state.case.step and not _guided(state))
     )
 
 
@@ -1912,6 +1918,64 @@ def _not_done_yet(state: Any, rt: Any, call: Any) -> str | None:
     state.case.said = [f for f in state.case.said if f != "restored"]
     rt.tracer.emit("case", move="back_to_step", module=steps[before].module)
     return "moved"
+
+
+def reopen_on_finding(state: Any, rt: Any, text: str | None) -> bool:
+    """During the registration the caller reports something the fix can act on („Wi-Fi
+    išjungtas"): the walked ladder opens again at the step that finding leads to.
+
+    A finding is an answer to one of the solution's own questions whose value some later step
+    is waiting for (`run_when: [wifi_on=no]`). Only on a guided card, and never after the ticket
+    exists."""
+    if not text or state.ticket.ticket_id or not _guided(state):
+        return False
+    steps = _solution_steps(state)
+    for index, call in enumerate(steps[: state.case.step]):  # only what we already walked
+        spec = catalog.module(call.module)
+        if spec is None or spec.kind != "ask":
+            continue
+        read = modules.read_answer(call, text, device=None)
+        if read is None:
+            continue
+        fact, value = read
+        if state.case.facts.get(fact) == value:
+            continue
+        # A finding opens a FIX — an instruction waiting for exactly this value („Taip, tinka"
+        # to the contact question opened the paid-help step before this check).
+        opens = any(
+            f"{fact}={value}" in (later.run_when or [])
+            and (catalog.module(later.module) or spec).kind == "instruct"
+            for later in steps[index + 1 :]
+        )
+        if not opens:
+            continue
+        ledger.record_client(state, rt, fact, value)
+        state.case.step, state.case.step_said, state.case.awaiting = index + 1, -1, None
+        state.case.summarised, state.case.summary = False, None
+        for mark in ("_escalate_why", "_ticket_note"):
+            state.case.facts.pop(mark, None)
+        state.ticket.reason = None
+        state.case.facts["_reopened"] = "1"
+        rt.tracer.emit("case", move="reopened_by_finding", fact=fact, value=value)
+        return True
+    return False
+
+
+def _guided_variant(state: Any, call: Any, model: str | None) -> str | None:
+    """The step's next wording when it has to be said again: simpler, then where to tap, then
+    the first wording — round and round, never the model's improvisation."""
+    from ...contract.locale import phrase_or
+
+    device = str((call.args or {}).get("device") or "")
+    again = phrase_or(f"equipment.{device}.again.{call.module}", None) or phrase_or(
+        f"modules.{call.module}.again", None
+    )
+    how = modules.how_words(call, model=model)
+    how = f"{how} {phrase('case.how_to_tell')}" if how else None
+    words = [w for w in (again, how, modules.question_of(call, model=model)) if w]
+    if not words:
+        return None
+    return words[(max(state.case.waits, 1) - 1) % len(words)]
 
 
 def _guided(state: Any) -> bool:
@@ -1963,6 +2027,8 @@ def _repeat_guard(state: Any, rt: Any, call: Any) -> TurnPlan | None:
     key = f"{state.case.fault}.{state.case.step}"
     if call.module == "guide":
         key = f"{key}.{state.case.guide_step}"
+    if _guided(state) and state.case.stall < 2 * limits.get("guided_stall_before_offer"):
+        return None  # a guided step is said again in other words; only a long silence ends it
     seen = state.case.repeats.get(key, 0)
     if seen < limits.get("step_repeat_max"):
         state.case.repeats[key] = seen + 1
@@ -2333,6 +2399,17 @@ def _module_plan_inner(state: Any, rt: Any, call, facts: dict[str, str], *, rule
             awaiting=step.awaits,
             redecide_after_action=True,
         )
+    if (
+        _guided(state)
+        and step.kind in ("ask", "instruct")
+        and state.case.step_said == state.case.step
+    ):
+        variant = _guided_variant(state, call, model)
+        if variant:
+            # The same step again, in OTHER written words: a simpler question, then where to tap
+            # (Andrius, 2026-11-05: „pasitikslinti galima tą pačią info kitokiais klausimais").
+            rt.tracer.emit("case", move="said_differently", module=call.module, at=state.case.waits)
+            return _written_plan(state, rt, call, step, variant, rule)
     if (asked or step.text) and _say_as_written(state, step, rt):
         return _written_plan(state, rt, call, step, asked, rule)
     return TurnPlan(
@@ -2414,6 +2491,10 @@ def _escalate(
 
     if why == "sprendimas_baigtas" and state.case.facts.get("_escalate_why"):
         why = state.case.facts["_escalate_why"]  # said on the conclusion turn, kept for this one
+    walked = _guided(state) and bool(state.case.worked)
+    if why in ("sprendimas_baigtas", "telefonu_nepataisoma") and walked:
+        # The whole ladder was walked together: a technician, not a call-back (2026-11-05).
+        why = "visi_veiksmai"
     if why in ("sprendimas_baigtas", "telefonu_nepataisoma") and _callback_card(fault):
         # The line says it works, the caller says it does not, and the phone has nothing left
         # to check (Andrius, 2026-10-22): not a technician — the call is unfinished, and a
@@ -2472,10 +2553,19 @@ def _escalate(
             state.turn.directives.summary = told
             state.case.summary = told
             rt.tracer.emit("case", move="summary", fault=fault, said=told)
+            goal = "sum up what was done and why"
+            if walked:
+                # Andrius (2026-11-05): „atlikome visus veiksmus, kuriuos galima telefonu — registruoju
+                # meistrui". The technician gets the whole walked path on the ticket.
+                goal = (
+                    "say that together you did everything that can be done by phone (name it "
+                    "briefly), the internet still does not work, so you are registering it for a "
+                    "technician who will already know what was checked"
+                )
             return TurnPlan(
                 owner="procedure",
                 rule="case.summary",
-                say=Say(kind="directive", goal="sum up what was done and why", stage="diagnosis"),
+                say=Say(kind="directive", goal=goal, stage="diagnosis"),
             )
     if note:
         state.case.facts.setdefault("_ticket_note", note)
@@ -2676,6 +2766,10 @@ def _caller_is_lost(state: Any, rt: Any) -> bool:
 
     if state.dialog.stuck_count < limits.get("stuck_fix_gives_up"):
         return False
+    if _guided(state):
+        # Leading someone through their own phone, a caller who does not follow is the job, not
+        # the end of it: other words, smaller steps — never „nesusikalbame" (live 2026-11-05).
+        return False
     if not _no_way_forward(state):
         return False  # jis vis dar dirba su mumis — tai ne aklavietė
     if state.case.summarised or state.ticket.stage:
@@ -2852,6 +2946,7 @@ def _device_model(state: Any) -> str | None:
 # The caller's own devices: their words depend on the system the caller named, not on the
 # router the CRM knows.
 _OS_DEVICES = ("phone", "computer")
+_READINESS = ("wifi_ready", "cable_ready")
 
 
 def _model_for(state: Any, call: Any) -> str | None:
@@ -2898,8 +2993,18 @@ def _how_to_plan(state: Any, rt: Any) -> TurnPlan | None:
     call = _how_to_call(state)
     if call is None:
         return None
-    device = str(call.args.get("device"))
     heard = state.dialog.last_heard
+    if call.module in _READINESS and detect_how_to(heard):
+        # „Kaip tai padaryti?" to „ar galite pasižiūrėti?" is a yes: the check itself, with the
+        # words for where to tap, is the answer (live 2026-11-05: the agent asked which phone,
+        # then gave up).
+        ledger.record_client(state, rt, "device_ready", "yes")
+        _advance(state, rt, by_words=True)
+        call = _current(state)
+        if call is None or call.module in _READINESS:
+            return None
+        state.case.step_said = state.case.step  # its words go out in this very reply
+    device = str(call.args.get("device"))
     facts = state.case.facts
     if device in _OS_DEVICES and "device_os" not in facts and facts.get("_os_asked") != "pending":
         # „Androidinis" said in passing, before or after we asked — taken whenever it comes

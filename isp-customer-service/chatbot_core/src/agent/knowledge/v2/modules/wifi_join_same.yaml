@@ -1,0 +1,7 @@
+# Tinklai skiriasi — sugedęs įrenginys jungiamas prie to paties tinklo kaip veikiantis.
+module: wifi_join_same
+kind: instruct
+params:
+  device: {required: true}
+goal: "the caller's {device} joined the same Wi-Fi network as the device that works"
+produces: []

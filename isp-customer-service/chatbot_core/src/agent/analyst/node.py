@@ -198,6 +198,10 @@ def _dead_end(state: Any, rt: Any, signal: Signal) -> None:
     tells the engine that the step it is on is stuck; it decides nothing."""
     if not state.case.in_progress or state.ticket.stage or state.ticket.ticket_id:
         return
+    from ..decide.rules.case_rule import _guided
+
+    if _guided(state):
+        return  # a guided fix is never ended by an inference (live 2026-11-05)
     state.case.dead_end_step = state.case.step
     rt.tracer.emit("analyst_applied", signal="dead_end", step=state.case.step, why=signal.value)
 

@@ -6,7 +6,7 @@ kind: ask
 params:
   device: {required: true}
 ask: modules.wifi_ready.question
-detector: reach
+detector: ready
 answers:
   "yes": device_ready=yes
   "no": reachable=no

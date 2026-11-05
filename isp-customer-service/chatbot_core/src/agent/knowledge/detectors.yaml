@@ -57,6 +57,13 @@ detectors:
   switched:
     "yes": "detector.switched.yes"
     "no": "detector.switched.no"
+  others:
+    one: "detector.others.one"
+    all: "detector.others.all"
+    single: "detector.others.single"
+  ready:
+    "yes": "detector.ready.yes"
+    "no": "detector.ready.no"
   wifi_network:
     own: "detector.wifi_network.own"
     other: "detector.wifi_network.other"
