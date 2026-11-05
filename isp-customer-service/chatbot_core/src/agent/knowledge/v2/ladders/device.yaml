@@ -1,0 +1,9 @@
+# ĮRENGINIO PABAIGA — kai jungties kopėčios nepadėjo: perkraunamas pats įrenginys.
+ladder: device
+params: [device]
+steps:
+- module: device_restart
+  args: {device: "{device}"}
+- module: verify
+  args: {ask: restored}
+  fixes: pack.healthy_to_router.cause.device_restart

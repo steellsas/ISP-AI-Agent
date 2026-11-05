@@ -572,7 +572,7 @@ def _account_code_rung(state: Any, rt: Any, s: Any, user_input: str | None):
 
         _q_register(state, rt, "ident", "account_code")
         rt.tracer.emit("decision", intent="account_code", action="ask", reason="resolve_loop")
-        return True, phrase("identification.account_code_ask")
+        return True, phrase("identification.address_not_found_code")
     # 2) Counters. The CLARIFICATION phase (surname question, diagnosis note,
     # locality suggestion) does NOT touch the counters.
     last_q = (last_agent_question(state) or "").lower()
@@ -660,7 +660,7 @@ def _account_code_rung(state: Any, rt: Any, s: Any, user_input: str | None):
 
         _q_register(state, rt, "ident", "address_need")
         rt.tracer.emit("decision", intent="account_code", action="warn")
-        return True, phrase("identification.address_need_warning")
+        return True, _address_need_warning(s)
     if n == limit - 1 and state.identity.address_warned:
         # U8 (Andrius, 2026-10-09): the last prompt says what happens without an answer.
         rt.tracer.emit("decision", intent="account_code", action="last_warning")
@@ -670,6 +670,20 @@ def _account_code_rung(state: Any, rt: Any, s: Any, user_input: str | None):
         rt.tracer.emit("decision", intent="account_code", action="no_location_close")
         return True, phrase("identification.no_location_goodbye")
     return False, None
+
+
+def _address_need_warning(s) -> str:
+    """The warning names the part of the address already heard and asks only for the
+    missing one; with nothing heard it asks for the whole address."""
+    from ...contract.locale import phrase
+
+    p = s.identity.profile
+    street, house = p.street.value, p.house.value
+    if street and house and not p.apartment.value:
+        return phrase("identification.address_need_apartment", known=f"{street} {house}")
+    if street and not house:
+        return phrase("identification.address_need_house", known=street)
+    return phrase("identification.address_need_warning")
 
 
 def _address_move(state, rt, s):
@@ -761,30 +775,37 @@ def ask_heard_address(state: Any, rt: Any) -> bool:
     offer-answer path commits from the slots). False when the address does not resolve —
     the caller then hears what was and was not found."""
     from ...decide.question import register as _q_register
+    from ...perceive.slots import lookup_heard_address
+    from ...slots import SlotStatus
 
     p = state.identity.profile
-    args: dict[str, str] = {"street": str(p.street.value), "house_number": str(p.house.value)}
-    if p.apartment.value:
-        args["apartment_number"] = str(p.apartment.value)
-    if p.city.value:
-        args["city"] = str(p.city.value)
     try:
-        result = rt.tools.run(
-            state, rt, "resolve_address", args, reason="heard_address", apply=False
-        )
+        args, found = lookup_heard_address(state, rt, "heard_address")
     except Exception as e:  # pragma: no cover - best-effort
         trace_note(rt.tracer, state, "heard_address", str(e), level="error")
         return False
-    found = result.data
     if not (found.get("success") and found.get("customer_id")):
         # Not found: the lookup's per-level diagnosis still reaches the caller ("I can
         # find the street, but not number 39") — it commits nothing on a failure.
         from ...execute.observe import update_state_from_observation
 
+        result = rt.tools.run(
+            state, rt, "resolve_address", args, reason="heard_address", apply=False
+        )
         update_state_from_observation(state, rt, "resolve_address", result.observation)
         return False
-    heard = f"{p.street.value} {p.house.value}" + (
-        f", butas {p.apartment.value}" if p.apartment.value else ""
+    # Found in the registry: a number dropped into the caller's next sentence („patvirtinu
+    # 2 kartus") no longer replaces it — only a stated correction does.
+    city = ((found.get("resolution") or {}).get("city") or {}).get("matched") or p.city.value
+    for slot in (p.city, p.street, p.house, p.apartment):
+        if slot.value:
+            slot.propose(slot.value, 0.95, SlotStatus.RESOLVED)
+    if city and not p.city.value:
+        p.city.propose(str(city), 0.95, SlotStatus.RESOLVED)
+    heard = (
+        (f"{city}, " if city else "")
+        + f"{p.street.value} {p.house.value}"
+        + (f", butas {p.apartment.value}" if p.apartment.value else "")
     )
     # The caller named their own address: the phone candidate's was not theirs.
     if state.identity.phone_candidate and (
@@ -796,11 +817,10 @@ def ask_heard_address(state: Any, rt: Any) -> bool:
         state.identity.held_outage = None
         rt.tracer.emit("held_outage", action="discarded", street=held.get("street"))
     _q_register(state, rt, "ident", HEARD_CONFIRM, address=heard)
-    state.turn.address_confirm_note = (
-        "- PLAN GOAL — ADDRESS HEARD: ask WORD FOR WORD, nothing before it: "
-        f"„Ar teisingai išgirdau — {heard}?“ Do NOT say „Radau“ or that the address exists, "
-        "and nothing about the line or the account — the caller has not confirmed it yet."
-    )
+    if state.identity.heard_address != heard:
+        state.identity.heard_confirm_asks = 0  # a new address starts its own count
+    state.identity.heard_address = heard
+    state.identity.heard_confirm_due = "ask"
     rt.tracer.emit("decision", intent="address_heard", action="ask", address=heard)
     return True
 
@@ -810,12 +830,48 @@ def heard_confirm_open(state: Any) -> bool:
     return q is not None and q.key == HEARD_CONFIRM
 
 
+def says_other_numbers(state: Any) -> bool:
+    """This utterance STATES a house or flat other than the one being confirmed („ne, butas
+    25", „5-2") — a correction, not an echo („5.") and not a number in passing."""
+    read = state.turn.address_reading or {}
+    if not read.get("anchored"):
+        return False
+    p = state.identity.profile
+    return bool(
+        (read.get("house") and read["house"] != p.house.value)
+        or (read.get("apartment") and read["apartment"] != p.apartment.value)
+    )
+
+
 def forget_heard_numbers(state: Any, rt: Any) -> None:
-    """The caller said we heard their address wrong: drop the house and flat so the next
-    dictation is read fresh (the street usually stays right)."""
-    from ...slots import Slot
+    """The caller said we heard their address wrong. The numbers they said in the same
+    breath replace what we had („ne, butas 25" changes only the flat); with none, the
+    house and flat are dropped so the next dictation is read fresh (the street usually
+    stays right)."""
+    from ...slots import Slot, SlotStatus
 
     p = state.identity.profile
-    p.house = Slot()
-    p.apartment = Slot()
-    rt.tracer.emit("decision", intent="address_heard", action="corrected")
+    read = state.turn.address_reading or {}
+    house, flat = read.get("house"), read.get("apartment")
+    if house or flat:
+        if house:
+            p.house = Slot()
+            p.house.propose(house, 0.9, SlotStatus.HEARD)
+            if not flat:
+                p.apartment = Slot()
+        if flat:
+            p.apartment = Slot()
+            p.apartment.propose(flat, 0.9, SlotStatus.HEARD)
+    else:
+        p.house = Slot()
+        p.apartment = Slot()
+        # The street stays, but as heard only: if it was the wrong part, the caller's new
+        # dictation must be able to replace it.
+        for name in ("city", "street"):
+            value = getattr(p, name).value
+            setattr(p, name, Slot())
+            getattr(p, name).propose(value, 0.6, SlotStatus.HEARD)
+    state.identity.heard_confirm_due = None
+    rt.tracer.emit(
+        "decision", intent="address_heard", action="corrected", house=house, apartment=flat
+    )

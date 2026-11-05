@@ -1,0 +1,38 @@
+# WI-FI KOPĖČIOS — bet kuriam įrenginiui, kuris jungiasi per Wi-Fi (telefonas, planšetė,
+# kompiuteris). Žodžius duoda įrangos katalogas pagal `{device}` ir jo sistemą (Android,
+# iPhone, Windows, Mac), todėl ta pati eilė tinka visiems.
+#
+# Kiekvienas klausimas: tvarkoje → kitas žingsnis; rasta bėda → veiksmas ir patikra
+# (`fixes` — pavykus gedimas išspręstas, su priežastimi); nepavyko → toliau.
+ladder: wifi
+params: [device]
+steps:
+# W0 — ką tikrinsime ir ar klientas gali tai padaryti dabar.
+- module: wifi_ready
+  args: {device: "{device}"}
+# W1 — Wi-Fi įjungtas?
+- module: wifi_state
+  args: {device: "{device}"}
+- module: wifi_enable
+  args: {device: "{device}"}
+  run_when: [wifi_on=no]
+- module: verify
+  args: {ask: restored}
+  run_when: [wifi_on=no]
+  fixes: pack.healthy_to_router.cause.wifi_off
+# W2 — prisijungęs prie savo tinklo?
+- module: wifi_network
+  args: {device: "{device}"}
+- module: wifi_join_own
+  args: {device: "{device}"}
+  run_when: [wifi_network=other]
+- module: verify
+  args: {ask: restored}
+  run_when: [wifi_network=other]
+  fixes: pack.healthy_to_router.cause.wrong_network
+# W3 — savas tinklas iš naujo, su slaptažodžiu nuo lipduko.
+- module: wifi_reconnect
+  args: {device: "{device}"}
+- module: verify
+  args: {ask: restored}
+  fixes: pack.healthy_to_router.cause.reconnect

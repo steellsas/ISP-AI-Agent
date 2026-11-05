@@ -1,5 +1,7 @@
 # KLIENTO KOMPIUTERIS — bazinis lygis. Gali būti ir per laidą, ir per Wi-Fi, todėl abu
 # patikrinimai aprašyti; kurį rinktis, sako kortelė (`connection_type`).
+#
+# Bazinis lygis kalba be sistemos pavadinimų; `how.*` žodžius duoda `windows` arba `mac`.
 equipment: computer
 type: computer
 name_key: equipment.computer.name
@@ -13,3 +15,27 @@ actions:
   device_check.reconnect: equipment.computer.check.reconnect
   device_check.cable: equipment.computer.check.cable
   reach: equipment.computer.reach
+  # Wi-Fi kopėčios
+  wifi_ready: equipment.computer.wifi_ready
+  wifi_state: equipment.computer.wifi_state
+  wifi_enable: equipment.computer.wifi_enable
+  wifi_network: equipment.computer.wifi_network
+  wifi_join_own: equipment.computer.wifi_join_own
+  wifi_join_same: equipment.computer.wifi_join_same
+  wifi_reconnect: equipment.computer.wifi_reconnect
+  # Laido kopėčios
+  cable_ready: equipment.computer.cable_ready
+  cable_seated: equipment.computer.cable_seated
+  cable_reseat: equipment.computer.cable_reseat
+  nic_enabled: equipment.computer.nic_enabled
+  nic_enable: equipment.computer.nic_enable
+  device_restart: equipment.computer.device_restart
+  offer_fix: equipment.computer.offer_fix
+  how.wifi_state: equipment.computer.how.wifi_state
+  how.wifi_enable: equipment.computer.how.wifi_state
+  how.wifi_network: equipment.computer.how.wifi_network
+  how.wifi_join_own: equipment.computer.how.wifi_network
+  how.wifi_reconnect: equipment.computer.how.wifi_reconnect
+  how.nic_enabled: equipment.computer.how.nic_enabled
+  how.nic_enable: equipment.computer.how.nic_enabled
+  how.device_restart: equipment.computer.how.device_restart

@@ -52,12 +52,7 @@ AFTER_THE_NEWS = [
     pytest.param("Ačiū, viskas", True, id="ačiū, viskas → atsisveikina"),
     pytest.param("Taip, turiu dar klausimą", False, id="taip, dar klausimas → klauso"),
     pytest.param("O kiek kainuoja greitesnis planas?", False, id="klausimas → atsako"),
-    pytest.param(
-        "Ne",
-        True,
-        id="ne → atsisveikina",
-        marks=pytest.mark.xfail(strict=True, reason="po žinios „ne“ pokalbio nebaigia"),
-    ),
+    pytest.param("Ne", True, id="ne → atsisveikina"),
 ]
 
 

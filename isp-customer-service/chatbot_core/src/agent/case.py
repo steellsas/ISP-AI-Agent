@@ -243,6 +243,9 @@ def _solve(fault: str, facts: dict[str, str], unavailable: frozenset[str]) -> Mo
             for fact in pending:
                 if fact in unavailable or not worth_asking(fact, card, facts):
                     continue
+                need = card.needs.get(fact)
+                if need is not None and need.volunteered:
+                    continue  # only when the caller says it — a later step asks it if needed
                 found = sources_for(fact, card)
                 if found:
                     return Move(

@@ -21,6 +21,7 @@ address_unrecognized_turns_max: 2   # unrecognised address turns before the acco
 address_resolve_failures_max: 3     # failed street/house lookups before the account-code rung
 account_code_grace_turns: 2         # non-code turns before code mode quietly switches off
 reopen_confirm_max_asks: 2          # unclear answers to the address-change confirm before dropping it
+address_confirm_max_asks: 3         # unclear answers to „Ar teisingai supratau — <adresas>?" before the account code is offered
 tts_stall_seconds: 3                # no first audio chunk within this -> abandon the socket, reconnect
 tts_budget_seconds: 10              # total per sentence across reconnects before the sentence is lost
 reply_max_chars: 280                # a longer reply is trimmed at its last full sentence
@@ -54,11 +55,18 @@ silence_before_last_chance: 2
 # Kiek ėjimų laukiame ŠIO žingsnio, kol agentas perlipa į gilesnį repertuarą (kaip rasti + kodėl
 # to reikia). Čia skaičiuojami visi ėjimai, nes tai apie AGENTO žodžius, ne apie kliento norą.
 waits_before_help: 2
+# A guided solution (`pace: guided`): the caller works on their own device and one step may
+# take long. Only this many empty turns (or silences) in a row bring the offer to go on
+# together or register help — the caller decides (2026-11-04).
+guided_stall_before_offer: 5
+guided_silence_before_offer: 4
 # Kiek paskutinių atsakymų laikom pakartojimo lange (žr. speak/postprocess.py::track_stuck).
 reply_repeat_window: 3
 reply_stop_chars: 200               # past this, a streamed reply ends at its next sentence end
 side_topic_streak_max: 3            # side-topic turns in a row before the fixed "back to the issue" reply
 wrap_content_turns_max: 2           # content turns in the inform wrap-up that still get an LLM reaction
+required_redeliver_max: 2           # times a cut required sentence (news, disclosure) is said again before the narrator takes over
+debt_claim_asks_max: 2              # times the agent asks when/how/how much the caller paid before offering anyway
 nlu_street_match_threshold: 0.75    # registry match score that accepts a street
 nlu_city_match_threshold: 0.85      # registry match score that accepts a city
 
@@ -108,6 +116,9 @@ goodbye_hangup_after_s: {value: 1.5, env: GOODBYE_HANGUP_S}  # the goodbye has p
 echo_overlap_threshold: 0.8         # token overlap with our own last words that reads as echo
 barge_consent_max_words: 3          # a longer interruption is content, not a backchannel
 # Pipecat voice: finish the phrase, then decide (PERZIURA §6 I-3, ROADMAP V2)
+# 0 = the demo mode: the agent always says its whole reply; words said entirely over it are
+# not heard, a segment still going on when it ends is the caller's turn (2026-11-04).
+barge_in_enabled: {value: 0, env: BARGE_IN}
 barge_finish_max_ms: {value: 1500, env: BARGE_FINISH_MAX_MS}   # the agent finishes its phrase, at most this long
 barge_wait_transcript_ms: {value: 1200, env: BARGE_WAIT_MS}    # after the caller stops: no words by then → go on
 barge_echo_overlap: 0.9            # stricter than echo_overlap_threshold: an answer repeats the question's words (G1)

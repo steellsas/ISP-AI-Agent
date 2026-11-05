@@ -1,0 +1,13 @@
+# K2 — ar kompiuterio tinklo jungtis (plokštė) įjungta ir rodo prisijungimą. Jei rodo — ryšys
+# su routeriu yra.
+module: nic_enabled
+kind: ask
+params:
+  device: {required: true}
+ask: modules.nic_enabled.question
+detector: switched
+answers:
+  "yes": nic_enabled=yes
+  "no": nic_enabled=no
+produces: [nic_enabled]
+goal: "clear whether the {device}'s wired network connection is enabled and shows it is connected"

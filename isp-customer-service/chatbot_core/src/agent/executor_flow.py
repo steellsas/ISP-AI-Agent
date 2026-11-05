@@ -79,11 +79,10 @@ def register_ticket_from_state(state: Any, rt: Any) -> None:
     # Contacts from the ticket dialogue (2026-08-04): who to reach and when.
     if s.ticket.contact_phone or s.identity.caller_name:
         kas = s.identity.caller_name or phrase("ticket.details.default_contact")
-        rel = f" ({s.identity.caller_relation})" if s.identity.caller_relation else ""
         details += phrase(
             "ticket.details.contact",
             who=kas,
-            relation=rel,
+            relation=_relation(s),
             phone=s.ticket.contact_phone or s.identity.caller_phone,
         )
         if s.ticket.contact_hours:
@@ -124,8 +123,16 @@ def register_ticket_from_state(state: Any, rt: Any) -> None:
     from .evidence import gloss_label, gloss_value
 
     for key, e in s.diagnosis.evidence.items():
-        if e.get("source") == _EV_CLIENT and not e.get("conflict"):
+        # A fact only heard in passing („seeded") was never checked with the caller.
+        if e.get("source") == _EV_CLIENT and not e.get("conflict") and not e.get("seeded"):
             client_bits.append(f"{gloss_label(key)}: {gloss_value(e['value'], key)}")
+    # The answers to the Case's own steps (Wi-Fi on, own network, cable in) are the caller's
+    # too — the person taking over must not ask them again.
+    for key in s.case.said or []:
+        value = s.case.facts.get(key)
+        if key in s.diagnosis.evidence or key.startswith("_") or key == "restored" or not value:
+            continue
+        client_bits.append(f"{gloss_label(key)}: {gloss_value(value, key)}")
     if client_bits:
         details += phrase("ticket.details.checked", facts="; ".join(client_bits))
     # Ta pati išvada, kurią išgirdo klientas, keliauja ir meistrui: kas PADARYTA, kas veikia
@@ -134,6 +141,13 @@ def register_ticket_from_state(state: Any, rt: Any) -> None:
     told = s.case.summary or {}
     if told.get("padaryta"):
         details += phrase("ticket.details.done", works=told["padaryta"])
+    elif s.case.worked:
+        # No conclusion turn (the caller agreed to paid help right after the offer): the work
+        # done on the phone is still the ticket's.
+        did = [phrase_or(f"summary.did.{m}", "") for m in s.case.worked]
+        did = [d for d in dict.fromkeys(did) if d]
+        if did:
+            details += phrase("ticket.details.done", works=", ".join(did))
     if told.get("dabar"):
         details += phrase("ticket.details.bridge_live")
     if told.get("nepavyko"):
@@ -167,8 +181,14 @@ def register_ticket_from_state(state: Any, rt: Any) -> None:
         details += f" {hung_up}"
     from .ticket_types import for_call
 
+    not_reached = _steps_not_reached(s)
+    if not_reached:
+        details += phrase("ticket.details.not_reached", items=", ".join(not_reached))
+    checks = _technician_checks(s)
+    if checks:
+        details += phrase("ticket.details.technician", items="; ".join(checks))
     ticket_type = for_call(cause, s.ticket.reason)
-    if ticket_type == "call_unfinished" and cause and _line_said_healthy(cause):
+    if ticket_type == "call_unfinished" and cause and _line_said_healthy(cause) and not not_reached:
         # Two sources disagree (Andrius, 2026-10-22): the person calling back reads both.
         details += phrase("ticket.details.line_vs_client")
     actions = tools_called_this_session(rt.tracer)
@@ -186,6 +206,33 @@ def register_ticket_from_state(state: Any, rt: Any) -> None:
         trace_note(rt.tracer, state, "register_ticket", str(e), level="error")
     if s.ticket.ticket_id:
         s.ticket.ticket_type = ticket_type
+
+
+def _steps_not_reached(s: Any) -> list[str]:
+    """The fix's steps the call never got to — the technician starts there."""
+    from .contract import cards as catalog
+    from .contract.locale import phrase_or
+
+    card = catalog.card(s.case.fault) if s.case.fault else None
+    if card is None or s.case.solution is None:
+        return []
+    done = set(s.case.worked) | set(s.case.did)
+    names = []
+    for call in card.solution[s.case.solution].steps[s.case.step :]:
+        name = phrase_or(f"summary.step_name.{call.module}", None)
+        if name and call.module not in done and name not in names:
+            names.append(name)
+    return names
+
+
+def _technician_checks(s: Any) -> list[str]:
+    from .contract import cards as catalog
+    from .contract.locale import maybe_phrase
+
+    card = catalog.card(s.case.fault) if s.case.fault else None
+    if card is None or card.escalate is None:
+        return []
+    return [w for w in (maybe_phrase(k) for k in card.escalate.checks) if w]
 
 
 def _line_said_healthy(cause: str) -> bool:
@@ -250,6 +297,41 @@ def _unanswered_and_assumed(s: Any) -> str:
     return phrase("ticket.details.unanswered", items="; ".join(bits))
 
 
+def _relation(s: Any) -> str:
+    """„ (nuomininkas)" — the caller's relation to the contract as the ticket reads it."""
+    from .contract.locale import phrase_or
+
+    rel = s.identity.caller_relation
+    words = phrase_or(f"ticket.details.relation.{rel}", None) if rel else None
+    return f" ({words})" if words else ""
+
+
+def _debt_dispute_details(state: Any, rt: Any, said: str) -> str:
+    """A disputed debt for the accounting: what the system shows, what the caller says they
+    paid (when, how, how much) and their questions — the payment is searched by these."""
+    from .contract.locale import phrase
+    from .inform import inform_text
+
+    s = state
+    reason = (s.diagnosis.verdicts.get("network") or {}).get("reason")
+    system = inform_text(state, rt, reason, key="ticket_key")
+    if s.ticket.request_type != "billing_request" or not system:
+        return ""
+    from .decide.rules.requests import debt_claim_text
+
+    claim = debt_claim_text(state)
+    out = system
+    out += (
+        phrase("ticket.details.debt_claim", claim=claim)
+        if claim
+        else phrase("ticket.details.debt_said", text=said.rstrip("."))
+    )
+    if s.closing.debt_questions:
+        qs = " ".join(q.rstrip("?.") + "?" for q in s.closing.debt_questions)
+        out += phrase("ticket.details.debt_questions", questions=qs)
+    return out
+
+
 def _register_request(state: Any, rt: Any) -> None:
     """A question for the responsible person: the caller's own words, typed by intent, with
     who to call and when — nothing interpreted (the agent does not know this area)."""
@@ -262,7 +344,7 @@ def _register_request(state: Any, rt: Any) -> None:
     heard = s.intake.heard_utterances
     about = [u for u in heard if classify_problem(u) == s.intake.problem_type] or heard[:1]
     said = s.ticket.request_note or " / ".join(about[:3]) or s.intake.problem_type or ""
-    details = phrase(
+    details = _debt_dispute_details(state, rt, said) or phrase(
         "ticket.details.request",
         type=phrase_or(f"request_label.{s.ticket.request_type}", s.ticket.request_type),
         text=said,
@@ -271,7 +353,7 @@ def _register_request(state: Any, rt: Any) -> None:
         details += phrase(
             "ticket.details.contact",
             who=s.identity.caller_name or phrase("ticket.details.default_contact"),
-            relation=f" ({s.identity.caller_relation})" if s.identity.caller_relation else "",
+            relation=_relation(s),
             phone=s.ticket.contact_phone or s.identity.caller_phone,
         )
         if s.ticket.contact_hours:

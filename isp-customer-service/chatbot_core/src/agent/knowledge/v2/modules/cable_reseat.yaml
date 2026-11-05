@@ -1,0 +1,7 @@
+# K1 rasta: laidas neįkištas — įkišamas abiejuose galuose.
+module: cable_reseat
+kind: instruct
+params:
+  device: {required: true}
+goal: "the cable pushed in firmly at the router's LAN socket and at the {device}"
+produces: []

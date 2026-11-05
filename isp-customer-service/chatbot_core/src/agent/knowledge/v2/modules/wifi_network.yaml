@@ -1,0 +1,14 @@
+# W2 — ar įrenginys prisijungęs prie SAVO tinklo. Tinklo pavadinimo nežinome (routeris
+# dažniausiai kliento): savas tinklas — tas, kurio pavadinimas ant routerio lipduko, o stovint
+# prie routerio jis stipriausias. Sąraše gali būti dešimt kaimynų tinklų.
+module: wifi_network
+kind: ask
+params:
+  device: {required: true}
+ask: modules.wifi_network.question
+detector: wifi_network
+answers:
+  own: wifi_network=own
+  other: wifi_network=other
+produces: [wifi_network]
+goal: "clear whether the caller's {device} is joined to THEIR OWN network — the name on the router's sticker"

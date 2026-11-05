@@ -1,0 +1,13 @@
+# Kitas įrenginys veikia — sutikrinti tinklus: ar abu prisijungę prie to paties Wi-Fi
+# (Andrius, 2026-11-05). Skiriasi — sugedęs įrenginys jungiamas prie to paties.
+module: wifi_compare
+kind: ask
+params:
+  device: {required: true}
+ask: modules.wifi_compare.question
+detector: yes_no
+answers:
+  "yes": same_network=yes
+  "no": same_network=no
+produces: [same_network]
+goal: "compare the Wi-Fi network the working device uses with the one on the caller's {device}"

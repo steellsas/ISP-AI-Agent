@@ -53,3 +53,17 @@ detectors:
   panel_device:
     "yes": "detector.panel_device.yes"
     "no": "detector.panel_device.no"
+  # Kliento pusės kopėčios (2026-11-04): Wi-Fi ar tinklo jungtis įjungta, ir ar tinklas savas.
+  switched:
+    "yes": "detector.switched.yes"
+    "no": "detector.switched.no"
+  others:
+    one: "detector.others.one"
+    all: "detector.others.all"
+    single: "detector.others.single"
+  ready:
+    "yes": "detector.ready.yes"
+    "no": "detector.ready.no"
+  wifi_network:
+    own: "detector.wifi_network.own"
+    other: "detector.wifi_network.other"

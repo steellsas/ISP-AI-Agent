@@ -34,6 +34,8 @@ def plan(state: Any, rt: Any) -> TurnPlan | None:
     if caller_owed(state):
         return None  # the answer is the caller's name — the identification ladder reads it
     ticket_capture(state, rt, user_input)
+    if s.ticket.stage is None and s.case.facts.pop("_reopened", None):
+        return None  # the Case takes the turn again: the step the finding opens
     # A first-person "I will call back" closed the dialogue — the warm goodbye.
     if s.closing.callback_goodbye_due:
         s.closing.callback_goodbye_due = False
@@ -98,6 +100,13 @@ def ticket_capture(state, rt, user_input: str) -> None:
     # ticket AND closed the call in one breath; cancelling is a one-way
     # door, so it now takes a confirmed refusal.
     cancel_confirm_out, ctx.cancel_confirm_out = ctx.cancel_confirm_out, False
+    from .case_rule import reopen_on_finding
+
+    if reopen_on_finding(state, rt, user_input):
+        # „Aš dabar patikrinau, Wi-Fi išjungtas" while the contacts are taken: a finding the fix
+        # can act on — back to it, not „nesupratau numerio" (live 2026-11-05).
+        abort_ticket_to_solving(state, rt)
+        return
     if cancel_confirm_out:
         from ...perceive.detectors import is_bare_negation
 
@@ -366,6 +375,8 @@ def hours_words(text: str) -> str:
     span = _NUO_IKI_RE.search(low) or _DASH_RE.search(low)
     if span:
         first, second = int(span.group(1)), int(span.group(2))
+        if second < first and second + 12 <= 24:
+            second += 12  # „nuo 12 iki 1" runs into the afternoon: 12–13
         if first <= 24 and second <= 24:
             return f"{prefix}nuo {_clock(first)} iki {_clock(second)} val."
     one = _PO_RE.search(low) or _IKI_RE.search(low) or _APIE_RE.search(low)
@@ -581,6 +592,14 @@ def ticket_stage_reply(state: Any, rt: Any) -> str:
         # states the success and registers the ROUTER replacement.
         if state.ticket.request_type:
             parts.append(phrase("identification.ticket_intro_request"))
+        elif state.ticket.reason == "visi_veiksmai":
+            parts.append(phrase("identification.ticket_intro_all_done"))
+        elif state.ticket.reason == "klientas_praso" and _guided_card(state):
+            # They asked for a technician mid-fix: no „neišspręsime" — it was their choice.
+            parts.append(phrase("identification.ticket_intro_asked"))
+        elif state.ticket.reason == "kliento_pagalba":
+            # The caller agreed to PAID help with their own device: no „neišspręsime", no fault.
+            parts.append(phrase("identification.ticket_intro_paid_help"))
         elif state.resolution.bridge_bound:
             parts.append(phrase("identification.ticket_intro_bridge"))
         elif _callback_only(state):
@@ -593,6 +612,13 @@ def ticket_stage_reply(state: Any, rt: Any) -> str:
     _q_register(state, rt, "ticket", "ticket_phone")
     parts.append(phrase("identification.ticket_phone"))
     return " ".join(parts)
+
+
+def _guided_card(state: Any) -> bool:
+    from ...contract import cards as catalog
+
+    card = catalog.card(state.case.fault) if state.case.fault else None
+    return card is not None and card.pace == "guided"
 
 
 def _callback_only(state: Any) -> bool:

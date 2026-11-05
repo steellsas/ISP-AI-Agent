@@ -21,16 +21,23 @@ def classify_side_topic(state, rt, user_input: str | None) -> bool:
     if not user_input or not s.identity.customer_id or s.closing.case_closed or state.ticket.stage:
         return False
 
-    if (
-        state.dialog.end_confirm_pending
-        or state.dialog.resume_hold_due
-        or state.closing.debt_offer == "asked"
-    ):
+    if state.dialog.end_confirm_pending or state.dialog.resume_hold_due:
+        return False
+    from ..decide.rules.requests import debt_dialogue_running
+
+    if debt_dialogue_running(state):
         return False
     # A disputed debt answers our own news — the debt offer owns it (D-11).
     from ..decide.rules.requests import debt_dispute_due
 
     if debt_dispute_due(state, user_input):
+        return False
+    # A question about the news just delivered is answered with the news (the wrap-up).
+    from .detectors import asks_about_the_news
+
+    if asks_about_the_news(state, user_input):
+        state.dialog.side_topic_streak = 0
+        rt.tracer.emit("decision", intent="side_topic", action="news_asked")
         return False
     # Ticket demand is NEVER a side topic (live 2026-08-13: "Išregistruoti
     # meistrą ir paleisti internetą…" got type=deviation and the side_topic

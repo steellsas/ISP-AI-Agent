@@ -1,0 +1,17 @@
+# Kiti įrenginiai veikia, šio sutvarkyti nepavyko: paslauga teikiama, tiekėjo pusėje sutrikimo
+# nėra (Andrius, 2026-11-04). Agentas pasako, kas greičiausiai kalta, ir PASIŪLO mokamą
+# meistro pagalbą — kainos nesako, ją praneša meistras. Tiketas tik klientui sutikus.
+module: offer_fix
+kind: ask
+params:
+  device: {required: true}
+ask: modules.offer_fix.question
+detector: ticket_consent
+answers:
+  "yes": fix_wanted=yes
+  "no": fix_wanted=no
+produces: [fix_wanted]
+goal: >-
+  say that the service works on our side (it works on their other devices), that the trouble is
+  most likely in the {device} itself, and offer a PAID technician's help — the price is the
+  technician's to tell; then ask whether to register it

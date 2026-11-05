@@ -392,7 +392,7 @@ def reload() -> None:
     Call this BEFORE validating an edit, not after — see `revalidate()`.
     """
     from .. import detectors, faq, faults, identification, inform, intents, services, ticket_types
-    from . import cards, equipment, limits, locale, policies, signals, tools
+    from . import cards, equipment, ladders, limits, locale, policies, signals, tools
 
     read_yaml.cache_clear()
     for module in (
@@ -408,6 +408,7 @@ def reload() -> None:
         identification,
         inform,
         signals,
+        ladders,
         cards,
         equipment,
         tools,

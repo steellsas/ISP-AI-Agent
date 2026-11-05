@@ -245,6 +245,21 @@ def test_a3_a_name_given_unasked(said, name):
     assert introduced_name(said) == name
 
 
+@pytest.mark.parametrize(
+    ("said", "name"),
+    [
+        ("Tomas mano vardas.", "Tomas"),
+        ("Mano vardas Andrius", "Andrius"),
+        ("Taip, panašu, mano vardu sudaryta sutartis.", None),
+        ("Sutartis mano vardu registruota", None),
+    ],
+)
+def test_the_contract_in_my_name_is_no_name(said, name):
+    from agent.perceive.caller import extract_caller_name
+
+    assert extract_caller_name(said) == name
+
+
 def test_a3_the_name_question_is_skipped(make_state, make_runtime):
     from agent.decide.rules.reply import plan_reply
 

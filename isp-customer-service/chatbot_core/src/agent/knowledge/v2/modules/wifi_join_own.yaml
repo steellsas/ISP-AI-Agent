@@ -1,0 +1,7 @@
+# W2 rasta: prisijungta ne prie savo tinklo arba prie jokio — pasirenkamas savas.
+module: wifi_join_own
+kind: instruct
+params:
+  device: {required: true}
+goal: "the caller's {device} joined to their own network — the name on the router's sticker, the strongest one near the router"
+produces: []

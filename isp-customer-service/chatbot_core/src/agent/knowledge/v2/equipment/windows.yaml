@@ -1,0 +1,15 @@
+# WINDOWS KOMPIUTERIS — paveldi bazinį kompiuterį ir perrašo tik „kaip" žodžius.
+equipment: windows
+type: computer
+extends: computer
+matches: [windows, vindows, lenovo, asus, acer, dell, hp, msi]
+
+actions:
+  how.wifi_state: equipment.windows.how.wifi_state
+  how.wifi_enable: equipment.windows.how.wifi_state
+  how.wifi_network: equipment.windows.how.wifi_network
+  how.wifi_join_own: equipment.windows.how.wifi_network
+  how.wifi_reconnect: equipment.windows.how.wifi_reconnect
+  how.nic_enabled: equipment.windows.how.nic_enabled
+  how.nic_enable: equipment.windows.how.nic_enabled
+  how.device_restart: equipment.windows.how.device_restart

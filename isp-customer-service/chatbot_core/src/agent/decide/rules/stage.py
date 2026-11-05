@@ -40,6 +40,10 @@ def plan(state: Any, rt: Any) -> TurnPlan:
     # eval, S1).
     if str(stage_plan.rule).startswith("case.") and _is_fault_script(scripted.rule):
         return stage_plan
+    if stage_plan.rule in _CASE_ANSWERS_ITSELF:
+        # „Kur man eiti?" during a device step is answered by the Case from the equipment
+        # catalogue, not passed to the narrator as a side question (live 2026-11-03).
+        return stage_plan
     # An answer and a question in one breath („Gerai, veikia. Kada dėl routerio paskambinsit?"):
     # the question used to take the whole turn, so the Case's move was dropped and the model
     # improvised „užregistruosiu" (live 2026-10-07). The Case keeps the turn; the question gets
@@ -54,6 +58,9 @@ def plan(state: Any, rt: Any) -> TurnPlan:
         return stage_plan
     return scripted
 
+
+# Case moves that are themselves the answer to what the caller asked.
+_CASE_ANSWERS_ITSELF = ("case.how_to", "case.how_to_os", "case.conclude")
 
 # Case moves that only happen because the caller's words settled something.
 _OUTCOME_MOVES = ("case.summary", "case.escalate", "case.resolved")
@@ -101,13 +108,19 @@ def _stage_plan(state: Any, rt: Any) -> TurnPlan:
         # Same for a demand („Kur tas routeris… Registruokite gedimą", live 2026-10-14): the
         # demand is the Case's, the question gets its short answer alongside.
         rt.tracer.emit("decision", intent="side_topic", action="answer_with_the_fix")
+    from . import case_rule
+
+    if _side_topic(s) and case_rule.how_to_due(s):
+        # „Kur man eiti?" while a step on their phone is out asks how to do THAT step: the Case
+        # answers it from the equipment catalogue (live 2026-11-03 the side topic invented one).
+        s.turn.side_topic_active = False
+        rt.tracer.emit("decision", intent="side_topic", action="how_to_the_step")
     if _side_topic(s):
         return TurnPlan(
             owner="side_topic",
             rule="side_topic.answer",
             say=Say(kind="directive", stage="side_topic"),
         )
-    from . import case_rule
     from .closing import maybe_close_inform
 
     maybe_close_inform(state, rt, user_input)

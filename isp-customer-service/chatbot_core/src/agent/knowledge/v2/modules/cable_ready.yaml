@@ -1,0 +1,14 @@
+# Vedamo sprendimo pradžia: pasakoma, KĄ tikrinsime (laido ir tinklo jungties), ir paklausiama, ar klientas
+# gali tai padaryti dabar (Andrius, 2026-11-04). „Ne dabar" — tas pats kelias kaip `reach`:
+# kada galės, arba meistras.
+module: cable_ready
+kind: ask
+params:
+  device: {required: true}
+ask: modules.cable_ready.question
+detector: ready
+answers:
+  "yes": device_ready=yes
+  "no": reachable=no
+produces: [device_ready]
+goal: "say what we will check on the caller's {device} and hear whether they can do it now"

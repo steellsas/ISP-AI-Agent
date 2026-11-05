@@ -205,21 +205,22 @@ class TestWhatToAssumeWhenNobodyAnswers:
                 },
             )
 
-    def test_the_client_side_card_carries_the_scope_question(self):
-        """It is the card the question actually serves: the line carries traffic, so which
-        devices fail is what tells us where to look. It may be asked twice, in two wordings,
-        and then the call goes on with the assumption."""
-        need = catalog.card("healthy_to_router").needs["fail_scope"]
-        assert need.ask and need.again and need.assume == "one"
+    def test_the_client_side_card_asks_the_device_first(self):
+        """Andrius (2026-11-05): help with the device the caller rings about; the other
+        devices are asked only when its ladder did not help (the `isolate` ladder)."""
+        card = catalog.card("healthy_to_router")
+        assert card.needs["fail_scope"].volunteered and not card.needs["fail_scope"].ask
+        assert card.needs["fail_device"].ask and card.needs["fail_device"].assume == "other"
 
-    def test_a_line_that_carries_traffic_points_at_one_device(self):
-        assert catalog.card("healthy_to_router").needs["fail_scope"].assume == "one"
+    def test_no_answer_never_claims_the_other_devices_work(self):
+        """„Kituose veikia" is never assumed: the scope comes only from the caller."""
+        assert catalog.card("healthy_to_router").needs["fail_scope"].assume is None
 
 
 def test_every_module_a_card_can_call_declares_what_it_does():
     for name, spec in catalog.modules().items():
         assert spec.goal, name
-        assert spec.kind in ("ask", "instruct", "action", "verify", "escalate"), name
+        assert spec.kind in ("ask", "instruct", "action", "verify", "escalate", "inform"), name
         # An action runs a tool; a verification reads one; the rest speak.
         if spec.kind == "action":
             assert spec.tool, name
@@ -272,7 +273,7 @@ class TestWhatTheCardsDeclare:
         card = catalog.card("healthy_to_router")
         assert card.needs["connection_type"].when == ["fail_device=computer"]
         assert card.needs["rebooted"].when == ["fail_scope=all"]
-        assert card.needs["fail_device"].when == ["fail_scope=one"]
+        assert card.needs["fail_device"].when == []  # asked first
 
     def test_every_question_can_be_asked_and_read(self):
         """A need must have the words to ask it and a way to read the answer — otherwise the

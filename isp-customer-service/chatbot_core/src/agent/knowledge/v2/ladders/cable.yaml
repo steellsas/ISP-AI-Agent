@@ -1,0 +1,29 @@
+# LAIDO KOPĖČIOS — kompiuteris prie routerio laidu. Kol kas tikrinama tik tai, kas dažniausia
+# (Andrius, 2026-11-04): ar laidas įkištas į routerio LAN ir į kompiuterį, ir ar neišjungta
+# tinklo plokštė. Jei plokštė aktyvi ir rodo prisijungimą — ryšys su routeriu yra.
+ladder: cable
+params: [device]
+steps:
+# K0 — ką tikrinsime ir ar klientas gali tai padaryti dabar.
+- module: cable_ready
+  args: {device: "{device}"}
+# K1 — laidas įkištas abiejuose galuose?
+- module: cable_seated
+  args: {device: "{device}"}
+- module: cable_reseat
+  args: {device: "{device}"}
+  run_when: [cable_seated=no]
+- module: verify
+  args: {ask: restored}
+  run_when: [cable_seated=no]
+  fixes: pack.healthy_to_router.cause.cable
+# K2 — tinklo jungtis įjungta?
+- module: nic_enabled
+  args: {device: "{device}"}
+- module: nic_enable
+  args: {device: "{device}"}
+  run_when: [nic_enabled=no]
+- module: verify
+  args: {ask: restored}
+  run_when: [nic_enabled=no]
+  fixes: pack.healthy_to_router.cause.nic_off

@@ -260,6 +260,10 @@ farewell:
 # „Pakartokit, ką reikia man padaryti" ir dar du beveik tokie pat vedimo punktai pakėlė „stuck"
 # skaitliuką iki 3, ir agentas pasiūlė abonento kodą (identifikacijos taktika!), o paskui
 # užregistravo gedimą ir atsisveikino vedimo viduryje.
+# Po žinios (avarija, skola) klientas klausia apie patį gedimą — variklis kartoja žinią.
+# Klausimą pradedantys žodžiai — „nežinau, kaip čia" nėra klausimas, „kodėl nematot" yra.
+debt_question_openers: ["kodėl", "kodel", "kaip", "kada", "kiek", "ką", "ka", "ar", "kas", "kur", "kokia", "koks"]
+news_asked_marks: ["gedim", "neveik", "nevei", "nevyk", "nėra interneto", "nera interneto", "kas atsitiko", "kas nutiko", "kodėl", "kodel", "negirdėjau", "negirdejau", "nesupratau"]
 repeat_request:
   - "pakartok"
   - "pakartot"
@@ -327,6 +331,10 @@ in_progress:
   - "bandysiu"
   - "darau"
   - "darysiu"
+  # „Patikrinsiu", „pažiūrėsiu" — klientas eina žiūrėti, tai dar ne atsakymas (2026-11-04).
+  - "patikrinsiu"
+  - "pažiūrėsiu"
+  - "paziuresiu"
   - "žiūriu"
   - "ziuriu"
   - "ieškau"
@@ -519,6 +527,7 @@ addr_no:
   - "kitas butas"
   - "kito buto"
   - "kitam bute"
+  - "neteising"
   - "ne šit"
   - "ne sit"
 
@@ -1059,6 +1068,12 @@ name_stop_words:
   - "sudaręs"
   - "sudares"
   - "sudariusi"
+  - "sudaryta"
+  - "sudarytas"
+  - "registruota"
+  - "registruotas"
+  - "užregistruota"
+  - "uzregistruota"
   - "asmuo"
   - "žmona"
   - "zmona"
@@ -1070,9 +1085,6 @@ name_stop_words:
   - "nuomininkė"
   - "kaimynas"
   - "kaimynė"
-  # Gyvai / eval 2026-10-01: „Aišku, ačiū, lauksiu" buvo užrašyta kaip vardas „Aišku" — ir
-  # nesutapus su sutarties vardu agentas dar paklausė dėl savininko. Padėkos, supratimo ir
-  # atsisveikinimo žodžiai nėra vardai.
   - "aišku"
   - "aisku"
   - "ačiū"
@@ -1175,9 +1187,10 @@ clause_split: "[,;]| bet | tačiau "
 device_denial: ["neturiu", "nėra"]
 # address confirm: any "ne-" word is a denial ...
 negated_word: "\\bne\\w*"
-# ... unless it negates the PROBLEM ("neveikia", "nėra interneto"), not the address.
-problem_negations: ["neveik", "nevyk", "nėra", "nera", "netur", "nebeveik", "nebėr", "neber"]
-address_yes: ["taip", "tvirtinu", "to adreso", "dėl šio", "del sio", "aha", "jo"]
+# ... unless it negates the PROBLEM ("neveikia", "nėra interneto"), not the address, or says the
+# caller did not catch the question ("nesuprantu", "negirdžiu") — that is unclear, not a no.
+problem_negations: ["neveik", "nevyk", "nėra", "nera", "netur", "nebeveik", "nebėr", "neber", "nesupr", "negird", "nežin", "nezin"]
+address_yes: ["taip", "tvirtinu", "to adreso", "dėl šio", "del sio", "aha", "jo", "teising"]
 # A word starting with these is negated ("NEregistruokite" is not a ticket demand).
 negation_prefixes: ["ne", "nebe"]
 # "Ačiū, nereikia" / "nebereikia" = polite done-signal (live 2026-08-13).
@@ -1250,7 +1263,7 @@ will_call_back_first_person: ["paskambinsiu", "perskambinsiu", "pats paskambin"]
 # Keyword question-divert in the ticket dialogue (fallback when the reader did not run).
 ticket_offscript_question: ["kodėl", "kodel", "kiek", "kam ", "kas čia", "kas cia", "kokiu", "koks ", "kokia ", "galima", "ar "]
 # An explicit "do not register" (one confirm round first).
-ticket_cancel: ["neregistruok", "nereikia regi", "nereikia tiket", "atšauk", "atsauk"]
+ticket_cancel: ["neregistruok", "nereikia regi", "nereikia tiket", "atšauk", "atsauk", "nenoriu jokių", "nenoriu jokiu", "nereikia jokių", "nereikia jokiu", "nenoriu registr", "nereikia meistr"]
 # A plausible call-back-hours answer (a digit or one of these).
 # VALANDOS, pasakytos žodžiais. ASR jas dažnai darko („trilykos" = trylikos, „penkiu" = penkių),
 # tad lyginama PRADŽIA — 5–6 pirmos raidės. Gyvai 2026-10-05 į tiketą pakliuvo „na dvylikos, iki
@@ -1283,6 +1296,21 @@ hour_words:
   trij: "3"
   dviej: "2"
   vienos: "1"
+  # Ordinals („nuo dvyliktos iki pirmos") — whole forms: „pirmadienį", „antradienį" are days.
+  pirmos: "1"
+  pirmą: "1"
+  antros: "2"
+  antrą: "2"
+  trečios: "3"
+  trecios: "3"
+  ketvirtos: "4"
+  penktos: "5"
+  šeštos: "6"
+  sestos: "6"
+  septintos: "7"
+  aštuntos: "8"
+  astuntos: "8"
+  devintos: "9"
 
 # Dienos dalys ir dienos, kurias verta išsaugoti tikete.
 # „Kada tik norit", „nesvarbu" — tiketui tai ta pati „bet kada".
@@ -1396,7 +1424,7 @@ polarity_yes: ["turiu", "turim", "taip", "yra"]
 # The narrator CLAIMED a registration ("Užregistravau gedimą…") ...
 # A PROMISE counts too („užregistruosiu jūsų klausimą", live 2026-10-07): words may not
 # outrun the engine in either tense — the promise becomes the contact dialogue.
-registration_claim: ["užregistrav", "uzregistrav", "užregistruoj", "uzregistruoj", "registruoju gedim", "užregistruosiu", "uzregistruosiu", "registruosiu", "užregistruosim", "uzregistruosim"]
+registration_claim: ["registracija atlikta", "registracija jau atlikta", "užregistruota", "uzregistruota", "užregistrav", "uzregistrav", "užregistruoj", "uzregistruoj", "registruoju gedim", "užregistruosiu", "uzregistruosiu", "registruosiu", "užregistruosim", "uzregistruosim"]
 # ... about the ticket/technician (not a MAC bind "užregistravau routerį").
 registration_claim_subject: ["gedim", "meistr", "tiket", "koleg", "technik", "klausim", "prašym", "prasym", "atsaking", "kreipim"]
 # "ne aš sudariau sutartį" — explicitly not the contract holder.
@@ -1435,8 +1463,13 @@ faq_keywords_working_hours: ["darbo laik", "kada dirbat", "iki keliu", "iki keli
 
 # How a short reply to THIS evidence question reads (value -> markers). The names
 # still carry the v1 pack verdicts they were first written for.
-answers_healthy_to_router_fail_scope_all: ["visuose", "visur", "nė viename", "ne viename neveikia", "abiejuose", "niekur"]
-answers_healthy_to_router_fail_scope_one: ["viename", "tik ", "telefone", "kompiuteryje", "planšetėje", "plansete"]
+# „Ar turite kitą įrenginį — ir ar jame veikia?" (2026-11-04): single — kito nėra; all — ir ten
+# neveikia; one — kituose veikia. Kortelė skaito ta eile, todėl „tik vienas" yra single.
+answers_healthy_to_router_fail_scope_single: ["neturiu", "kitų įrenginių", "kitu irenginiu", "kitų nėra", "kitu nera", "tik telefoną", "tik telefona", "tik kompiuterį", "tik kompiuteri", "naudoju tik", "tik naudoj", "neturiu kito", "kito neturiu", "kito nėra", "kito nera", "nėra kito", "nera kito", "tik vienas", "tik viena", "vienintel", "tik šitas", "tik sitas", "tik šitą", "tik sita", "daugiau neturiu", "daugiau nėra", "daugiau nera"]
+# Atsakant į „ar kituose įrenginiuose veikia?" — „ne, neveikia" reiškia „irgi neveikia".
+others_fail: ["neveikia", "nėra interneto", "nera interneto", "ne, ne"]
+answers_healthy_to_router_fail_scope_all: ["visuose", "visur", "nė viename", "ne viename neveikia", "abiejuose", "niekur", "irgi neveikia", "irgi nėra", "irgi nera", "ten irgi ne", "taip pat neveikia"]
+answers_healthy_to_router_fail_scope_one: ["tik viename", "tik telefone", "tik kompiuteryje", "tik planšetėje", "tik plansete", "tik nešiojam", "tik nesiojam", "tik šitame", "tik sitame", "veikia", "kituose veikia", "ten veikia", "ten yra", "ten internetas yra"]
 answers_healthy_to_router_fail_device_phone: ["telefon", "planšet", "planset", "mobil"]
 answers_healthy_to_router_fail_device_computer: ["kompiuter", "nešiojam", "nesiojam", "laptop", "pc"]
 answers_healthy_to_router_connection_type_wired: ["laidu", "laidas", "kabeliu", "kabelis", "per laidą"]
@@ -1466,10 +1499,65 @@ repeat_nobody_came: ["niekas neatvyko", "niekas neatvažiavo", "neatvažiavo", "
 # --- agent/decide/rules/requests.py --------------------------------------------------------
 
 # The caller disputes the debt they were told about, or does not understand it (D-11).
-debt_dispute: ["nesutink", "neteising", "klaid", "sumokėjau", "sumokejau", "apmokėjau", "apmokejau", "mokėjau", "mokejau", "nesuprantu", "neaišku", "neaisku", "kodėl tiek", "kodel tiek", "kodėl tokia", "kodel tokia", "per didel", "ne mano skola", "neturiu skol", "iš kur skola", "is kur skola", "kaip tai skola"]
+debt_dispute: ["mokiau", "sumokiau", "mokėjom", "mokejom", "sumokėjom", "sumokejom", "pervedžiau", "pervedziau", "nematot", "nematote", "neužskait", "neuzskait", "neįskait", "neiskait", "kur mano pinig", "nesutink", "neteising", "klaid", "sumokėjau", "sumokejau", "apmokėjau", "apmokejau", "mokėjau", "mokejau", "nesuprantu", "neaišku", "neaisku", "kodėl tiek", "kodel tiek", "kodėl tokia", "kodel tokia", "per didel", "ne mano skola", "neturiu skol", "iš kur skola", "is kur skola", "kaip tai skola"]
+# Skolos ginčas: kliento teiginys, kad mokėjo. Pagal šiuos duomenis atsakingas asmuo ieško
+# mokėjimo (Andrius, 2026-10-30): kada, kokiu būdu, kokia suma.
+payment_claim_words: ["mokėj", "mokej", "mokiau", "sumok", "apmok", "pervedž", "pervedz", "pinig"]
+payment_months:
+  saus: "sausio mėn."
+  vasar: "vasario mėn."
+  kov: "kovo mėn."
+  baland: "balandžio mėn."
+  geguž: "gegužės mėn."
+  geguz: "gegužės mėn."
+  biržel: "birželio mėn."
+  birzel: "birželio mėn."
+  liep: "liepos mėn."
+  rugpj: "rugpjūčio mėn."
+  rugsėj: "rugsėjo mėn."
+  rugsej: "rugsėjo mėn."
+  spal: "spalio mėn."
+  lapkr: "lapkričio mėn."
+  gruod: "gruodžio mėn."
+payment_relative_days: ["vakar", "užvakar", "uzvakar", "šiandien", "siandien", "prieš", "pries", "praeit"]
+payment_relative_needs_next: ["prieš", "pries", "praeit"]
+payment_methods:
+  pavedim: "banko pavedimu"
+  pervedž: "banko pavedimu"
+  pervedz: "banko pavedimu"
+  internet bank: "per internetinę bankininkystę"
+  bank: "per banką"
+  swedbank: "per Swedbank"
+  svedbank: "per Swedbank"
+  svetbank: "per Swedbank"
+  satbank: "per Swedbank"
+  sedbank: "per Swedbank"
+  suedbank: "per Swedbank"
+  luminor: "per Luminor"
+  seb: "per SEB"
+  revolut: "per Revolut"
+  savitarn: "per savitarną"
+  programėl: "per programėlę"
+  programel: "per programėlę"
+  kortel: "kortele"
+  grynais: "grynais"
+  kasoj: "grynais kasoje"
+  pašt: "pašte"
+  past: "pašte"
+  perl: "Perlo terminale"
+  maxim: "Maximoje"
+  narvesen: "Narvesen"
+# Atsakymas į „Ar registruoti?" ginčo metu: „pasižiūrėkit", „patikrinkit" — prašo patikrinti, t. y. taip.
+# „Jūs to nematot?" — an objection to what we see, a question though no question word is in it.
+debt_objection_asked: ["nematot", "nematai", "nerandat", "nerandi", "neužskait", "neuzskait", "negavot", "negavo"]
+# A way that says less than another named one („per banką" next to „per Swedbank") is dropped.
+payment_methods_vague: ["bank"]
+debt_consent_extra: ["žinoma", "zinoma", "pasižiūrėk", "pasiziurek", "patikrink", "išsiaiškink", "issiaiskink", "perduok", "sujunk", "perjunk"]
+# Aiškus prašymas perduoti žmogui, kai agentas pats nebeklausia.
+debt_handover_request: ["užregistruok", "uzregistruok", "registruok", "sujunk", "perjunk", "su žmogumi", "su zmogumi", "su operator", "su buhalter", "noriu, kad paskambint", "noriu kad paskambint", "noriu, kad pasakyt", "noriu kad pasakyt", "perduok"]
 # „Kiek…?" after the news asks for the amount, not a dispute — unless a clear objection is there too.
 debt_amount_question: ["kiek"]
-debt_dispute_strong: ["nesutink", "neteising", "klaid", "sumokėjau", "sumokejau", "apmokėjau", "apmokejau", "aš mokėjau", "as mokejau", "per didel", "ne mano skola", "neturiu skol", "iš kur skola", "is kur skola", "kaip tai skola", "kodėl tiek", "kodel tiek", "kodėl tokia", "kodel tokia"]
+debt_dispute_strong: ["mokiau", "sumokiau", "mokėjom", "mokejom", "sumokėjom", "sumokejom", "pervedžiau", "pervedziau", "nematot", "neužskait", "neuzskait", "nesutink", "neteising", "klaid", "sumokėjau", "sumokejau", "apmokėjau", "apmokejau", "aš mokėjau", "as mokejau", "per didel", "ne mano skola", "neturiu skol", "iš kur skola", "is kur skola", "kaip tai skola", "kodėl tiek", "kodel tiek", "kodėl tokia", "kodel tokia"]
 
 # --- agent/intents.py ------------------------------------------------------------------------
 
@@ -1500,3 +1588,30 @@ acknowledge:
   - eisiu
   - pažiūrėsiu
   - patikrinsiu
+
+# --- Kliento pusės kopėčios (knowledge/v2/ladders, 2026-11-04) ----------------------------
+# Jungiklis įjungtas / išjungtas — Wi-Fi ar tinklo jungtis. Klientai skaito, kas parašyta
+# ekrane: „disable", „off", pilkas mygtukas (gyvai 2026-11-03: „Disable parašyta").
+switched_off: ["išjung", "isjung", "neįjung", "neijung", "disable", "disabled", "off", "pilk", "lėktuv", "lektuv", "airplane", "flight", "nedega", "nešviečia", "nesviecia", "nėra ženkl", "nera zenkl", "nematau ženkl", "nematau zenkl", "neprijung", "atjung", "not connected", "unplugged"]
+switched_on: ["įjungt", "ijungt", "enable", "enabled", "mėlyn", "melyn", "žali", "zali", "dega", "šviečia", "svieci", "matau ženkl", "matau zenkl", "bangel", "prijungt", "connected", " on"]
+# Savas tinklas ar ne.
+wifi_network_own: ["savo", "mano", "mūsų", "musu", "namų", "namu", "tp-link", "tplink", "kaip lipduk", "tas pats", "toks pat", "sutampa"]
+wifi_network_other: ["kaimyn", "svetim", "kitas tinklas", "kito tinklo", "ne mano", "ne savo", "ne prie savo", "nesutampa", "joks", "jokio", "neprisijung", "nieko nėra", "nieko nera"]
+# Klientas klausia, KAIP padaryti ar KUR žiūrėti — tai pagalba esamam žingsniui, ne pašalinė
+# tema (gyvai 2026-11-03: „kur man reikia eiti?" gavo išgalvotą atsakymą).
+# Sakinio dalis, kuri sako, kad VEIKIA („kompiuteryje veikia"), neįvardija sugedusio įrenginio.
+works_marks: ["veikia", "veikė", "veike", "yra internetas", "internetas yra", "viskas gerai"]
+fails_marks: ["neveik", "nėra", "nera", "nebėra", "nebera", "dingo", "nesijung", "neprisijung"]
+# „Netikrinau" — klientas dar nežiūrėjo; tai ne atsakymas „ne" (2026-11-04).
+not_looked: ["netikrin", "nepatikrin", "nežiūrėj", "neziurej", "nepažiūrėj", "nepaziurej", "dar nežiūr", "dar neziur"]
+# „Dar neįjungiau" per patikrą — grįžtame prie nurodymo (2026-11-04).
+not_done_yet: ["neįjungiau", "neijungiau", "nepadariau", "nespėjau", "nespejau", "nebandžiau", "nebandziau", "neperkroviau", "neprisijungiau", "dar ne padar", "dar neįjung", "dar neijung", "dar nepadar"]
+# „Ar galite dabar pasižiūrėti?" — pasirengęs (2026-11-05).
+ready_yes: [" dabar", "galiu", "gerai", "pabandysiu", "pabandom", "žiūriu", "ziuriu", "atsidariau", "atsidarau", "einu", "jau ", "taip", "aha", "mhm", "ok"]
+ready_not_now: ["ne dabar", "negaliu", "vėliau", "veliau", "nesu namie", "nesu namuose", "esu darbe", "negalėsiu", "negalesiu"]
+how_to_request: ["kaip tai", "kaip padaryt", "kaip man", "kaip įjungt", "kaip ijungt", "kaip pažiūrėt", "kaip paziuret", "kaip patikrint", "kaip rast", "kur man", "kur eiti", "kur reikia", "kur spaust", "kur paspaust", "kur rasti", "kur žiūrėt", "kur ziuret", "kur tai", "nežinau kaip", "nezinau kaip", "nežinau kur", "nezinau kur", "nemoku", "nesuprantu kur", "padėkit", "padekit", "padėkite", "padekite", "parodykit", "pasakykit kur", "nerandu"]
+# Įrenginio sistema — „nežinau kaip" atveju; žodžiai sutampa su įrangos katalogo `matches`.
+device_os_android: ["android", "samsung", "galaxy", "xiaomi", "redmi", "huawei", "honor", "motorola", "nokia", "oppo", "realme", "pixel", "oneplus", "sony", "lenovo"]
+device_os_iphone: ["iphone", "ipad", "aifon", "aipon", "ajfon", "apple", "obuol"]
+device_os_windows: ["windows", "vindows", "vindovs", "langai", "asus", "acer", "dell", "lenovo", "hp "]
+device_os_mac: ["mac", "makbuk", "macbook", "imac", "apple", "obuol"]

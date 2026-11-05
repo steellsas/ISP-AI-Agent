@@ -34,6 +34,9 @@ def speak(state: Any, rt: Any, plan: Any, action_text: str | None) -> str | None
             # atsakymas sargui yra nematomas.
             from ..speak.postprocess import finalize, trim_to_cap
 
+            # A reply the agent speaks is a turn, as on the narrator's path: without it the
+            # caller's next words looked like this turn's and were never read (2026-11-04).
+            state.dialog.turn_count += 1
             text = _with_owed(owed, trim_to_cap(state, rt, text))
             _speak_text(state, rt, say, user_input, text)
             if say.stage in ("intake", "diagnosis"):

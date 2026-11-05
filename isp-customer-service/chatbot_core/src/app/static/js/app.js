@@ -51,7 +51,7 @@ async function startWebRTC(){
   callEnded = false;
   rtcMic = await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,
     noiseSuppression:true, autoGainControl:true, channelCount:1}});
-  pc = new RTCPeerConnection();
+  pc = new RTCPeerConnection({iceServers:[{urls:"stun:stun.l.google.com:19302"}]});  // reachable outside this network
   for(const t of rtcMic.getTracks()) pc.addTrack(t, rtcMic);
   pc.createDataChannel("events");            // Pipecat's message channel (unused here)
   rtcAudio = new Audio(); rtcAudio.autoplay = true;
@@ -129,7 +129,7 @@ $("start").onclick = async () => {
     }
     sid = data.session_id;
     $("sid").textContent = sid;
-    ws = new WebSocket(`ws://${location.host}/ws/call/${sid}`);
+    ws = new WebSocket(`${location.protocol==="https:"?"wss":"ws"}://${location.host}/ws/call/${sid}`);
     ws.onmessage = m => {
       const e = JSON.parse(m.data);
       if(e.type==="turn_start"){ $("partialLine").textContent=""; Brain.turnStart(); VoiceViz.thinking(); return; }

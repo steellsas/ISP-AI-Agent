@@ -115,6 +115,17 @@ class IdentityState(BaseModel):
     # The name answer was unreadable once and asked again (A4, 2026-10-12): the second
     # unreadable answer is „nenurodyta", never a garbled word used as a name.
     caller_name_reasked: bool = False
+    # „Ar teisingai supratau — <adresas>?": the engine says it from the slots, the answer is
+    # read in the turn head. `heard_confirm_due` is "ask" / "reask" for this turn's words;
+    # `heard_confirm_asks` counts unclear answers to it before another way is tried.
+    heard_confirm_due: str | None = None
+    heard_confirm_asks: int = 0
+    heard_address: str | None = None
+    # Other readings (house, flat) of the digits the caller said, most likely first — tried
+    # against the registry when the first reading is not an address.
+    address_readings: list[tuple[str, str | None]] = Field(default_factory=list)
+    # The registry wants the flat number: a bare number answer is the flat, not the house.
+    apartment_needed: bool = False
 
     def set_customer(
         self,
@@ -339,9 +350,15 @@ class ClosingState(BaseModel):
     secondary_problems_asked: bool = False
     # A repeat call's note went onto this open ticket instead of a new one (D-12).
     appended_ticket_id: str | None = None
-    # A disputed debt (D-11): None | "asked" (the offer to register it is out) | "clarify"
-    # (the answer was unclear, asked once more) | "answered".
+    # A disputed debt (D-11): None | "facts" (asking when/how/how much they paid) | "asked"
+    # (the offer to register it is out) | "answered" (yes) | "declined" (a clear no).
     debt_offer: str | None = None
+    # The caller's payment as they told it — {"when", "how", "amount"}; the ticket carries it.
+    debt_claim: dict[str, str] = Field(default_factory=dict)
+    debt_claim_asks: int = 0
+    # The caller's questions the agent could not answer — the responsible person answers them.
+    debt_questions: list[str] = Field(default_factory=list)
+    debt_offer_unclear: int = 0
     # Why a call ended before the caller was identified ("stuck", "not_a_customer") —
     # the contact record's unidentified_reason (D-14).
     unidentified_reason: str | None = None
@@ -363,8 +380,8 @@ class VoiceState(BaseModel):
     required_said: list[str] = Field(default_factory=list)
     # Required words a barge-in cut off: the next reply says them first (PERZIURA §6 I-1).
     owed: list[str] = Field(default_factory=list)
-    # Required sentences already said again once — cut a second time, they are not owed
-    # again (live 2026-10-20: the debt news looped three times, F1).
+    # Required sentences said again (one entry per repeat) — after `required_redeliver_max`
+    # repeats they are not owed again (F1: no endless loop).
     redelivered: list[str] = Field(default_factory=list)
     # The owed words the engine has just said before an LLM reply — the narrator must not
     # say them a second time in its own words (F2). One-shot, read by the context card.
@@ -412,6 +429,10 @@ class TurnScratch(BaseModel):
     address_lookup_note: str | None = None
     address_confirm_note: str | None = None
     db_address_note: str | None = None
+    # This utterance's address reading: {"house", "apartment", "street", "anchored"}.
+    address_reading: dict[str, Any] | None = None
+    # The address heard so far names one contract (the registry check this turn).
+    address_found: bool = False
     reopen_note: bool = False
     # What this utterance sounded like (a problem label) — decide commits or files it.
     problem_reading: str | None = None

@@ -1,0 +1,7 @@
+# Bendras paskutinis įrenginio žingsnis — perkrauti patį įrenginį.
+module: device_restart
+kind: instruct
+params:
+  device: {required: true}
+goal: "the caller's {device} restarted"
+produces: []

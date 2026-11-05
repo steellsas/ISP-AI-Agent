@@ -318,6 +318,7 @@ class WebRTCOffer(BaseModel):
 
 
 _webrtc_handler = None  # one SmallWebRTCRequestHandler, made on the first Pipecat call
+STUN_SERVER = "stun:stun.l.google.com:19302"  # the same one the browser uses (static/js/app.js)
 _pipecat_calls: dict[str, asyncio.Task] = {}
 
 
@@ -343,7 +344,10 @@ async def webrtc_offer(session_id: str, offer: WebRTCOffer):
             status_code=501, detail=f"Pipecat is not installed (uv sync --extra pipecat): {exc}"
         ) from None
     if _webrtc_handler is None:
-        _webrtc_handler = SmallWebRTCRequestHandler()
+        from pipecat.transports.smallwebrtc.connection import IceServer
+
+        # STUN lets a browser outside this network (a tunnel, a phone) reach the audio.
+        _webrtc_handler = SmallWebRTCRequestHandler(ice_servers=[IceServer(urls=STUN_SERVER)])
 
     async def _start(connection) -> None:
         async def _run() -> None:

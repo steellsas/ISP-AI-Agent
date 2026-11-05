@@ -116,6 +116,11 @@ class InformEntry(_Model):
     # What to say when the caller asks about this news AFTER hearing it — rendered from the
     # same facts, so the answer can never contradict what was just delivered.
     asked_again_key: str | None = None
+    # What to say when the caller questions the news while the registration is offered
+    # („O kodėl jūs nematote mano mokėjimo?") — what the agent sees, from the same facts.
+    dispute_key: str | None = None
+    # The system's facts for the responsible person's ticket (a disputed debt).
+    ticket_key: str | None = None
     clarity_requirements: list[
         Literal[
             "what_is_wrong", "what_to_do", "what_is_being_done", "when_restored", "how_notified"
@@ -301,6 +306,9 @@ class Need(_Model):
     # dega" confirms a hung router on the spot, but nobody would ask about the lights before
     # the reboot: for this fault the reboot is the first move.
     volunteered: bool = False
+    # Read from ANY utterance, not only the answer to its own question: „telefone neveikia"
+    # names the failing device whatever was asked (live 2026-11-05).
+    heard_anytime: bool = False
     # There is no going on without it: instead of a third wording or a silent assumption, the
     # caller is told WHY it is needed and what happens if we do not know.
     critical: bool = False
@@ -356,12 +364,60 @@ class ModuleCall(_Model):
     fixes: str | None = None
 
 
+class Ladder(_Model):
+    """A reusable run of steps (`knowledge/v2/ladders/`): the Wi-Fi checks are the same for
+    a phone and a computer, so a card names the ladder and its device instead of repeating
+    them. `{device}` in an argument is filled from the card's `args`."""
+
+    ladder: str
+    params: list[str] = []
+    steps: list[ModuleCall] = []
+
+
+def _fill(value: Any, args: dict[str, Any]) -> Any:
+    if isinstance(value, str):
+        return value.format(**args) if "{" in value else value
+    if isinstance(value, list):
+        return [_fill(v, args) for v in value]
+    if isinstance(value, dict):
+        return {k: _fill(v, args) for k, v in value.items()}
+    return value
+
+
+def expand_ladders(steps: list[Any]) -> list[Any]:
+    """`{ladder: wifi, args: {device: phone}}` -> the ladder's own steps for that device."""
+    from . import ladders
+
+    out: list[Any] = []
+    for raw in steps:
+        if not (isinstance(raw, dict) and "ladder" in raw):
+            out.append(raw)
+            continue
+        found = ladders.get().get(str(raw["ladder"]))
+        if found is None:
+            raise ValueError(f"unknown ladder '{raw['ladder']}'")
+        args = dict(raw.get("args") or {})
+        missing = [p for p in found.params if p not in args]
+        if missing:
+            raise ValueError(f"ladder '{found.ladder}' needs {missing}")
+        for step in found.steps:
+            out.append(_fill(step.model_dump(exclude_defaults=True), args))
+    return out
+
+
 class Solution(_Model):
     """What to DO once the card is confirmed — or which card takes over instead."""
 
     when: list[str] = []
     steps: list[ModuleCall] = []
     hands_to: str | None = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def _ladders(cls, data: Any) -> Any:
+        if isinstance(data, dict) and isinstance(data.get("steps"), list):
+            return {**data, "steps": expand_ladders(data["steps"])}
+        return data
 
     @model_validator(mode="after")
     def _does_something(self) -> Solution:
@@ -380,6 +436,9 @@ class Escalation(_Model):
     # (Andrius, 2026-09-23). When one is missing and still possible, the engine does it first;
     # when it cannot be done, the ticket says so.
     only_after: list[str] = []
+    # What the technician should check, as phrase keys — a ticket is a task, not „call them
+    # back and find out" (Andrius, 2026-11-05).
+    checks: list[str] = []
 
 
 class ParamSpec(_Model):
@@ -410,7 +469,8 @@ class ModuleSpec(_Model):
     module speaks differently for a TP-Link router and a TV box."""
 
     module: str
-    kind: Literal["ask", "instruct", "action", "verify", "escalate"]
+    # inform — the engine's conclusion is said and the call goes on to its end, nothing to do
+    kind: Literal["ask", "instruct", "action", "verify", "escalate", "inform"]
     params: dict[str, ParamSpec] = {}
     goal: str
     text: str | None = None  # equipment:… / device:… / procedure:… reference
@@ -483,6 +543,10 @@ class FaultCard(_Model):
     # RIDES on another one (IPTV over the internet) reads it to tell "fix the internet
     # first" from "the TV is its own fault" — wave 4: it used to read the verdict tree.
     line_ok: bool = False
+    # How its solution is walked: "quick" (the default — a few empty turns end in a ticket) or
+    # "guided" (the caller does things on their own device: the agent waits, leads step by step
+    # and never gives up for them — Andrius, 2026-11-04).
+    pace: Literal["quick", "guided"] = "quick"
     when: Candidacy = Candidacy()
     rules_out: list[str] = []
     needs: dict[str, Need] = {}

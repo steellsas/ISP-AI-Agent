@@ -511,6 +511,74 @@ def detect_power_cable(text: str | None) -> str | None:
     return outcome.value.lower() if outcome is not None else None
 
 
+def detect_switched(text: str | None) -> str | None:
+    """„Ar įjungtas Wi-Fi?" / „ar tinklo jungtis įjungta?" — „yes" įjungta, „no" išjungta.
+
+    Klientas dažnai skaito, kas parašyta ekrane: „Disable parašyta", „pilkas" yra atsakymas
+    „išjungta" (gyvai 2026-11-03 jis liko neperskaitytas). Neiginys pirmas: „neįjungtas" savyje
+    turi „įjungtas". Be šių žodžių — įprastas taip / ne.
+    """
+    if not text:
+        return None
+    low = f" {text.lower()} "
+    if any(m in low for m in vocab("switched_off")):
+        return "no"
+    if any(m in low for m in vocab("switched_on")):
+        return "yes"
+    if _not_looked(low):
+        return None
+    outcome = detect_yes_no(text)
+    return outcome.value.lower() if outcome is not None else None
+
+
+def _not_looked(low: str) -> bool:
+    """„Aš netikrinau, nežinau" carries a „ne" that is no answer: the caller has not looked yet
+    (live 2026-11-04 it became „Wi-Fi off"). Unknown is never a fact."""
+    return any(m in low for m in vocab("shrug")) or any(m in low for m in vocab("not_looked"))
+
+
+def says_not_done_yet(text: str | None) -> bool:
+    """„Dar neįjungiau", „nespėjau" — the instruction before the check is not done yet."""
+    low = (text or "").lower()
+    return any(m in low for m in vocab("not_done_yet"))
+
+
+def detect_wifi_network(text: str | None) -> str | None:
+    """„Ar prisijungęs prie savo tinklo?" — „own" savas, „other" kaimyno arba jokio."""
+    if not text:
+        return None
+    low = text.lower()
+    if any(m in low for m in vocab("wifi_network_other")):
+        return "other"
+    if any(m in low for m in vocab("wifi_network_own")):
+        return "own"
+    if _not_looked(low):
+        return None
+    outcome = detect_yes_no(text)
+    if outcome is None:
+        return None
+    return "own" if outcome.value.lower() == "yes" else "other"
+
+
+def detect_how_to(text: str | None) -> bool:
+    """The caller asks HOW to do the step or WHERE to look („kur man eiti?", „nemoku")."""
+    low = (text or "").lower()
+    return any(m in low for m in vocab("how_to_request"))
+
+
+def detect_device_os(text: str | None, device_type: str) -> str | None:
+    """Which system the caller's device runs, from their words („Samsung" → android)."""
+    low = f" {(text or '').lower()} "
+    if device_type == "phone":
+        choices = {"android": vocab("device_os_android"), "iphone": vocab("device_os_iphone")}
+    else:
+        choices = {"windows": vocab("device_os_windows"), "mac": vocab("device_os_mac")}
+    for name, words in choices.items():
+        if any(m in low for m in words):
+            return name
+    return None
+
+
 def detect_reach(text: str | None) -> str | None:
     """„Ar galite dabar prieiti prie routerio?" — „einu / tuoj" dar NĖRA atsakymas.
 
@@ -526,6 +594,43 @@ def detect_reach(text: str | None) -> str | None:
         return "yes"
     if detect_turn_intent(text) == INTENT_IN_PROGRESS:
         return None
+    outcome = detect_yes_no(text)
+    return outcome.value.lower() if outcome is not None else None
+
+
+def detect_others(text: str | None) -> str | None:
+    """„Ar turite kitų įrenginių — ar juose veikia?" — „one" kituose veikia, „all" irgi
+    neveikia, „single" kito nėra. Read with the negation guard: „neveikia" is not „veikia"."""
+    from ..evidence import read_pending_answer
+
+    spec = {
+        "answers": {
+            "single": "answers_healthy_to_router_fail_scope_single",
+            "all": "answers_healthy_to_router_fail_scope_all",
+            "one": "answers_healthy_to_router_fail_scope_one",
+        }
+    }
+    if not text:
+        return None
+    found = read_pending_answer("fail_scope", text, spec)
+    if found in ("single", "all"):
+        return found
+    if any(m in text.lower() for m in vocab("others_fail")):
+        return "all"  # „Ne, neveikia" — answering THIS question, it is „irgi neveikia"
+    return found
+
+
+def detect_ready(text: str | None) -> str | None:
+    """„Ar galite dabar pasižiūrėti?" before a guided check: „dabar", „gerai", „kaip tai
+    padaryti?" all mean yes — the caller is ready, and „how" is answered by the next step
+    (live 2026-11-05: „Dabar." was not read and the agent gave up)."""
+    if not text:
+        return None
+    low = f" {text.lower()} "
+    if any(m in low for m in vocab("ready_not_now")):
+        return "no"
+    if any(m in low for m in vocab("ready_yes")) or any(m in low for m in vocab("how_to_request")):
+        return "yes"
     outcome = detect_yes_no(text)
     return outcome.value.lower() if outcome is not None else None
 
@@ -731,6 +836,25 @@ def is_bare_negation(text: str | None) -> bool:
         return False
     return any(t in vocab_set("negation_tokens") for t in tokens) and all(
         t in vocab_set("negation_tokens") or len(t) <= 2 for t in tokens
+    )
+
+
+def asks_about_the_news(state, text: str | None) -> bool:
+    """After the news (outage, debt) the caller asks about the fault itself — „Tai koks
+    gedimas?", „Kodėl neveikia internetas?": the answer is the news again, in the engine's
+    words, not a side topic and not a goodbye."""
+    from ..inform import is_news
+
+    reason = (state.diagnosis.verdicts.get("network") or {}).get("reason")
+    if not text or not is_news(reason):
+        return False
+    if not (state.diagnosis.news_delivered or state.diagnosis.outage_reported):
+        return False
+    from ..evidence import _fold
+
+    low = _fold(text)
+    return any(_fold(m) in low for m in vocab("news_asked_marks")) or any(
+        _fold(m) in low for m in vocab("repeat_request")
     )
 
 

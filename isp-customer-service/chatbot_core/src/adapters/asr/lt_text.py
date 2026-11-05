@@ -144,6 +144,10 @@ _UNITS = {
     "šešių": 6,
     "penkių": 5,
     "keturių": 4,
+    # Whisper hears a dictated "penki" as these non-words.
+    "pinkė": 5,
+    "pinki": 5,
+    "pinky": 5,
 }
 _TEENS = {
     "dešimt": 10,

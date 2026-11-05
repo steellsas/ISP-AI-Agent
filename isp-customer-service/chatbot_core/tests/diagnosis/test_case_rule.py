@@ -76,8 +76,8 @@ class TestTheCaseWalksTheCall:
 
         plan = case_rule.plan(state, rt)
 
-        assert plan.rule == "case.ask" and plan.awaiting == "fail_scope"
-        assert "visuose" in plan.say.text
+        assert plan.rule == "case.ask" and plan.awaiting == "fail_device"
+        assert "Kuriame įrenginyje" in plan.say.text
 
     def test_a_caller_already_at_the_router_is_not_asked_to_go_there(self, call):
         """`done_when` on the step: "esu prie routerio" was said, so the engine moves on to
@@ -346,9 +346,9 @@ class TestWhenTheCallerDoesNotAnswerTheQuestion:
         state.dialog.turn_count += 1
         third = case_rule.plan(state, rt)
 
-        assert first.awaiting == second.awaiting == "fail_scope"
-        assert third.awaiting != "fail_scope"
-        assert "fail_scope" in state.case.unavailable
+        assert first.awaiting == second.awaiting == "fail_device"
+        assert third.awaiting != "fail_device"
+        assert "fail_device" in state.case.unavailable
 
     def test_the_second_ask_is_worded_differently(self, client_side):
         state, rt = client_side
@@ -357,35 +357,31 @@ class TestWhenTheCallerDoesNotAnswerTheQuestion:
         state.dialog.turn_count += 1
         second = case_rule.plan(state, rt)
 
-        assert first.awaiting == second.awaiting == "fail_scope"
+        assert first.awaiting == second.awaiting == "fail_device"
         assert second.say.text != first.say.text  # the card's `again` wording
-        assert "Pažiūrėkite" in second.say.text
+        assert "Kuo naudojatės" in second.say.text
 
     def test_the_call_goes_on_with_what_the_card_assumes(self, client_side):
-        """Andrius 2026-09-23: traffic reaches the router, so the internet is there — it is
-        missing at the end device. That is the assumption, said out loud, not an answer."""
+        """No answer about the device: the generic Wi-Fi ladder (Andrius, 2026-11-05). The
+        assumption is said out loud, not taken as an answer."""
         state, rt = client_side
-        state.case.asks["fail_scope"] = [1, 2]
+        state.case.asks["fail_device"] = [1, 2]
 
         plan = case_rule.plan(state, rt)
 
-        assert state.case.assumed == {"fail_scope": "one"}
-        # The call carries on down the client-side road (which device fails), not to a ticket.
-        assert plan.awaiting in ("fail_device", "connection_type", "rebooted")
-        assert state.ticket.stage != "phone"
+        assert state.case.assumed == {"fail_device": "other"}
+        assert plan.rule == "case.wifi_ready" and state.ticket.stage != "phone"
 
-    def test_a_question_with_nothing_to_assume_is_a_dead_end(self, client_side):
-        """`fail_device` has no assumption of its own: when the caller will not say, the call
-        ends honestly instead of guessing which device they meant."""
+    def test_an_unknown_device_is_no_dead_end(self, client_side):
+        """Live 2026-11-05: the caller never named the device and the call went to a ticket
+        with nothing checked. The Wi-Fi ladder fits any device — the card assumes `other`."""
         state, rt = client_side
-        state.case.facts["fail_scope"] = "one"
         state.case.asks["fail_device"] = [1, 2]
-        state.case.unavailable.append("connection_type")
 
-        plan = escalation(state, rt)
+        plan = case_rule.plan(state, rt)
 
-        assert "fail_device" not in state.case.assumed
-        assert plan.rule == "case.escalate" and state.ticket.stage == "phone"
+        assert state.case.assumed.get("fail_device") == "other"
+        assert plan.rule == "case.wifi_ready" and not state.ticket.stage
 
     def test_an_answered_question_is_never_given_up_on(self, client_side):
         state, rt = client_side

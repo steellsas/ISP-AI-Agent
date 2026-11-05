@@ -64,22 +64,76 @@ class TestTicketStatus:
 
 
 class TestDebtDispute:
+    """After the debt news (Andrius, 2026-10-30): a claimed payment is asked for its details
+    (when, how, how much), then offered to the responsible person; unclear is never a no."""
+
     def _told_debt(self, make_state):
         state = _caller(make_state, "internet_down", "neveikia internetas")
         state.diagnosis.verdicts["network"] = {"reason": "billing_suspended"}
         state.diagnosis.news_delivered = True
         return state
 
-    def test_a_dispute_gets_the_offer_and_a_yes_starts_a_billing_request(
+    def test_a_claimed_payment_is_asked_for_its_details_then_offered(
         self, make_state, make_runtime
     ):
         state = self._told_debt(make_state)
         rt = make_runtime()
 
-        assert requests.debt_offer_turn(state, rt, "Kaip tai skola, aš sumokėjau") == "ask"
+        assert requests.debt_offer_turn(state, rt, "Kaip tai skola, aš sumokėjau") == "ask_facts"
+        assert requests.debt_offer_turn(state, rt, "Liepą, 40 eurų, pavedimu") == "offer"
+        assert state.closing.debt_claim == {
+            "when": "liepos mėn.",
+            "amount": "40 €",
+            "how": "banko pavedimu",
+        }
         assert requests.debt_offer_turn(state, rt, "Taip, užregistruokite") == "start"
         assert state.ticket.request_type == "billing_request"
         assert state.ticket.request_note == "Kaip tai skola, aš sumokėjau"
+
+    def test_the_details_are_asked_twice_at_most(self, make_state, make_runtime):
+        state = self._told_debt(make_state)
+        rt = make_runtime()
+        assert requests.debt_offer_turn(state, rt, "Bet aš mokiau, žinokit,") == "ask_facts"
+        assert requests.debt_offer_turn(state, rt, "Liepos mėnesį 40 eur.") == "ask_facts"
+        assert requests.debt_offer_turn(state, rt, "Nežinau") == "offer"
+
+    def test_a_question_while_the_details_are_asked_is_answered_and_kept(
+        self, make_state, make_runtime
+    ):
+        state = self._told_debt(make_state)
+        rt = make_runtime()
+        assert requests.debt_offer_turn(state, rt, "Aš mokėjau. Liepos 12 diena? 40 eurų.") == (
+            "ask_facts"
+        )
+        assert requests.debt_offer_turn(state, rt, "Jūs to nematot?") == "facts_question"
+        assert state.closing.debt_questions == ["Jūs to nematot?"]
+
+    def test_details_after_the_offer_add_to_the_way_of_paying(self, make_state, make_runtime):
+        state = self._told_debt(make_state)
+        rt = make_runtime()
+        requests.debt_offer_turn(state, rt, "Aš mokėjau liepos 12 d. 40 eurų pavedimu")
+        assert requests.debt_offer_turn(state, rt, "Per Svetbanką.") == "noted"
+        assert state.closing.debt_claim["how"] == "banko pavedimu, per Swedbank"
+        assert state.closing.debt_offer_unclear == 0
+        assert requests.debt_offer_turn(state, rt, "Taip") == "start"
+
+    def test_asr_variants_of_a_bank_are_the_bank(self):
+        from agent.perceive.payment_claim import read_payment_claim
+
+        assert read_payment_claim("Per banką, per satbanką mokiau.")["how"] == "per Swedbank"
+
+    def test_a_sum_after_the_month_is_no_day(self, make_state, make_runtime):
+        state = self._told_debt(make_state)
+        requests.debt_offer_turn(state, make_runtime(), "Aš mokėjau liepą 40 eur per banką")
+        assert state.closing.debt_claim["when"] == "liepos mėn."
+        requests.debt_offer_turn(state, make_runtime(), "Per Swedbank")
+        assert state.closing.debt_claim["how"] == "per Swedbank"
+
+    def test_an_amount_and_a_month_alone_are_a_claim(self, make_state, make_runtime):
+        state = self._told_debt(make_state)
+        assert requests.debt_offer_turn(state, make_runtime(), "Liepos mėnesis 40 eur.") == (
+            "ask_facts"
+        )
 
     def test_agreeing_with_the_debt_is_no_dispute(self, make_state, make_runtime):
         state = self._told_debt(make_state)
@@ -89,29 +143,40 @@ class TestDebtDispute:
     def test_a_declined_offer_registers_nothing(self, make_state, make_runtime):
         state = self._told_debt(make_state)
         rt = make_runtime()
-        requests.debt_offer_turn(state, rt, "Nesutinku su ta skola")
+        assert requests.debt_offer_turn(state, rt, "Nesutinku su ta skola") == "offer"
 
-        assert requests.debt_offer_turn(state, rt, "Ne, nereikia") is None
+        assert requests.debt_offer_turn(state, rt, "Ne, nereikia") == "declined"
         assert state.ticket.request_type is None and state.ticket.stage is None
 
-    def test_an_unclear_answer_is_asked_again_not_declined(self, make_state, make_runtime):
-        """Live 2026-10-19 (G17): „Registruoti, bet jinai…" was a silent decline."""
+    def test_unclear_answers_are_asked_again_never_declined(self, make_state, make_runtime):
+        """Live 2026-10-30: the second unclear answer („Pasižiūrėkit.") was a silent decline."""
         state = self._told_debt(make_state)
         rt = make_runtime()
-        requests.debt_offer_turn(state, rt, "Kaip tai skola, aš sumokėjau liepą")
+        requests.debt_offer_turn(state, rt, "Nesutinku su ta skola")
 
-        assert requests.debt_offer_turn(state, rt, "Hmm, nežinau, kaip čia") == "clarify"
-        assert requests.debt_offer_turn(state, rt, "Registruoti, bet jinai…") == "start"
-        assert state.ticket.request_type == "billing_request"
+        for unclear in ("Hmm, nežinau, kaip čia", "Nu, kažkaip keista", "Ėėė"):
+            assert requests.debt_offer_turn(state, rt, unclear) == "clarify"
+        assert requests.debt_offer_turn(state, rt, "Pasižiūrėkit.") == "start"
 
-    def test_a_second_unclear_answer_is_a_decline(self, make_state, make_runtime):
+    def test_a_question_in_the_offer_is_explained_and_kept_for_the_ticket(
+        self, make_state, make_runtime
+    ):
         state = self._told_debt(make_state)
         rt = make_runtime()
-        requests.debt_offer_turn(state, rt, "Kaip tai skola, aš sumokėjau liepą")
-        requests.debt_offer_turn(state, rt, "Hmm, nežinau, kaip čia")
+        requests.debt_offer_turn(state, rt, "Nesutinku su ta skola")
 
-        assert requests.debt_offer_turn(state, rt, "Nu, kažkaip keista") is None
-        assert state.ticket.request_type is None
+        assert requests.debt_offer_turn(state, rt, "O kodėl jūs nematote mokėjimo?") == "explain"
+        assert state.closing.debt_questions == ["O kodėl jūs nematote mokėjimo?"]
+
+    def test_a_request_for_a_person_after_a_decline_offers_again(self, make_state, make_runtime):
+        """Live 2026-10-30: „Taip, užregistruokit" after the decline got a spoken promise only."""
+        state = self._told_debt(make_state)
+        rt = make_runtime()
+        requests.debt_offer_turn(state, rt, "Nesutinku su ta skola")
+        requests.debt_offer_turn(state, rt, "Ne, nereikia")
+
+        assert requests.debt_offer_turn(state, rt, "Gerai, sujunkite su buhalterija") == "offer"
+        assert requests.debt_offer_turn(state, rt, "Taip, užregistruokit") == "start"
 
 
 @pytest.mark.parametrize(

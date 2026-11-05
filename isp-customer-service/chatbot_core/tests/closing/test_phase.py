@@ -178,3 +178,107 @@ def test_a_hang_up_after_veikia_before_the_end_is_resolved(diagnosing):
         c.say(text)
     row = _end(c)
     assert row["outcome"] == "resolved" and not row["ticket_id"]
+
+
+@pytest.mark.parametrize(
+    "asked", ["Tai koks gedimas?", "O koks šiek gėdimas?", "Kodas nevyk internetas.", "Nesupratau"]
+)
+def test_a_question_about_the_fault_gets_a_short_reminder(diagnosing, asked):
+    """Klausimas apie gedimą po žinios — trumpas priminimas, neatsisveikina"""
+    c = diagnosing("active_outage")
+    c.say("Gerai")
+    for _ in range(3):
+        reply = c.say(asked)
+        assert c.rule == "inform.remind" and reply.startswith("Primenu — tai tinklo avarija")
+        assert "paskambinkite mums" in reply and reply.endswith("Ar dar kuo galiu padėti?")
+    assert not c.state.closing.case_closed
+
+
+def test_cut_news_is_finished_not_repeated(diagnosing):
+    """Nutraukta žinia užbaigiama vieną kartą, ne kartojama du kartus"""
+    from agent.delivery import apply_delivery
+
+    c = diagnosing("active_outage")
+    c.say("Gerai")
+    news = c.state.messages[-1]["content"]
+    c.session._write_between_turns(
+        lambda state, rt: apply_delivery(state, rt, ["Ačiū!", news.split("Ačiū! ", 1)[1]], 1)
+    )
+    reply = c.say("Kas atsitiko?")
+    assert c.rule == "inform.finish"
+    assert reply.count("Patikrinau") == 1 and reply.endswith("Ar dar kuo galiu padėti?")
+
+
+def test_name_fragments_do_not_use_up_the_reminder(diagnosing):
+    """Vardo nuotrupos nesuvalgo priminimo"""
+    c = diagnosing("active_outage")
+    c.say("Gerai")
+    c.say("Ramana, o sako tu")
+    c.say("Rasam anavardas.")
+    c.say("Tai koks gedimas?")
+    assert c.rule == "inform.remind"
+    c.say("Kodas nevyk internetas.")
+    assert c.rule == "inform.remind" and not c.state.closing.case_closed
+
+
+def test_a_disputed_payment_goes_to_the_accounting_with_its_details(diagnosing):
+    """Ginčas: kada, kiek, kaip mokėjo → pasiūlymas → tiketas su faktais buhalterijai"""
+    c = diagnosing("billing_suspended")
+    c.say("Gerai")
+    asked = c.say("Žinokit, aš sumokėjau liepos mėnesį 40 eurų.")
+    assert c.rule == "inform.debt_claim" and "kokiu būdu" in asked and "kada" not in asked
+    offer = c.say("Pavedimu per Swedbank.")
+    assert "(liepos mėn., banko pavedimu, per Swedbank, 40 €)" in offer and offer.endswith(
+        "Ar registruoti?"
+    )
+    explained = c.say("O kodėl jūs nematote mano mokėjimo?")
+    assert c.rule == "inform.debt_explain" and explained.endswith("Ar registruoti?")
+    for said in ("Pasižiūrėkit.", "Taip, tinka.", "Bet kada"):
+        c.say(said)
+    assert c.state.ticket.ticket_id
+    from agent.tools import get_db
+
+    with get_db().cursor() as cur:
+        cur.execute("SELECT details FROM tickets WHERE ticket_id = ?", (c.state.ticket.ticket_id,))
+        text = dict(cur.fetchone())["details"]
+    assert text.startswith("Skolos ginčas. Klientas atjungtas už skolą 49")
+    assert "Kliento teiginys: mokėjo liepos mėn., banko pavedimu, per Swedbank, 40 €" in text
+    assert "Kliento klausimai: O kodėl jūs nematote mano mokėjimo? Kontaktas" in text
+
+
+def test_the_call_is_not_ended_while_the_caller_talks(diagnosing):
+    """Po ribos agentas klausia „Ar dar kuo galiu padėti?", o ne atsisveikina"""
+    c = diagnosing("billing_suspended")
+    c.say("Gerai")
+    for said in ("Labas", "Kažkas", "Dar kažkas"):
+        c.say(said)
+    assert not c.state.closing.case_closed
+    c.say("Ne, viso gero")
+    assert c.state.closing.case_closed
+
+
+def test_the_fault_ticket_claims_only_what_the_caller_was_asked(diagnosing):
+    """„Nėra interneto" nėra atsakymas apie WAN lizdą; vaidmuo tikete — lietuviškai"""
+    c = diagnosing("node_fault_unregistered")
+    c.state.intake.anamnesis_raw = "Nėra interneto."
+    c.say("Gerai")
+    assert c.state.ticket.ticket_id
+    from agent.tools import get_db
+
+    with get_db().cursor() as cur:
+        cur.execute("SELECT details FROM tickets WHERE ticket_id = ?", (c.state.ticket.ticket_id,))
+        text = dict(cur.fetchone())["details"]
+    assert "WAN" not in text and "Patikrinta su klientu" not in text
+    assert "Kontaktas: Tomas (sutarties savininkas), tel." in text
+
+
+@pytest.mark.parametrize(
+    "relation, said",
+    [("tenant", " (nuomininkas)"), ("unknown", ""), (None, "")],
+)
+def test_the_contact_says_who_the_caller_is_in_lithuanian(relation, said):
+    from types import SimpleNamespace
+
+    from agent.executor_flow import _relation
+
+    assert _relation(SimpleNamespace(identity=SimpleNamespace(caller_relation=relation))) == said

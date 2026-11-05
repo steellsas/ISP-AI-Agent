@@ -101,3 +101,20 @@ def test_the_pipecat_call_says_goodbye_and_hangs_up_on_closing_silence(monkeypat
     said = [f.text for f in pushed if isinstance(f, LLMTextFrame)]
     assert said == [phrase("identification.silence_goodbye")]
     assert isinstance(pushed[-1], EndWorkerFrame)
+
+
+def test_the_call_end_waits_for_the_turn_still_running(session):
+    """Live 2026-11-05: a hang-up during the last turn finalized the state from before that
+    turn and registered a second ticket. The end now waits for the turn."""
+    import threading
+    import time
+
+    ended = threading.Event()
+    session._turn_running.acquire()  # a turn is running
+    worker = threading.Thread(target=lambda: (session.end_session("client_closed"), ended.set()))
+    worker.start()
+    time.sleep(0.3)
+    assert not ended.is_set()
+    session._turn_running.release()  # the turn finished
+    worker.join(5)
+    assert ended.is_set()

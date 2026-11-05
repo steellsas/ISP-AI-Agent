@@ -60,7 +60,7 @@ def reply_plan(state: Any, rt: Any, user_input: str | None) -> TurnPlan | None:
         return _plan("closing.closed_this_turn", None, directive=True)
     from ...contract.locale import phrase
     from ...identification import caller_question
-    from ...perceive.detectors import is_real_question
+    from ...perceive.detectors import asks_about_the_news, is_real_question
 
     # Address CHANGE confirmation (reference dialogue №3, Andrius 2026-09-03): a
     # caller's mention of another address after identification NO longer switches
@@ -244,18 +244,30 @@ def reply_plan(state: Any, rt: Any, user_input: str | None) -> TurnPlan | None:
         clarify = clarify_for(state.case.fault, open_fact)
         if clarify:
             return _words("diagnosis.negation_clarify", clarify)
-    # A disputed debt is offered to the responsible person, never explained (D-11) —
-    # „Kaip tai skola?" is an answer to our news, not an off-script question.
+    # After the debt news the engine explains what it sees and offers the responsible person
+    # for what it cannot answer; a disputed payment is registered with its details (D-11,
+    # Andrius 2026-10-30).
     if s.identity.customer_id and not state.ticket.request_type and not s.closing.case_closed:
         from .requests import debt_offer_turn
 
         offer = debt_offer_turn(state, rt, user_input)
-        if offer == "ask":
-            return _words("inform.debt_offer", phrase("identification.debt_dispute_offer"))
-        if offer == "clarify":
-            return _words("inform.debt_offer", phrase("identification.debt_dispute_clarify"))
-        if offer == "start":
-            return _words(*ticket_question_turn(state, rt))
+        if offer:
+            return _debt_words(state, rt, offer)
+    # „Ar teisingai supratau — <adresas>?" and its follow-ups: the engine's own words, built
+    # from the address it holds (a model-worded confirm drifted from the slots — live
+    # 2026-10-28, ~30 turns).
+    if not s.identity.customer_id and state.identity.heard_confirm_due:
+        due, state.identity.heard_confirm_due = state.identity.heard_confirm_due, None
+        key = {
+            "ask": "address_heard_confirm",
+            "reask": "address_heard_reask",
+            "again": "address_heard_again",
+            "give_up": "address_unconfirmed_code",
+        }[due]
+        return _words(
+            f"identification.{key}",
+            phrase(f"identification.{key}", address=state.identity.heard_address or ""),
+        )
     if (
         user_input
         and is_real_question(user_input)
@@ -268,6 +280,8 @@ def reply_plan(state: Any, rt: Any, user_input: str | None) -> TurnPlan | None:
         # pairs are spelling-shaped even without the mode (client-initiated).
         and not state.identity.spell_mode
         and user_input.lower().count(" kaip ") < 2
+        # „Tai koks gedimas?" after the news: the wrap-up repeats the news.
+        and not asks_about_the_news(state, user_input)
         # „Neveikia internetas, kaip galit padėt?" is the problem, not a question to answer —
         # live 2026-10-14 the agent replied „nesu tikras, ar supratau" instead of starting.
         and not (
@@ -358,6 +372,24 @@ def reply_plan(state: Any, rt: Any, user_input: str | None) -> TurnPlan | None:
         and (state.diagnosis.news_delivered or s.diagnosis.outage_reported)
         and not state.identity.result_pending
     ):
+        from ...perceive.detectors import asks_about_the_news
+
+        if asks_about_the_news(state, user_input):
+            anything_else = phrase("identification.anything_else")
+            if state.voice.owed:
+                # The news was cut: the reply finishes it (the owed words go first) — that
+                # is the answer, not a repeat.
+                rt.tracer.emit("decision", intent="inform", action="finish")
+                return _plan("inform.finish", anything_else)
+            from ...inform import inform_text
+
+            reason = (s.diagnosis.verdicts.get("network") or {}).get("reason")
+            reminder = inform_text(state, rt, reason, key="asked_again_key") or inform_text(
+                state, rt, reason
+            )
+            if reminder:
+                rt.tracer.emit("decision", intent="inform", action="remind")
+                return _plan("inform.remind", f"{reminder} {anything_else}", required=reminder)
         low = (user_input or "").lower()
         wants_more = (
             is_real_question(user_input)
@@ -374,9 +406,16 @@ def reply_plan(state: Any, rt: Any, user_input: str | None) -> TurnPlan | None:
         # re-offer the close); the cap keeps garbled goodbyes ("Nusigaro")
         # from looping the wrap-up forever.
         from ...perceive.detectors import detect_farewell as _df
+        from ...perceive.detectors import detect_ticket_consent as _no
         from ...perceive.detectors import is_backchannel as _bc
 
-        content = bool(user_input) and not _df(user_input) and not _bc(user_input)
+        # „Ne." to „Ar dar kuo galiu padėti?" is the answer that ends the call.
+        content = (
+            bool(user_input)
+            and not _df(user_input)
+            and not _bc(user_input)
+            and _no(user_input) != "no"
+        )
         n = state.closing.wrap_content_turns
         if content and n < limits.get("wrap_content_turns_max"):
             state.closing.wrap_content_turns = n + 1
@@ -385,6 +424,11 @@ def reply_plan(state: Any, rt: Any, user_input: str | None) -> TurnPlan | None:
             return _plan(
                 "inform.wrap_react", None, directive=True
             )  # the narrator reacts to WHAT was said, then re-offers
+        if content:
+            # The caller is still talking: the call never ends because the reactions ran out
+            # (Andrius, 2026-10-30) — the engine asks, the caller's no or goodbye ends it.
+            rt.tracer.emit("decision", intent="wrap_up", action="ask_more")
+            return _plan("inform.anything_else", phrase("identification.anything_else"))
         close_reason = "outage" if s.diagnosis.outage_reported else "inform"
         # clarity requirements (declared in inform.yaml): the inform template
         # spoke all its elements before this close — trace it for the audits.
@@ -485,6 +529,52 @@ def reply_plan(state: Any, rt: Any, user_input: str | None) -> TurnPlan | None:
     state.identity.result_pending = False
     state.diagnosis.news_delivered = True
     return _words("inform.verdict_gloss", " ".join(b for b in bits if b))
+
+
+def _debt_words(state: Any, rt: Any, offer: str) -> TurnPlan:
+    """The engine's words for one step of the debt dialogue."""
+    from ...contract.locale import phrase
+    from ...inform import inform_text
+    from ...perceive.payment_claim import missing_parts
+    from .requests import debt_claim_text
+
+    c = state.closing
+    if offer == "start":
+        from .ticket import ticket_question_turn
+
+        return _words(*ticket_question_turn(state, rt))
+    if offer in ("ask_facts", "facts_question"):
+        parts = [phrase(f"identification.debt_claim_part_{p}") for p in missing_parts(c.debt_claim)]
+        joined = parts[0] if len(parts) == 1 else f"{', '.join(parts[:-1])} ir {parts[-1]}"
+        key = "debt_claim_ask" if c.debt_claim_asks == 1 else "debt_claim_ask_again"
+        if offer == "facts_question":
+            key = "debt_claim_question"
+        return _words("inform.debt_claim", phrase(f"identification.{key}", parts=joined))
+    if offer == "noted":
+        return _words(
+            "inform.debt_offer",
+            phrase("identification.debt_claim_noted", claim=debt_claim_text(state)),
+        )
+    if offer == "declined":
+        return _words("inform.debt_declined", phrase("identification.debt_declined"))
+    if offer == "clarify":
+        key = "debt_dispute_clarify" if c.debt_offer_unclear == 1 else "debt_dispute_clarify_short"
+        return _words("inform.debt_offer", phrase(f"identification.{key}"))
+    reason = (state.diagnosis.verdicts.get("network") or {}).get("reason")
+    seen = inform_text(state, rt, reason, key="dispute_key") or ""
+    if offer == "offer":
+        claim = debt_claim_text(state)
+        if claim:
+            return _words(
+                "inform.debt_offer",
+                phrase("identification.debt_offer_claim", seen=seen, claim=claim),
+            )
+        return _words("inform.debt_offer", phrase("identification.debt_dispute_offer"))
+    # "explain": a question while the offer stands
+    return _words(
+        "inform.debt_explain",
+        f"{seen} {phrase('identification.debt_cannot_answer')}".strip(),
+    )
 
 
 def _owner(state: Any, rule: str) -> str:

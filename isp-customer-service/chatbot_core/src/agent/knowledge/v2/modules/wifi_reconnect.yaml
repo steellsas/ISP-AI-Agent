@@ -1,0 +1,7 @@
+# W3 — savas tinklas pamirštamas ir prisijungiama iš naujo su slaptažodžiu nuo lipduko.
+module: wifi_reconnect
+kind: instruct
+params:
+  device: {required: true}
+goal: "the caller's {device} forgets its own network and joins it again with the password from the router's sticker"
+produces: []

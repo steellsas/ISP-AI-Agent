@@ -1,0 +1,15 @@
+# MAC KOMPIUTERIS — paveldi bazinį kompiuterį ir perrašo tik „kaip" žodžius.
+equipment: mac
+type: computer
+extends: computer
+matches: [mac, macbook, imac, makbuk, apple]
+
+actions:
+  how.wifi_state: equipment.mac.how.wifi_state
+  how.wifi_enable: equipment.mac.how.wifi_state
+  how.wifi_network: equipment.mac.how.wifi_network
+  how.wifi_join_own: equipment.mac.how.wifi_network
+  how.wifi_reconnect: equipment.mac.how.wifi_reconnect
+  how.nic_enabled: equipment.mac.how.nic_enabled
+  how.nic_enable: equipment.mac.how.nic_enabled
+  how.device_restart: equipment.mac.how.device_restart

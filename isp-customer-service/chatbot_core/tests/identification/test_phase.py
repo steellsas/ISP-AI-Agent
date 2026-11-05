@@ -78,7 +78,6 @@ FLOWS = [
         "koks jūsų vardas",
         id="T-12 savininko numeris, taip",
     ),
-    # --- known gaps: the engine does not yet do what the standard says ---------------------
     pytest.param(
         "unknown",
         [
@@ -90,10 +89,6 @@ FLOWS = [
         "CUST101",
         "",
         id="T-9b butas žodžiu po buto klausimo",
-        marks=pytest.mark.xfail(
-            strict=True,
-            reason="„butas trys“ (be skaitmens) laikomas tuščiu atsakymu — paieška nevyksta",
-        ),
     ),
     pytest.param(
         "unknown",
@@ -106,7 +101,6 @@ FLOWS = [
         "CUST101",
         "",
         id="T-9b tik skaičius po buto klausimo",
-        marks=pytest.mark.xfail(strict=True, reason="atsakymas į buto klausimą neįrašomas į butą"),
     ),
     pytest.param(
         "unknown",
@@ -122,10 +116,73 @@ FLOWS = [
         "CUST109",
         "",
         id="T-5 gatvė kitame kaime",
-        marks=pytest.mark.xfail(
-            strict=True, reason="priėmus pasiūlytą vietovę paieška nekartojama"
-        ),
     ),
+    # Live 2026-10-28 (Dainų g. 5-5, unknown number): the digits heard several ways, an
+    # unclear answer to the confirm, a number in passing.
+    pytest.param(
+        "unknown",
+        [("Neveikia internetas", None), ("Dainų gatvė 5 5", None), ("Taip", None)],
+        "CUST102",
+        "koks jūsų vardas",
+        id="5 5 — namas 5, butas 5",
+    ),
+    pytest.param(
+        "unknown",
+        [("Neveikia internetas", None), ("Dainų gatvė 5, butas 55", None), ("Taip", None)],
+        "CUST102",
+        "koks jūsų vardas",
+        id="butas 55 — rastas butas 5",
+    ),
+    pytest.param(
+        "unknown",
+        [
+            ("Neveikia internetas", None),
+            ("Dainų 5-5", None),
+            ("Haloo!", None),
+            ("Teisingai.", None),
+        ],
+        "CUST102",
+        "koks jūsų vardas",
+        id="neaiškus atsakymas — klausiama dar kartą",
+    ),
+    pytest.param(
+        "unknown",
+        [
+            ("Neveikia internetas", None),
+            ("Dainų 5-5", None),
+            ("Taip, girdžiu, patvirtinu 2 kartus", None),
+        ],
+        "CUST102",
+        "koks jūsų vardas",
+        id="skaičius patvirtinime nekeičia adreso",
+    ),
+    pytest.param(
+        "unknown",
+        [
+            ("Neveikia internetas", None),
+            ("Dainų gatvė", None),
+            ("5", None),
+            ("5", None),
+            ("Taip", None),
+        ],
+        "CUST102",
+        "koks jūsų vardas",
+        id="adresas dalimis, butas tik skaičiumi",
+    ),
+    pytest.param(
+        "unknown",
+        [
+            ("Neveikia internetas", None),
+            ("Dainų 5-5", None),
+            ("Ne.", None),
+            ("Dainų gatvė 5 butas 5", None),
+            ("Taip", None),
+        ],
+        "CUST102",
+        "koks jūsų vardas",
+        id="ne — adresas iš naujo",
+    ),
+    # --- known gaps: the engine does not yet do what the standard says ---------------------
     pytest.param(
         "unknown",
         [
@@ -219,3 +276,63 @@ def test_t7_no_address_warns_after_two_and_closes_after_four(call):
     c.say("Na nežinau tikrai")
     c.say("Nieko nepasakysiu")
     assert c.state.closing.case_closed and c.state.ticket.ticket_id is None
+
+
+def test_the_found_address_is_confirmed_in_the_engines_words(call):
+    """Rastas adresas tvirtinamas variklio žodžiais"""
+    c = call()
+    c.say("Neveikia internetas")
+    reply = c.say("Dainų gatvė 5 5")
+    assert reply == "Ar teisingai supratau — Šiauliai, Dainų g. 5, butas 5?"
+    assert c.rule == "identification.address_heard_confirm"
+
+
+def test_the_warning_asks_only_for_the_missing_flat(call):
+    """Įspėjimas klausia tik trūkstamo buto; „Pinkė" tampa butu, kodas vis dar veikia"""
+    c = call()
+    c.say("Neveikia internetas")
+    c.say("Dainų gatvėje mes turim.")
+    c.say("Na, mano numeris 5.")
+    c.say("Ir ką?")
+    warned = c.say("Nežinau")
+    assert warned.startswith("Adresą Dainų g. 5 jau turiu, dar reikia buto numerio.")
+    assert c.say("Pinkė") == "Ar teisingai supratau — Šiauliai, Dainų g. 5, butas 5?"
+    c.say("Taip")
+    assert c.identity.customer_id == "CUST102"
+
+
+def test_the_code_is_still_heard_after_the_flat_warning(call):
+    """Po buto įspėjimo abonento kodas atpažįstamas"""
+    c = call()
+    c.say("Neveikia internetas")
+    c.say("Dainų gatvėje mes turim.")
+    c.say("Na, mano numeris 5.")
+    c.say("Ir ką?")
+    c.say("Nežinau")
+    assert "Išgirdau kodą" in c.say("AB-10102")
+
+
+def test_an_unclear_answer_asks_again_then_offers_the_code(call):
+    """Neaiškus atsakymas: dar kartą, po trijų — abonento kodas"""
+    c = call()
+    c.say("Neveikia internetas")
+    c.say("Dainų 5-5")
+    for unclear in ("Haloo!", "Nesuprantu"):
+        assert "Ar teisingai supratau — Šiauliai, Dainų g. 5, butas 5?" in c.say(unclear)
+        assert c.identity.profile.house.value == "5" and c.identity.profile.apartment.value == "5"
+    assert "abonento kodą" in c.say("Ką?")
+    assert c.identity.account_code_mode is True
+    c.say("AB-10102")
+    c.say("Taip")
+    assert c.identity.customer_id == "CUST102"
+
+
+def test_a_corrected_flat_changes_only_the_flat(call):
+    """„Ne, butas 25“ keičia tik butą"""
+    c = call()
+    c.say("Neveikia internetas")
+    c.say("Dainų 5-5")
+    c.say("Ne, butas 25")
+    p = c.identity.profile
+    assert (p.street.value, p.house.value, p.apartment.value) == ("Dainų g.", "5", "25")
+    assert c.identity.customer_id is None

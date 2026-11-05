@@ -1,0 +1,46 @@
+# IZOLIACIJA — įrenginio kopėčios nepadėjo; kur nutrūksta? (Andrius, 2026-11-05)
+#
+#   ar turite kitų įrenginių, ar juose veikia?
+#     ├─ veikia ─► ar tas pats Wi-Fi? ─ ne ─► prijungti prie to paties ─► patikra
+#     │                               └ taip ─► bėda įrenginyje: pasiūloma mokama pagalba
+#     └─ irgi neveikia / kito nėra ─► routerio kopėčios
+#
+# Po šių kopėčių kortelė baigiasi tiketu — „atlikome viską, ką galima telefonu".
+ladder: isolate
+params: [device]
+steps:
+- module: other_devices
+  args: {device: "{device}"}
+# Kiti veikia — sutikrinami tinklai.
+- module: wifi_compare
+  args: {device: "{device}"}
+  run_when: [fail_scope=one]
+- module: wifi_join_same
+  args: {device: "{device}"}
+  run_when: [fail_scope=one, same_network=no]
+- module: verify
+  args: {ask: restored}
+  run_when: [fail_scope=one, same_network=no]
+  fixes: pack.healthy_to_router.cause.wrong_network
+# Tas pats tinklas, kiti veikia — paslauga teikiama, bėda įrenginyje.
+- module: offer_fix
+  args: {device: "{device}"}
+  run_when: [fail_scope=one]
+- module: escalate
+  args: {why: kliento_pagalba, note: "kituose įrenginiuose internetas veikia, įrenginio patikra nepadėjo — klientas prašo mokamos pagalbos"}
+  run_when: [fail_scope=one, fix_wanted=yes]
+- module: conclude
+  args: {device: "{device}"}
+  run_when: [fail_scope=one]
+# Kiti irgi neveikia arba kito nėra — routeris (tie patys žingsniai kaip `router` kopėčiose).
+- module: reach
+  args: {device: router}
+  done_when: [reachable=yes]
+  run_when: [fail_scope!=one]
+- module: reboot
+  args: {device: router, method: power}
+  run_when: [fail_scope!=one]
+- module: verify
+  args: {ask: restored}
+  run_when: [fail_scope!=one]
+  fixes: pack.healthy_to_router.cause.router_reboot
