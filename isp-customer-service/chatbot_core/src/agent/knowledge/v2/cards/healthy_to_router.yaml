@@ -58,8 +58,14 @@ needs:
       one: answers_healthy_to_router_fail_scope_one
   fail_device:
     ask: "pack.healthy_to_router.fail_device.question"
+    again: "pack.healthy_to_router.fail_device.simpler"
+    # „Telefone neveikia" pasakoma bet kada — ir skundo pradžioje (gyvai 2026-11-05).
+    heard_anytime: true
     when: [fail_scope!=all]
-    values: {phone: confirms, computer: confirms}
+    # Nepasakė, koks įrenginys — tai ne aklavietė: Wi-Fi kopėčios tinka bet kuriam
+    # (gyvai 2026-11-05 nežinomas įrenginys nuvedė tiesiai į tiketą).
+    assume: other
+    values: {phone: confirms, computer: confirms, other: confirms}
     answers:
       "phone": answers_healthy_to_router_fail_device_phone
       "computer": answers_healthy_to_router_fail_device_computer
@@ -67,6 +73,8 @@ needs:
     ask: "pack.healthy_to_router.connection_type.question"
     when: [fail_device=computer]
     why: "pack.healthy_to_router.connection_type.why"
+    # Dažniausiai — Wi-Fi; laidas paaiškėja Wi-Fi kopėčiose („Wi-Fi išjungtas, aš laidu").
+    assume: wifi
     values: {wired: confirms, wifi: confirms}
     answers:
       "wired": answers_healthy_to_router_connection_type_wired
@@ -140,6 +148,19 @@ solution:
     run_when: [fix_wanted=yes]
   - module: conclude
     args: {device: computer}
+- when: [fail_scope=one, fail_device=other]
+  steps:
+  - ladder: wifi
+    args: {device: device}
+  - ladder: device
+    args: {device: device}
+  - module: offer_fix
+    args: {device: device}
+  - module: escalate
+    args: {why: kliento_pagalba, note: "kituose įrenginiuose internetas veikia, įrenginio Wi-Fi patikra nepadėjo — klientas prašo mokamos pagalbos"}
+    run_when: [fix_wanted=yes]
+  - module: conclude
+    args: {device: device}
 
 # Įrenginys vienintelis — nežinome, ar kaltas jis, ar routeris: įrenginys, tada routeris, tada
 # tiketas su nueitu keliu.
@@ -170,8 +191,22 @@ solution:
   - ladder: router
   - module: escalate
     args: {note: "vienintelis įrenginys (kompiuteris laidu): laido, tinklo plokštės patikra ir routerio perkrovimas nepadėjo"}
+- when: [fail_scope=single, fail_device=other]
+  steps:
+  - ladder: wifi
+    args: {device: device}
+  - ladder: device
+    args: {device: device}
+  - ladder: router
+  - module: escalate
+    args: {note: "vienintelis įrenginys (nepatikslintas): Wi-Fi patikra ir routerio perkrovimas nepadėjo"}
 
 escalate:
   note: "tinklas iki routerio veikia, kliento pusės patikra nepadėjo"
+  # Ką meistras tikrina, kai telefonu neišsprendėme (2026-11-05).
+  checks:
+    - pack.healthy_to_router.checks.router_wifi
+    - pack.healthy_to_router.checks.device_network
+    - pack.healthy_to_router.checks.other_device
 
 knowledge: troubleshooting/kliento_puse_internetas

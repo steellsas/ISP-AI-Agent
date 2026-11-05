@@ -400,6 +400,17 @@ def _learn(state: Any, rt: Any, move: Any, facts: dict[str, str]) -> TurnPlan:
         # an example of how to check (live 2026-09-23).
         words = maybe_phrase(need.again) or words
         goal = f"{goal}. They did not answer this yet, so ask it DIFFERENTLY and say why it matters"
+    if words and card is not None and card.pace == "guided" and not state.turn.directives.findings:
+        # A guided card's questions go out as written: the model turned „Kuriame įrenginyje
+        # neveikia?" into „Ar kiti įrenginiai taip pat neveikia?", and the caller answered the
+        # wrong question twice (live 2026-11-05). The finding turn still goes through the
+        # narrator, which says the finding and this question together.
+        return TurnPlan(
+            owner="diagnosis",
+            rule="case.ask",
+            say=Say(kind="phrase", text=words, stage="diagnosis", written=True),
+            awaiting=move.fact,
+        )
     return TurnPlan(
         owner="diagnosis",
         rule="case.ask",
@@ -2847,6 +2858,8 @@ def _model_for(state: Any, call: Any) -> str | None:
     device = str((call.args or {}).get("device") or "") if call is not None else ""
     if device in _OS_DEVICES:
         return state.case.facts.get("device_os")
+    if device == "device":
+        return None  # not said which — the generic words
     return _device_model(state)
 
 
@@ -2858,7 +2871,7 @@ def _how_to_call(state: Any):
     if call is None or state.case.step_said != state.case.step:
         return None
     spec = catalog.module(call.module)
-    if str(call.args.get("device") or "") not in _OS_DEVICES:
+    if str(call.args.get("device") or "") not in (*_OS_DEVICES, "device"):
         return None
     return call if spec is not None and spec.kind in ("ask", "instruct") else None
 
@@ -2888,7 +2901,7 @@ def _how_to_plan(state: Any, rt: Any) -> TurnPlan | None:
     device = str(call.args.get("device"))
     heard = state.dialog.last_heard
     facts = state.case.facts
-    if "device_os" not in facts and facts.get("_os_asked") != "pending":
+    if device in _OS_DEVICES and "device_os" not in facts and facts.get("_os_asked") != "pending":
         # „Androidinis" said in passing, before or after we asked — taken whenever it comes
         # (live 2026-11-04 the late answer was dropped).
         named = detect_device_os(heard, device)
@@ -2903,7 +2916,7 @@ def _how_to_plan(state: Any, rt: Any) -> TurnPlan | None:
             return None  # they answered the step itself — that is the Case's to read
     elif not detect_how_to(heard):
         return None
-    elif "device_os" not in facts and facts.get("_os_asked") != "done":
+    elif device in _OS_DEVICES and "device_os" not in facts and facts.get("_os_asked") != "done":
         facts["_os_asked"] = "pending"
         rt.tracer.emit("case", move="ask_os", module=call.module, device=device)
         return TurnPlan(

@@ -181,8 +181,14 @@ def register_ticket_from_state(state: Any, rt: Any) -> None:
         details += f" {hung_up}"
     from .ticket_types import for_call
 
+    not_reached = _steps_not_reached(s)
+    if not_reached:
+        details += phrase("ticket.details.not_reached", items=", ".join(not_reached))
+    checks = _technician_checks(s)
+    if checks:
+        details += phrase("ticket.details.technician", items="; ".join(checks))
     ticket_type = for_call(cause, s.ticket.reason)
-    if ticket_type == "call_unfinished" and cause and _line_said_healthy(cause):
+    if ticket_type == "call_unfinished" and cause and _line_said_healthy(cause) and not not_reached:
         # Two sources disagree (Andrius, 2026-10-22): the person calling back reads both.
         details += phrase("ticket.details.line_vs_client")
     actions = tools_called_this_session(rt.tracer)
@@ -200,6 +206,33 @@ def register_ticket_from_state(state: Any, rt: Any) -> None:
         trace_note(rt.tracer, state, "register_ticket", str(e), level="error")
     if s.ticket.ticket_id:
         s.ticket.ticket_type = ticket_type
+
+
+def _steps_not_reached(s: Any) -> list[str]:
+    """The fix's steps the call never got to — the technician starts there."""
+    from .contract import cards as catalog
+    from .contract.locale import phrase_or
+
+    card = catalog.card(s.case.fault) if s.case.fault else None
+    if card is None or s.case.solution is None:
+        return []
+    done = set(s.case.worked) | set(s.case.did)
+    names = []
+    for call in card.solution[s.case.solution].steps[s.case.step :]:
+        name = phrase_or(f"summary.step_name.{call.module}", None)
+        if name and call.module not in done and name not in names:
+            names.append(name)
+    return names
+
+
+def _technician_checks(s: Any) -> list[str]:
+    from .contract import cards as catalog
+    from .contract.locale import maybe_phrase
+
+    card = catalog.card(s.case.fault) if s.case.fault else None
+    if card is None or card.escalate is None:
+        return []
+    return [w for w in (maybe_phrase(k) for k in card.escalate.checks) if w]
 
 
 def _line_said_healthy(cause: str) -> bool:

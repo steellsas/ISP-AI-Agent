@@ -205,6 +205,11 @@ pack:
           "no": "vis tiek trūkinėja / neveikia"
   healthy_to_router:
     confirm: "Ar internetas veikia bent viename jūsų įrenginyje?"
+    # Meistrui — ką patikrinti, kai telefonu neišspręsta (tikete).
+    checks:
+      router_wifi: "ar routerio Wi-Fi transliuoja ir dalija adresus (DHCP)"
+      device_network: "ar kliento įrenginys mato savo tinklą ir gauna adresą; prireikus — įrenginio tinklo nustatymų atstatymas"
+      other_device: "prijungti savo įrenginį prie kliento routerio — atskirti routerį nuo kliento įrenginio"
     # Ką supratome — sakoma šakos pradžioje, kad klientas spėtų pataisyti (2026-11-04).
     understood:
       one:
@@ -212,8 +217,10 @@ pack:
         computer:
           wifi: "Supratau — kituose įrenginiuose internetas veikia, o kompiuteryje, kuris jungiasi per Wi-Fi, neveikia."
           wired: "Supratau — kituose įrenginiuose internetas veikia, o kompiuteryje, kuris jungiasi laidu, neveikia."
+        other: "Supratau — kituose įrenginiuose internetas veikia, o viename neveikia."
       single:
         phone: "Supratau — internetas neveikia telefone, ir kito įrenginio patikrinti neturite."
+        other: "Supratau — internetas neveikia, ir kito įrenginio patikrinti neturite."
         computer:
           wifi: "Supratau — internetas neveikia kompiuteryje, kuris jungiasi per Wi-Fi, ir kito įrenginio patikrinti neturite."
           wired: "Supratau — internetas neveikia kompiuteryje, kuris jungiasi laidu, ir kito įrenginio patikrinti neturite."
@@ -233,6 +240,7 @@ pack:
         phone: "telefone"
         computer: "kompiuteryje"
       question: "Kuriame įrenginyje neveikia — telefone, planšetėje ar kompiuteryje?"
+      simpler: "Kuo naudojatės internetu — telefonu ar kompiuteriu?"
     connection_type:
       label: "jungimosi būdas"
       values:
@@ -636,6 +644,8 @@ fact:
     all: "neveikia visuose įrenginiuose"
     one: "neveikia tik viename įrenginyje, kituose veikia"
     single: "tai vienintelis įrenginys"
+  fail_device:
+    other: "įrenginio nepatikslinome — tikriname bendrai"
   wan_link:
     up: "interneto lemputė dega"
     down: "interneto lemputė nedega"
@@ -766,6 +776,21 @@ equipment:
       wifi_network: "„Nustatymai“ → „Wi-Fi“: po jungikliu, su varnele, yra tinklas, prie kurio prisijungta."
       wifi_reconnect: "„Nustatymai“ → „Wi-Fi“: šalia savo tinklo paspauskite mėlyną „i“, tada „Pamiršti šį tinklą“ (Forget). Paspauskite tinklą vėl ir įveskite slaptažodį nuo routerio lipduko."
       device_restart: "Palaikykite nuspaudę šoninį ir garsumo mygtuką, perbraukite „Išjungti“, po to įjunkite šoniniu mygtuku."
+  device:
+    name: "įrenginys"
+    locate: "Įrenginys, kuriame neveikia internetas."
+    wifi_ready: "Pirmiausia reikia patikrinti, ar įrenginys, kuriame neveikia internetas, prisijungęs prie jūsų Wi-Fi. Ar galite dabar pasižiūrėti jo nustatymuose?"
+    wifi_state: "Atidarykite įrenginio nustatymus ir suraskite Wi-Fi. Ką ten rašo — Wi-Fi įjungtas ar išjungtas?"
+    wifi_enable: "Įjunkite Wi-Fi ir patikrinkite, kad neįjungtas lėktuvo režimas."
+    wifi_network: "Ar rašo, prie kokio tinklo prisijungta? Ar tai jūsų tinklas — toks pat pavadinimas kaip ant routerio lipduko?"
+    wifi_join_own: "Wi-Fi sąraše pasirinkite savo tinklą — pavadinimas ant routerio lipduko; arčiausiai routerio jis stipriausias."
+    wifi_reconnect: "Pabandykime prisijungti iš naujo: Wi-Fi sąraše paspauskite savo tinklą, pasirinkite „Pamiršti“ ir prisijunkite vėl su slaptažodžiu nuo routerio lipduko."
+    device_restart: "Perkraukite įrenginį — išjunkite ir vėl įjunkite."
+    offer_fix: "Iš mūsų pusės internetas veikia — kituose įrenginiuose jis yra, tad bėda greičiausiai pačiame įrenginyje. Galime pasiūlyti mokamą meistro pagalbą, kainą pasakys meistras. Užregistruoti?"
+    how:
+      wifi_state: "Atidarykite nustatymus — telefone tai krumpliaratis, kompiuteryje tinklo ženkliukas prie laikrodžio — ir suraskite „Wi-Fi“. Jis turi būti įjungtas."
+      wifi_network: "Nustatymuose atidarykite „Wi-Fi“ — ten matysite tinklą, prie kurio prisijungta."
+      wifi_reconnect: "Nustatymuose atidarykite „Wi-Fi“, paspauskite savo tinklą ir pasirinkite „Pamiršti“. Tada paspauskite jį vėl ir įveskite slaptažodį nuo routerio lipduko."
   computer:
     name: "kompiuteris"
     locate: "Kompiuteris, kuriuo naudojatės namuose."
@@ -934,7 +959,7 @@ evidence:
     nic_enabled: {"yes": "tinklo jungtis įjungta", "no": "tinklo jungtis buvo išjungta"}
     fix_wanted: {"yes": "prašo mokamos meistro pagalbos", "no": "pagalbos atsisakė"}
     device_os: {android: "Android", iphone: "iPhone", windows: "Windows", mac: "Mac"}
-    fail_device: {phone: "telefone", computer: "kompiuteryje"}
+    fail_device: {phone: "telefone", computer: "kompiuteryje", other: "nepatikslintame įrenginyje"}
     connection_type: {wired: "laidu", wifi: "per WiFi"}
     rebooted: {"yes": "jau perkrautas", "no": "dar neperkrautas"}
     recent_events: {"yes": "buvo įvykis (elektra/laidai/audra)", "no": "nieko neįvyko"}
@@ -1045,6 +1070,9 @@ ticket:
     not_done: " Nepavyko / nebuvo daryta: {items}."
     bridge_live: " Laikinas internetas PALEISTAS per kliento kompiuterį — veikia tik jame; routerį reikia keisti."
     unanswered: " Klientas neatsakė: {items}."
+    # Kas liko nepatikrinta telefonu ir ką meistrui daryti (2026-11-05).
+    not_reached: " Telefonu nespėta patikrinti: {items}."
+    technician: " Meistrui patikrinti: {items}."
     # Padėtas ragelis (Andrius, 2026-10-09: *„parašyta, kas buvo atlikta ir kada klientas padėjo
     # ragelį"*): kada ir kurioje pokalbio dalyje ryšys nutrūko.
     hung_up: " Klientas padėjo ragelį {time} ({phase}) — pokalbis nutrūko nebaigtas."

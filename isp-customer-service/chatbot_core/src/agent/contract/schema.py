@@ -306,6 +306,9 @@ class Need(_Model):
     # dega" confirms a hung router on the spot, but nobody would ask about the lights before
     # the reboot: for this fault the reboot is the first move.
     volunteered: bool = False
+    # Read from ANY utterance, not only the answer to its own question: „telefone neveikia"
+    # names the failing device whatever was asked (live 2026-11-05).
+    heard_anytime: bool = False
     # There is no going on without it: instead of a third wording or a silent assumption, the
     # caller is told WHY it is needed and what happens if we do not know.
     critical: bool = False
@@ -433,6 +436,9 @@ class Escalation(_Model):
     # (Andrius, 2026-09-23). When one is missing and still possible, the engine does it first;
     # when it cannot be done, the ticket says so.
     only_after: list[str] = []
+    # What the technician should check, as phrase keys — a ticket is a task, not „call them
+    # back and find out" (Andrius, 2026-11-05).
+    checks: list[str] = []
 
 
 class ParamSpec(_Model):

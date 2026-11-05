@@ -37,6 +37,17 @@ atviras klausimas: „Atidarykite Nustatymai (Settings) → Wi-Fi. Ką ten rašo
 | P6 | įrenginio sistema („Samsung", „Androidinis") priimama bet kada |
 | P7 | patvirtinimas be dubliavimo („Wi-Fi įjungtas", ne „Wi-Fi Wi-Fi įjungtas"); „restored" turi savo frazę |
 
+### Po skambučio 2026-11-05 („neturiu, tik telefoną naudoju" → tiketas be patikros)
+
+| Kas | Pakeista |
+|---|---|
+| Aklavietė | nežinomas įrenginys → `fail_device=other` (bendros Wi-Fi kopėčios, `equipment/device.yaml`); nežinomas jungimasis → `wifi`. Tiketas tik išnaudojus kopėčias, klientui negalint/nenorint ar paprašius |
+| Įrenginys bet kuriame sakinyje | `needs.<f>.heard_anytime` (`perceive/in_passing.py`); sakinio dalis „…veikia" įrenginio neįvardija |
+| Žodynas | „neturiu", „tik telefoną", „naudoju tik", „kitų įrenginių" → vienintelis įrenginys |
+| Klausimai | `pace: guided` kortelės analizės klausimai — parašyti (LLM pakeitė „kuriame įrenginyje" prasmę) |
+| Tiketas | „Telefonu nespėta patikrinti: …" (nenueiti kopėčių žingsniai) ir „Meistrui patikrinti: …" (`escalate.checks`); „telefonu nebeliko ką patikrinti" — tik kai tikrai nebeliko |
+| Dvigubas tiketas | skambučio pabaiga laukia vykstančio ėjimo (`AgentSession._turn_running`) |
+
 Rasta pakeliui: parašytų žodžių kelias nedidino ėjimų skaitliuko, todėl kitas kliento atsakymas
 nebuvo skaitomas (`execute/say.py`).
 

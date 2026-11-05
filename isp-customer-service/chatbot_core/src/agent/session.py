@@ -34,6 +34,11 @@ from .runtime import new_call
 logger = logging.getLogger(__name__)
 
 
+# How long the call's end waits for a turn still running; a stuck turn never keeps a call
+# from being recorded.
+TURN_END_WAIT_S = 15
+
+
 class AgentSession:
     """One customer support conversation behind a stable turn interface."""
 
@@ -70,6 +75,10 @@ class AgentSession:
         # handed to the NEXT turn through its graph input — no thread writes state.
         self._inbox: dict[str, Any] = {}
         self._inbox_lock = threading.Lock()
+        # Held while a turn runs. The call's end waits for it: a hang-up during the last turn
+        # used to finalize the state from BEFORE that turn and register a second ticket next to
+        # the one the turn had just made (live 2026-11-05).
+        self._turn_running = threading.RLock()
         self._plans_emitted = 0
 
     def _graph_input(self, text: str | None) -> dict:
@@ -188,9 +197,14 @@ class AgentSession:
         delete, eval) so every conversation's trace is properly closed. The
         hang-up net and the call record run on the checkpointed state.
         """
-        self._write_between_turns(
-            lambda state, rt: finalize(state, rt, transport_end=transport_end)
-        )
+        waited = self._turn_running.acquire(timeout=TURN_END_WAIT_S)
+        try:
+            self._write_between_turns(
+                lambda state, rt: finalize(state, rt, transport_end=transport_end)
+            )
+        finally:
+            if waited:
+                self._turn_running.release()
 
     @property
     def session_id(self) -> str:
@@ -305,13 +319,14 @@ class AgentSession:
         Returns:
             The agent's reply string.
         """
-        with self._observing():
-            out = self._graph.invoke(
-                self._graph_input(text), self._graph_config, context=self._runtime
-            )
-        self._refresh_state()
-        self._emit_turn_plan()
-        return self._graph_reply(out)
+        with self._turn_running:
+            with self._observing():
+                out = self._graph.invoke(
+                    self._graph_input(text), self._graph_config, context=self._runtime
+                )
+            self._refresh_state()
+            self._emit_turn_plan()
+            return self._graph_reply(out)
 
     def handle_turn_stream(self, text: str):
         """Streaming variant of handle_turn (Pillar C3): a generator yielding the
@@ -324,6 +339,7 @@ class AgentSession:
         # Nodes stream their tokens through the custom stream writer; they only surface
         # with subgraphs=True, which wraps every chunk in a (namespace, chunk)
         # pair; unwrap so transports receive raw tokens.
+        self._turn_running.acquire()
         try:
             with self._observing():
                 for _ns, chunk in self._graph.stream(
@@ -335,8 +351,11 @@ class AgentSession:
                 ):
                     yield chunk
         finally:
-            self._refresh_state()
-            self._emit_turn_plan()
+            try:
+                self._refresh_state()
+                self._emit_turn_plan()
+            finally:
+                self._turn_running.release()
 
     def awaiting_closing_answer(self) -> bool:
         """The agent's last question was the closing one („Ar dar kuo galiu padėti?") and the

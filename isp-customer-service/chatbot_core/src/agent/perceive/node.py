@@ -23,6 +23,9 @@ def perceive_node(state: GraphState, runtime: Runtime[AgentRuntime]) -> dict[str
     state = state.model_copy(deep=True)
     apply_background_signals(state, rt)
     read_turn_start(state, rt, state.turn.user_input)
+    from .in_passing import hear_in_passing
+
+    hear_in_passing(state, rt)
     perceive(state, rt, state.turn.user_input)
     return node_update(state)
 

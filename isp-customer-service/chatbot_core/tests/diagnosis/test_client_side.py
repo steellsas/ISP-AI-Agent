@@ -214,7 +214,8 @@ class TestAnalysisPace:
         assert "fail_scope=one" in branch.when
 
     def test_the_branch_starts_by_saying_what_was_understood(self, diagnosing):
-        c = walk(diagnosing("healthy_to_router"), OTHERS_WORK_PHONE[:-1])
+        # „Kompiuteryje veikia, telefone ne" says both: the branch starts on that very turn.
+        c = walk(diagnosing("healthy_to_router"), OTHERS_WORK_PHONE[:2])
         assert c.rule == "case.wifi_ready"
         assert c.replies[-1].startswith("Supratau — kituose įrenginiuose internetas veikia")
         assert c.replies[-1].endswith("Ar galite dabar pasižiūrėti telefono nustatymuose?")
@@ -230,3 +231,40 @@ def test_a_fact_is_said_back_without_its_label_twice():
 
     assert fact_words("wifi_on", "yes") == "Wi-Fi įjungtas"
     assert fact_words("restored", "yes") == ""
+
+
+class TestLiveCall0105:
+    """Gyvai 2026-11-05: „neturiu, tik telefoną naudoju", „telefone neveikia" — ir tiketas be
+    jokios patikros. Dabar įrenginys perskaitomas iš bet kurio sakinio ir einama į kopėčias."""
+
+    def test_the_device_said_in_passing_is_read(self, diagnosing):
+        c = walk(
+            diagnosing("healthy_to_router"),
+            ["Gerai", "Neturiu, aš tik telefoną naudoju"],
+        )
+        assert c.state.case.facts["fail_scope"] == "single"
+        assert c.state.case.facts["fail_device"] == "phone"
+        assert c.rule == "case.wifi_ready" and not c.state.ticket.stage
+
+    def test_a_working_device_is_not_the_failing_one(self):
+        from agent.perceive.in_passing import failing_part
+
+        assert "kompiuter" not in failing_part("Kompiuteryje veikia, telefone ne").lower()
+        assert failing_part("Telefone neveikia internetas") == "Telefone neveikia internetas"
+
+    def test_no_answer_about_the_device_still_goes_to_the_ladder(self, diagnosing):
+        c = walk(
+            diagnosing("healthy_to_router"), ["Gerai", "Neturiu", "Aš neturiu", "Kitų įrenginių"]
+        )
+        assert c.state.case.facts.get("fail_device") == "other"
+        assert c.rule == "case.wifi_ready" and not c.state.ticket.stage
+
+
+def test_the_ticket_tells_the_technician_what_to_check(diagnosing):
+    """Tiketas — užduotis meistrui: kas nepatikrinta telefonu ir ką tikrinti (2026-11-05)"""
+    c = walk(diagnosing("healthy_to_router"), ["Gerai", "Neturiu", "Telefone", "Taip, galiu"])
+    walk(c, ["Registruokite meistrą", "Taip, tinka", "Bet kada"])
+    _, details = _ticket(c.state.ticket.ticket_id)
+    assert "Meistrui patikrinti:" in details and "DHCP" in details
+    assert "Telefonu nespėta patikrinti:" in details and "Wi-Fi įjungimas" in details
+    assert "telefonu nebeliko" not in details

@@ -1465,7 +1465,7 @@ faq_keywords_working_hours: ["darbo laik", "kada dirbat", "iki keliu", "iki keli
 # still carry the v1 pack verdicts they were first written for.
 # „Ar turite kitą įrenginį — ir ar jame veikia?" (2026-11-04): single — kito nėra; all — ir ten
 # neveikia; one — kituose veikia. Kortelė skaito ta eile, todėl „tik vienas" yra single.
-answers_healthy_to_router_fail_scope_single: ["neturiu kito", "kito neturiu", "kito nėra", "kito nera", "nėra kito", "nera kito", "tik vienas", "tik viena", "vienintel", "tik šitas", "tik sitas", "tik šitą", "tik sita", "daugiau neturiu", "daugiau nėra", "daugiau nera"]
+answers_healthy_to_router_fail_scope_single: ["neturiu", "kitų įrenginių", "kitu irenginiu", "kitų nėra", "kitu nera", "tik telefoną", "tik telefona", "tik kompiuterį", "tik kompiuteri", "naudoju tik", "tik naudoj", "neturiu kito", "kito neturiu", "kito nėra", "kito nera", "nėra kito", "nera kito", "tik vienas", "tik viena", "vienintel", "tik šitas", "tik sitas", "tik šitą", "tik sita", "daugiau neturiu", "daugiau nėra", "daugiau nera"]
 answers_healthy_to_router_fail_scope_all: ["visuose", "visur", "nė viename", "ne viename neveikia", "abiejuose", "niekur", "irgi neveikia", "irgi nėra", "irgi nera", "ten irgi ne", "taip pat neveikia"]
 answers_healthy_to_router_fail_scope_one: ["tik viename", "tik telefone", "tik kompiuteryje", "tik planšetėje", "tik plansete", "tik nešiojam", "tik nesiojam", "tik šitame", "tik sitame", "veikia", "kituose veikia", "ten veikia", "ten yra", "ten internetas yra"]
 answers_healthy_to_router_fail_device_phone: ["telefon", "planšet", "planset", "mobil"]
@@ -1597,6 +1597,9 @@ wifi_network_own: ["savo", "mano", "mūsų", "musu", "namų", "namu", "tp-link",
 wifi_network_other: ["kaimyn", "svetim", "kitas tinklas", "kito tinklo", "ne mano", "ne savo", "ne prie savo", "nesutampa", "joks", "jokio", "neprisijung", "nieko nėra", "nieko nera"]
 # Klientas klausia, KAIP padaryti ar KUR žiūrėti — tai pagalba esamam žingsniui, ne pašalinė
 # tema (gyvai 2026-11-03: „kur man reikia eiti?" gavo išgalvotą atsakymą).
+# Sakinio dalis, kuri sako, kad VEIKIA („kompiuteryje veikia"), neįvardija sugedusio įrenginio.
+works_marks: ["veikia", "veikė", "veike", "yra internetas", "internetas yra", "viskas gerai"]
+fails_marks: ["neveik", "nėra", "nera", "nebėra", "nebera", "dingo", "nesijung", "neprisijung"]
 # „Netikrinau" — klientas dar nežiūrėjo; tai ne atsakymas „ne" (2026-11-04).
 not_looked: ["netikrin", "nepatikrin", "nežiūrėj", "neziurej", "nepažiūrėj", "nepaziurej", "dar nežiūr", "dar neziur"]
 # „Dar neįjungiau" per patikrą — grįžtame prie nurodymo (2026-11-04).

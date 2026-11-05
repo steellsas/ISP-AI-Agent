@@ -374,18 +374,17 @@ class TestWhenTheCallerDoesNotAnswerTheQuestion:
         assert plan.awaiting in ("fail_device", "connection_type", "rebooted")
         assert state.ticket.stage != "phone"
 
-    def test_a_question_with_nothing_to_assume_is_a_dead_end(self, client_side):
-        """`fail_device` has no assumption of its own: when the caller will not say, the call
-        ends honestly instead of guessing which device they meant."""
+    def test_an_unknown_device_is_no_dead_end(self, client_side):
+        """Live 2026-11-05: the caller never named the device and the call went to a ticket
+        with nothing checked. The Wi-Fi ladder fits any device — the card assumes `other`."""
         state, rt = client_side
         state.case.facts["fail_scope"] = "one"
         state.case.asks["fail_device"] = [1, 2]
-        state.case.unavailable.append("connection_type")
 
-        plan = escalation(state, rt)
+        plan = case_rule.plan(state, rt)
 
-        assert "fail_device" not in state.case.assumed
-        assert plan.rule == "case.escalate" and state.ticket.stage == "phone"
+        assert state.case.assumed.get("fail_device") == "other"
+        assert plan.rule == "case.wifi_ready" and not state.ticket.stage
 
     def test_an_answered_question_is_never_given_up_on(self, client_side):
         state, rt = client_side
