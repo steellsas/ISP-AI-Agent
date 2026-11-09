@@ -1615,3 +1615,24 @@ device_os_android: ["android", "samsung", "galaxy", "xiaomi", "redmi", "huawei",
 device_os_iphone: ["iphone", "ipad", "aifon", "aipon", "ajfon", "apple", "obuol"]
 device_os_windows: ["windows", "vindows", "vindovs", "langai", "asus", "acer", "dell", "lenovo", "hp "]
 device_os_mac: ["mac", "makbuk", "macbook", "imac", "apple", "obuol"]
+
+# --- agent/fact_catalog.py ------------------------------------------------------
+# The caller's OWN doubt about what they report (Andrius, 2026-11-06). A fact said with one
+# of these is „hedged": it is remembered, but it does not skip a check or close the call —
+# the caller is asked to LOOK, not „ar tikrai?" (they would not know). Whole words/phrases.
+hedge_words:
+  - "lyg ir"
+  - "lyg"
+  - "turbūt"
+  - "turbut"
+  - "rodos"
+  - "atrodo"
+  - "gal"
+  - "galbūt"
+  - "galbut"
+  - "kažkaip"
+  - "kazkaip"
+  - "nežinau ar"
+  - "manau"
+  - "berods"
+  - "tikriausiai"

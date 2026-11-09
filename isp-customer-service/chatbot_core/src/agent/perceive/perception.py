@@ -34,6 +34,8 @@ class Fact(BaseModel):
     value: str
     quote: str | None = None
     grounded: bool = True  # False = the quote could not be found in the utterance
+    # The caller's own doubt („lyg ir", „turbūt"): remembered, never used to skip or close.
+    hedged: bool = False
 
 
 class Perception(BaseModel):
@@ -44,6 +46,9 @@ class Perception(BaseModel):
     facts: dict[str, Fact] = Field(default_factory=dict)
     # The answer to the step whose question is out: {label, is_answer, confidence, …}.
     step: dict[str, Any] | None = None
+    # What the caller DID with the question that was out (answered | doing | asks_back |
+    # pushback | not_now | refuses | off_topic) — 2026-11-06, replaces the model's step label.
+    status: str | None = None
     understood: str = ""  # half-sentence the narrator may reflect back
     confusion: str = ""
     confidence: float = 0.5
@@ -71,6 +76,7 @@ class Perception(BaseModel):
             "confusion": self.confusion,
             "confidence": self.confidence,
             "step": self.step,
+            "status": self.status,
             "knowledge": self.knowledge,
         }
 
@@ -101,14 +107,23 @@ def fast_read(
             return engine
     if is_real_question(text):
         return None
+    from ..fact_catalog import hedged
+
+    if hedged(text) and state.case.fault:
+        return None  # „lyg ir dega" — the caller's doubt is read in full, not looked up
     engine = _engine_read(state, text)
     if engine is not None:
         return engine
     if len(text.split()) > limits.get("short_utterance_max_words"):
         return _closed_answer(state, text, options, step)
     if is_backchannel(text):
-        # "mhm", "gerai" — heard, nothing claimed.
-        return Perception(source="fast_path", turn_type="answer", confidence=1.0)
+        # "mhm", "gerai" — heard, nothing claimed: they are doing it (finding #52).
+        return Perception(
+            source="fast_path",
+            turn_type="answer",
+            confidence=1.0,
+            status="doing" if options else None,
+        )
     pending = _pending_fact(state, text)
     if pending is not None:
         key, value = pending
@@ -244,10 +259,18 @@ def _closed_answer(
         label = label_from(getattr(step, "detector", None), text)
         if label is None or label not in options:
             return None
+        from ..fact_catalog import content_words
+
+        extra = content_words(text)
+        if extra and label_from(getattr(step, "detector", None), extra) is None:
+            # „Taip, dabar veikia": the „taip" answers the question, but „dabar veikia" says
+            # something else — the whole sentence is read, not looked up (eval S9, 2026-11-06).
+            return None
         is_answer = True
     return Perception(
         source="fast_path",
         turn_type="answer",
+        status="answered" if is_answer else "doing",
         step={
             "label": label,
             "is_answer": is_answer,
@@ -388,18 +411,29 @@ def read_turn(state: Any, rt: Any, utterance: str | None) -> Perception | None:
         step_options=options,
         ticket_stage=state.ticket.stage if state.ticket.stage in ("phone", "hours") else None,
         problem_options=_problem_options(state),
+        step_answers=_step_answers(active_step),
     )
     if data is None:
         return None
+    from ..fact_catalog import hedged as _hedged
+
+    doubted = set(data.get("hedged") or [])
     read = ground(
         Perception(
             source="llm",
             turn_type=data["type"],
             facts={
-                key: Fact(value=value, quote=(data.get("quotes") or {}).get(key))
+                key: Fact(
+                    value=value,
+                    quote=(data.get("quotes") or {}).get(key),
+                    hedged=key in doubted
+                    or _hedged((data.get("quotes") or {}).get(key))
+                    or _hedged(utterance),
+                )
                 for key, value in data["facts"].items()
             },
             step=data.get("step"),
+            status=data.get("status"),
             understood=data["understood"],
             confusion=data["confusion"],
             confidence=data["confidence"],
@@ -417,7 +451,116 @@ def read_turn(state: Any, rt: Any, utterance: str | None) -> Perception | None:
                 "evidence", action="fact_ungrounded", key=key, value=fact.value, quote=fact.quote
             )
     read = read.model_copy(update={"facts": {k: f for k, f in read.facts.items() if f.grounded}})
+    read = _hold_hedged(state, rt, read, options, active_step)
+    read = _drop_short_out_of_turn(state, rt, read, active_step, utterance)
     return _record(state, rt, read, active_step, utterance)
+
+
+def _drop_short_out_of_turn(
+    state: Any, rt: Any, read: Perception, active_step: Any, utterance: str = ""
+) -> Perception:
+    """A fact that does NOT answer the question that was out needs the caller's words to say
+    it — two words at least. One word („Prisijungiau") answers what was asked, nothing more:
+    eval S9 2026-11-06, „Prisijungiau iš naujo" became `same_network=yes` for a later step."""
+    from ..fact_catalog import ASKED_ONLY
+
+    answers = _step_answers(active_step) or {}
+    step_keys = {stated.split("=", 1)[0] for stated in answers.values()}
+    asked = {state.diagnosis.pending_evidence_key, state.case.awaiting} | step_keys
+    asked.discard(None)
+    if not asked:
+        return read
+    kept: dict[str, Fact] = {}
+    step = read.step
+    for key, fact in read.facts.items():
+        if key not in asked:
+            short = len((fact.quote or "").split()) < 2
+            # One word may still say it, when that fact's OWN vocabulary reads it the same
+            # („veikia" = restored) — „Prisijungiau" is nobody's `same_network`.
+            if key in ASKED_ONLY or (short and not _vocab_says(key, fact.value, fact.quote)):
+                rt.tracer.emit(
+                    "evidence", action="out_of_turn_short_quote", key=key, quote=fact.quote
+                )
+                continue
+        elif (
+            read.source == "llm"
+            and key in step_keys
+            and not _vocab_says(key, fact.value, utterance, active_step.module)
+        ):
+            # The answer to the question that was out, read by the model ALONE: the quote shows
+            # the words were said, not that they mean this (eval S4b: „Vis tiek nedega" became
+            # „the power lead was out"). It rides as the step's label — the engine asks „ar
+            # teisingai?" before using it (Andrius, 2026-10-12: patikslinti, ne spėti).
+            rt.tracer.emit("evidence", action="step_answer_model_only", key=key, value=fact.value)
+            if step and step.get("label") not in (None, "unclear"):
+                step = {**step, "confidence": min(float(step.get("confidence") or 0.6), 0.6)}
+            continue
+        kept[key] = fact
+    if len(kept) == len(read.facts):
+        return read
+    return read.model_copy(update={"facts": kept, "step": step})
+
+
+def _vocab_says(key: str, value: str, text: str | None, module: str | None = None) -> bool:
+    """Does a module's own vocabulary read `key=value` from these words?"""
+    from .. import modules
+    from ..contract import cards as catalog
+
+    if not text:
+        return False
+    wanted = f"{key}={value}"
+    for spec in catalog.modules().values():
+        if module and spec.module != module:
+            continue
+        if not spec.detector or wanted not in (spec.answers or {}).values():
+            continue
+        label = modules.label_from(spec.detector, text)
+        if label is not None and (spec.answers or {}).get(label) == wanted:
+            return True
+    return False
+
+
+def _step_answers(active_step: Any) -> dict[str, str] | None:
+    """The asked module's `answers` (label -> "fact=value"): how the step's label is made from
+    the facts the model read."""
+    if active_step is None:
+        return None
+    from ..contract import cards as catalog
+
+    spec = catalog.module(active_step.module)
+    return dict(spec.answers) if spec is not None and spec.answers else None
+
+
+def _hold_hedged(
+    state: Any, rt: Any, read: Perception, options: dict[str, str] | None, active_step: Any
+) -> Perception:
+    """A fact the caller said with their own doubt is REMEMBERED, not written (2026-11-06).
+
+    It goes to `case.hedged`; the ledger never sees it, so it cannot skip a check or close the
+    call. When its step comes, the engine asks the caller to look („pažiūrėkite, prašau").
+    """
+    doubted = {k: f for k, f in read.facts.items() if f.hedged}
+    if not doubted:
+        return read
+    turn = state.dialog.turn_count
+    for key, fact in doubted.items():
+        state.case.hedged[key] = {"value": fact.value, "quote": fact.quote, "turn": turn}
+        rt.tracer.emit(
+            "evidence", action="fact_hedged", key=key, value=fact.value, quote=fact.quote
+        )
+    kept = {k: f for k, f in read.facts.items() if not f.hedged}
+    step = read.step
+    if options and read.status:
+        from .understand import step_from_status
+
+        step = step_from_status(
+            read.status,
+            {k: f.value for k, f in kept.items()},
+            {k: f.quote or "" for k, f in kept.items()},
+            options,
+            _step_answers(active_step),
+        )
+    return read.model_copy(update={"facts": kept, "step": step})
 
 
 def _needs_reading(state: Any) -> bool:
@@ -438,6 +581,7 @@ def _needs_reading(state: Any) -> bool:
 def _record(state: Any, rt: Any, read: Perception, active_step: Any, utterance: str) -> Perception:
     read = read.model_copy(update={"utterance": utterance})
     state.turn.perception = read.model_dump(mode="json")
+    state.turn.reply_status = read.status
     # The contact dialogue speaks its own scripted lines — a narrator acknowledgement
     # of what was "understood" there once leaked a diagnosis half-sentence into it.
     if not state.ticket.stage:
@@ -457,6 +601,7 @@ def _record(state: Any, rt: Any, read: Perception, active_step: Any, utterance: 
         confidence=read.confidence,
         facts=read.values(),
         step=read.step,
+        status=read.status,
         ticket=read.ticket,
         problem=read.problem,
     )

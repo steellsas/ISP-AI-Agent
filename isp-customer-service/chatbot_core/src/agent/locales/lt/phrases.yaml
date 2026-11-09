@@ -863,7 +863,16 @@ equipment:
 # L2 (2026-10-05): parašyto atsakymo dalys. Kai ėjimas neturi ką kita pasakyti, atsakymą
 # surenka variklis iš šių eilučių ir žingsnio sakinio — be modelio (−1,2 s ėjimui).
 case:
-  heard: "Gerai — {said}."
+  # Ką variklis sako atgal (2026-11-06): tik tai, kas ką nors keičia — pasakyta ne savo eilėje,
+  # pataisyta ar keli faktai iš karto. Pradžios žodis keičiasi ratu, kad neskambėtų kaip mašina.
+  heard: "Supratau, {said}."
+  heard_2: "Aišku, {said}."
+  heard_3: "Gerai, {said}."
+  # Klientas pats abejoja („lyg ir veikia") — ne „ar tikrai?", o paprašom PAŽIŪRĖTI.
+  hedged:
+    look: "Pažiūrėkite, prašau, dar kartą ir pasakykite, ką matote: {question}"
+    restored: "Pabandykite, prašau, atidaryti kokį nors puslapį — ar atsidaro?"
+    wifi_on: "Pažiūrėkite, prašau, į ekrano viršų — ar matote Wi-Fi ženkliuką?"
   say_when_done: "Pasakykite, kai padarysite."
   # Vedamas sprendimas (`pace: guided`): klientas daro savo įrenginyje, agentas neskuba.
   say_when_done_guided: "Neskubėkite — pasakykite, kai padarysite, ar ką matote."
@@ -969,9 +978,36 @@ evidence:
     bridge_agreed: "laikinas prijungimas be routerio"
     same_network: "tinklas, palyginus su veikiančiu įrenginiu"
   # Faktas, pasakytas atgal klientui vienu sakiniu, kai „etiketė + reikšmė" skamba kreivai.
+  # Vienas paruoštas sakinys kiekvienai kliento fakto reikšmei (2026-11-06): iš jų variklis
+  # sako „Supratau, Wi-Fi įjungtas." Niekada nelipdoma iš etiketės ir reikšmės (radinys #56).
+  # Naujas faktas be frazės atgal nesakomas — testas reikalauja frazės kiekvienam katalogo faktui.
   said_back:
     fail_scope: {one: "kituose įrenginiuose internetas veikia", all: "kituose įrenginiuose irgi neveikia", single: "kito įrenginio neturite"}
     same_network: {"yes": "tinklas tas pats", "no": "tinklai skiriasi"}
+    bridge_agreed: {"yes": "laikinas prijungimas jums tinka", "no": "laikino prijungimo nenorite"}
+    cable_port: {wan: "kabelis įkištas į interneto (WAN) lizdą", lan: "kabelis įkištas į kitą lizdą"}
+    cable_seated: {"yes": "laidas įkištas tvirtai", "no": "laidas buvo neįkištas"}
+    changed_device: {"yes": "neseniai kažką keitėte ar prijungėte", "no": "nieko nekeitėte"}
+    connection_type: {wifi: "jungiatės per Wi-Fi", wired: "jungiatės laidu"}
+    device_present: {found: "routerį radote", not_found: "routerio neradote"}
+    device_ready: {"yes": "galite pasižiūrėti dabar"}
+    fail_device: {phone: "neveikia telefone", computer: "neveikia kompiuteryje", other: "neveikia kitame įrenginyje"}
+    fix_wanted: {"yes": "norite meistro pagalbos", "no": "meistro pagalbos nenorite"}
+    guide_agreed: {"yes": "nustatymus pereisime kartu", "no": "nustatymų kartu eiti nenorite"}
+    has_computer: {"yes": "kompiuterį turite", "no": "kompiuterio neturite"}
+    lan_active: {active: "LAN ryšys rodomas aktyvus", inactive: "LAN ryšys neaktyvus"}
+    later_agreed: {"yes": "padarysite, kai galėsite", "no": "vėliau daryti netinka"}
+    lights: {"on": "lemputės dega", "off": "lemputės nedega", blinking: "lemputės mirksi"}
+    nic_enabled: {"yes": "tinklo jungtis įjungta", "no": "tinklo jungtis išjungta"}
+    outlet_works: {tried: "rozetę jau išbandėte", not_working: "rozetė neveikia"}
+    panel_device: {"yes": "turite įrenginį su naršykle", "no": "įrenginio su naršykle neturite"}
+    power_cable: {plugged: "maitinimo laidas įkištas", unplugged: "maitinimo laidas buvo ištrauktas"}
+    reachable: {"yes": "galite prieiti prie įrenginio", "no": "dabar prieiti negalite"}
+    rebooted: {"yes": "routerį jau perkrovėte", "no": "routerio dar neperkrovėte"}
+    recent_events: {"yes": "neseniai buvo kažkas su elektra ar laidais", "no": "nieko neįvyko"}
+    restored: {"yes": "internetas veikia", "no": "internetas vis dar neveikia"}
+    wifi_network: {own: "prisijungta prie jūsų tinklo", other: "prisijungta prie kito tinklo"}
+    wifi_on: {"yes": "Wi-Fi įjungtas", "no": "Wi-Fi išjungtas"}
   fact_value:
     same_network: {"yes": "tas pats tinklas", "no": "buvo kitas tinklas"}
     bridge_agreed: {"yes": "jums tinka", "no": "jums netinka"}

@@ -451,6 +451,13 @@ class TurnScratch(BaseModel):
     heard_said: str | None = None
     # The evidence key the caller reported as done this turn.
     done_report_key: str | None = None
+    # How the caller met the question that was out (perception, 2026-11-06): answered | doing |
+    # asks_back | pushback | not_now | refuses | off_topic. The VALUE of an answer is never
+    # here — it is a fact; this says only what the caller did with the question.
+    reply_status: str | None = None
+    # Facts the caller gave this turn that the engine says back („Supratau, Wi-Fi įjungtas"):
+    # said out of turn, a correction, or several at once — never a plain yes to the question.
+    said_back: list[str] = Field(default_factory=list)
     directives: TurnDirectives = Field(default_factory=TurnDirectives)
     # The caller asked an off-script question during the contact dialogue.
     ticket_offscript_question: bool = False
@@ -640,6 +647,12 @@ class CaseState(BaseModel):
     # The step is being retried, so the card's `on_fail` call is what runs — a retry that
     # repeats the identical instruction teaches the caller nothing.
     retrying: bool = False
+    # What the caller said WITH their own doubt („lyg ir įjungtas", „turbūt dega"):
+    # {fact: {value, quote, turn}}. Remembered, never written as a fact — it may not skip a check
+    # or close the call; when its step comes, the caller is asked to LOOK (Andrius, 2026-11-06).
+    hedged: dict[str, dict[str, Any]] = Field(default_factory=dict)
+    # How often the „pažiūrėkite, prašau" for a hedged answer went out on this step.
+    hedge_asks: int = 0
 
 
 class ToolsState(BaseModel):

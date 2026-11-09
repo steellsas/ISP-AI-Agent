@@ -521,7 +521,22 @@ def _delivery(state, rt) -> list[str]:
 
 
 def _acknowledge(state) -> list[str]:
-    """The plain acknowledgement that makes the caller feel heard."""
+    """The plain acknowledgement that makes the caller feel heard.
+
+    On the fault path the ENGINE says what it heard (2026-11-06): only what it actually wrote
+    into the ledger, in the fact's own prepared words, and only when that changes something
+    (said out of turn, a correction, several facts). The perception's `understood` sentence is
+    the model's internal summary — it stays in the trace and the archive, never in the reply:
+    it was third-person („Klientas patikrino…") and could echo a fact the engine lost (S9).
+    """
+    if getattr(getattr(state, "case", None), "fault", None):
+        heard = (state.turn.heard_said or "").strip()
+        if not heard:
+            return []
+        return [
+            f"ACKNOWLEDGE exactly this, in half a sentence („Supratau, {heard}“) — then continue "
+            "with one question or step. Nothing else about what they said."
+        ]
     understood = ((state.turn.understanding or {}).get("understood") or "").strip()
     if not understood:
         return []
@@ -1089,6 +1104,12 @@ def _recheck_to_ask(state) -> list[str]:
     told = state.turn.directives.recheck
     if not told or not told.get("faktas"):
         return []
+    if told.get("nedrąsiai"):
+        # 2026-11-06: they said it earlier WITH DOUBT („lyg ir įjungtas") — ask them to look.
+        return [
+            f"THEY SAID IT EARLIER, UNSURE ({told['faktas']}) — say what they told you and ask "
+            "them to LOOK now and tell you what they see. Never „ar tikrai?“ — they would not know."
+        ]
     return [
         f"THEY ALREADY MENTIONED IT IN PASSING ({told['faktas']}) — but this question is what the "
         "diagnosis stands on, so CONFIRM it instead of asking blankly: name what you heard and "

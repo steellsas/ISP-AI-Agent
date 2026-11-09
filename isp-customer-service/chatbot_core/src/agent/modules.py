@@ -242,7 +242,18 @@ def read_answer(call: ModuleCall, text: str | None, *, device=None) -> tuple[str
     label = _detect(spec.detector, text)
     if label is None:
         return None
+    if _does_not_know(text):
+        # „Nežinau" is not „ne" (2026-11-06): several readers fall back to „ne…" and read it as
+        # a no. No fact — the step stays, and the engine helps them look.
+        return None
     return answer_from_label(call, label, device=device)
+
+
+def _does_not_know(text: str) -> bool:
+    from .contract.locale import lang
+
+    low = lang().fold(text or "")
+    return "nezinau" in low or "nezinom" in low
 
 
 def answer_from_label(call: ModuleCall, label: str, *, device=None) -> tuple[str, str] | None:

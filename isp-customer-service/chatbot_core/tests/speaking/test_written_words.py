@@ -109,7 +109,9 @@ class TestL2WrittenWordsGoOutAsWritten:
         state, rt = _at_module(call, "router_hung", "reboot")
         state.case.awaiting = "reachable"
         _remember_what_we_heard(state)
-        assert state.turn.heard_said is None
+        # 2026-11-06: every caller fact has ONE prepared statement (`evidence.said_back`) —
+        # never the question-shaped label glued to a value.
+        assert state.turn.heard_said in (None, "galite prieiti prie įrenginio")
 
     def test_a_statement_fact_label_is_read_back(self, call):
         from agent.decide.rules.case_rule import _remember_what_we_heard
