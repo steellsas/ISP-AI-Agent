@@ -63,6 +63,7 @@ identification:
   declined_goodbye: "Gerai, baigiame. Jei reikės pagalbos — paskambinkite. Geros dienos!"
   # F-27: asked only after the end is confirmed — one question per reply.
   end_offer_ticket: "Gerai. Ar užregistruoti gedimą, kad kolegos su jumis susisiektų?"
+  end_offer_ticket_again: "Atsiprašau, nesupratau. Ar užregistruoti gedimą — taip ar ne?"
   goodbye: "Ačiū, kad paskambinote. Geros dienos!"
   # Tyla po „Ar dar kuo galiu padėti?" (Andrius 2026-10-20): atsakymo nesulaukus — atsisveikinama.
   silence_goodbye: "Geros dienos! Jei dar ko reikės — skambinkite."

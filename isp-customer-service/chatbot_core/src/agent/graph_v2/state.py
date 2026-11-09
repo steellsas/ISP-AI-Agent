@@ -313,6 +313,7 @@ class DialogState(BaseModel):
     end_confirm_pending: bool = False
     # F-27: the end is confirmed and the second question — register the fault? — is out.
     end_ticket_offer: bool = False
+    end_ticket_offer_repeated: bool = False
     # Hold the process one turn after a detour / re-anchor from the ledger next reply.
     resume_hold_due: bool = False
     resync_note: bool = False

@@ -98,7 +98,7 @@ def _stage_plan(state: Any, rt: Any) -> TurnPlan:
     from ...execute.diagnosis import ensure_diagnosed
 
     ensure_diagnosed(state, rt)
-    if _side_topic(s) and (_carries_a_fix_answer(s) or _demands_a_ticket(s)):
+    if _side_topic(s) and (carries_a_fix_answer(s) or _demands_a_ticket(s)):
         # „Gerai, ačiū, veikia. Alio, kada dėl routerio paskambinsit?" — the result of the fix
         # AND a question in one breath. Freezing the Case lost the result: the fault stayed
         # unregistered and the model filled the turn with a step of its own (eval S4b under 6a,
@@ -136,7 +136,7 @@ def _stage_plan(state: Any, rt: Any) -> TurnPlan:
     )
 
 
-def _carries_a_fix_answer(state: Any) -> bool:
+def carries_a_fix_answer(state: Any) -> bool:
     """A fix is running and this utterance says how it went („veikia", „neveikia") or that
     the caller did it („įkišau")."""
     if not state.case.in_progress:

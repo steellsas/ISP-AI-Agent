@@ -224,7 +224,12 @@ def reply_plan(state: Any, rt: Any, user_input: str | None) -> TurnPlan | None:
     # Farewell-mid-process clarify (any stage): ONE deterministic confirm question.
     if state.dialog.end_confirm_pending:
         if state.dialog.end_ticket_offer:
-            return _words("dialog.end_offer_ticket", phrase("identification.end_offer_ticket"))
+            key = (
+                "identification.end_offer_ticket_again"
+                if state.dialog.end_ticket_offer_repeated
+                else "identification.end_offer_ticket"
+            )
+            return _words("dialog.end_offer_ticket", phrase(key))
         from .head import confirm_end_key
 
         return _words("dialog.confirm_end", phrase(confirm_end_key(state)))

@@ -90,8 +90,19 @@ def end_confirm_answer(state: Any, rt: Any, user_input: str) -> bool:
         state.dialog.end_confirm_pending = False
         if state.dialog.end_ticket_offer:
             # F-27: the answer to "register the fault?" — only a yes registers.
+            answer = detect_ticket_consent(user_input)
+            if (
+                answer is None
+                and not detect_farewell(user_input)
+                and not state.dialog.end_ticket_offer_repeated
+            ):
+                # An unclear answer is not a no: asked once more before the call ends.
+                state.dialog.end_ticket_offer_repeated = True
+                state.dialog.end_confirm_pending = True
+                rt.tracer.emit("decision", intent="end_ticket_offer", action="clarify")
+                return True
             state.dialog.end_ticket_offer = False
-            consent = detect_ticket_consent(user_input) == "yes"
+            consent = answer == "yes"
             if consent and _case_can_escalate(s):
                 request_ticket(state, rt, "klientas_nenori")
                 rt.tracer.emit("decision", intent="end_ticket_offer", action="register")

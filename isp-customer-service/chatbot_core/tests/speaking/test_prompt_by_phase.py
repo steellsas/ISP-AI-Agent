@@ -34,18 +34,18 @@ class TestTheFixAnswerWithAQuestion:
         return state, rt
 
     def test_the_case_keeps_the_turn(self, bridging):
-        from agent.decide.rules.stage import _carries_a_fix_answer
+        from agent.decide.rules.stage import carries_a_fix_answer
 
         state, _ = bridging
         state.dialog.last_heard = "Gerai, ačiū, veikia. Alio, kada dėl routerio paskambinsit?"
-        assert _carries_a_fix_answer(state)
+        assert carries_a_fix_answer(state)
 
     def test_a_plain_side_question_still_is_one(self, bridging):
-        from agent.decide.rules.stage import _carries_a_fix_answer
+        from agent.decide.rules.stage import carries_a_fix_answer
 
         state, _ = bridging
         state.dialog.last_heard = "O kiek kainuoja meistras?"
-        assert not _carries_a_fix_answer(state)
+        assert not carries_a_fix_answer(state)
 
     def test_said_it_works_is_not_asked_again(self, bridging):
         from agent.decide.rules.case_rule import _caller_says_it_works
