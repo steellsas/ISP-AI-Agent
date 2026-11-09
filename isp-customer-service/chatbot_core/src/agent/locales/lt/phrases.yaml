@@ -868,6 +868,10 @@ case:
   heard: "Supratau, {said}."
   heard_2: "Aišku, {said}."
   heard_3: "Gerai, {said}."
+  still_down: "internetas vis dar neveikia"
+  did_not_help: "{tried}, bet internetas vis dar neveikia."
+  next_technician: "reikės perduoti meistrui, nes telefonu to nesutvarkysime"
+  next_colleague: "perduosime kolegai, kuris peržiūrės ir jums paskambins"
   # Klientas pats abejoja („lyg ir veikia") — ne „ar tikrai?", o paprašom PAŽIŪRĖTI.
   hedged:
     look: "Pažiūrėkite, prašau, dar kartą ir pasakykite, ką matote: {question}"
@@ -1301,3 +1305,26 @@ anamnesis:
     renovation: "remontas"
     moving: "kraustymasis"
     equipment_change: "įrangos keitimas"
+
+# Kodėl prašome šio žingsnio — vienas sakinys, kurį kalbėtojas gali pasakyti klientui.
+step_why:
+  check_lights: "Pagal lemputes matysime, ar routeris gauna maitinimą ir ryšį."
+  check_power: "Be elektros routeris neveiks, tad pirmiausia reikia tai atmesti."
+  plug_power: "Be elektros routeris neįsijungs."
+  reboot: "Perkrovimas dažnai išsprendžia pakibusį routerį."
+  cable: "Atsilaisvinęs kabelis dažnai ir yra ryšio dingimo priežastis."
+  cable_seated: "Atsilaisvinęs laidas dažnai ir yra priežastis."
+  cable_reseat: "Tvirtai įkištas laidas pašalina prastą kontaktą."
+  nic_enabled: "Jei tinklo jungtis išjungta, kompiuteris interneto negaus net su geru laidu."
+  nic_enable: "Be įjungtos tinklo jungties kompiuteris prie interneto neprisijungs."
+  connect_direct: "Taip pamatysime, ar internetas ateina iki jūsų, aplenkiant routerį."
+  other_devices: "Taip atskirsime, ar kaltas routeris, ar vienas įrenginys."
+  device_check: "Taip pamatysime, ar bėda pačiame įrenginyje."
+  device_restart: "Perkrovimas dažnai pašalina laikiną įrenginio klaidą."
+  wifi_state: "Jei Wi-Fi išjungtas, įrenginys prie tinklo neprisijungs."
+  wifi_enable: "Be įjungto Wi-Fi įrenginys tinklo nematys."
+  wifi_network: "Svarbu, kad įrenginys būtų prisijungęs būtent prie jūsų tinklo."
+  wifi_compare: "Palyginę su veikiančiu įrenginiu matysime, kuo jie skiriasi."
+  wifi_join_own: "Internetas ateina tik per jūsų routerio tinklą."
+  wifi_join_same: "Taip pamatysime, ar internetas veikia tame pačiame tinkle."
+  wifi_reconnect: "Prisijungus iš naujo dažnai dingsta ryšio užstrigimas."

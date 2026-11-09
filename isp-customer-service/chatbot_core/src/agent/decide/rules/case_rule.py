@@ -651,8 +651,8 @@ def _announce_finding(state: Any, rt: Any, card: Any, facts: dict[str, str]) -> 
     from ...contract.locale import maybe_phrase
     from ...facts import summary
 
-    if card.fault in state.case.announced:
-        return  # a finding is news once
+    if card.fault in state.case.announced or _not_about_the_connection(state):
+        return  # a finding is news once, and only to a caller asking about the connection
     reasons = [str(c.fact) for c in (judge(card, facts).why and _reasons(card))]
     # Plus whatever else the card says is worth telling (the honest ending matches on
     # nothing, yet the caller must hear that the line up to their flat was checked).
@@ -725,11 +725,24 @@ def _diagnose_quietly(state: Any, rt: Any, facts: dict[str, str]) -> None:
     identification rule is building, which is how the caller hears what the line showed in
     the same breath as the answer to their own question.
     """
-    if state.case.fault is not None:
+    if state.case.fault is not None or _not_about_the_connection(state):
         return
     move = next_move(facts, unavailable=ledger.unavailable(state))
     if move.kind == "solve" and move.fault and move.fault not in state.case.spent:
         _begin(state, rt, move.fault, facts)
+
+
+def _not_about_the_connection(state: Any) -> bool:
+    """The call is a request (a bill, a registration's status), so the line is not its subject.
+
+    The background reading still arrives, but what it shows is no news to this caller: on a
+    billing call they heard "problema tikriausiai kliento pusėje" (eval R1, 2026-11-09). Nothing
+    is marked as announced, so a connection problem raised later still gets its finding.
+    """
+    from ...intents import problem_policy
+
+    problem = state.intake.problem_type
+    return bool(problem) and problem_policy(problem) in ("register", "answer")
 
 
 def _ruled_out_now(state: Any, facts: dict[str, str]) -> bool:
@@ -1923,9 +1936,33 @@ def _written_words(state: Any, step: Any, asked: str | None) -> str:
     lead = _understood(state)
     if not lead and state.turn.heard_said:
         lead = heard_lead(state)
+    lead = " ".join(part for part in (lead, _did_not_help(state, step)) if part)
     done = "case.say_when_done_guided" if _guided(state) else "case.say_when_done"
     tail = phrase(done) if step.kind == "instruct" else ""
     return " ".join(part for part in (lead, said, tail) if part).strip()
+
+
+def _did_not_help(state: Any, step: Any) -> str:
+    """A check just showed the last action did not help: say so, and why we go on to this.
+
+    A written step would otherwise jump straight to the next instruction (2026-11-09). Worked
+    out from what happened THIS turn, so it can neither repeat nor outlive the moment.
+    """
+    from ...contract.locale import phrase_or
+
+    case = state.case
+    if case.moved_on_turn != state.dialog.turn_count or case.facts.get("restored") != "no":
+        return ""
+    if len(case.worked) < 2 or case.worked[-1] != "verify":
+        return ""
+    tried = phrase_or(f"summary.did.{case.worked[-2]}", "")
+    if not tried:
+        return ""
+    told = phrase("case.did_not_help", tried=tried[0].upper() + tried[1:])
+    call = _current(state)
+    why = phrase_or(f"step_why.{call.module}", "") if call is not None else ""
+    # The instruction is the part the caller acts on; a long one leaves no room for the reason.
+    return f"{told} {why}" if why and len(step.text or "") <= 140 else told
 
 
 def heard_lead(state: Any) -> str:

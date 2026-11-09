@@ -359,3 +359,10 @@ class TestHeardFacts:
         c = walk(diagnosing("healthy_to_router"), OTHERS_WORK_PHONE)
         c.say("Nežinau")
         assert "wifi_on" not in c.state.case.facts
+
+
+def test_a_step_that_did_not_help_is_named_before_the_next(diagnosing):
+    """2026-11-09: „Ne, neveikia" after a fix check — the caller hears it did not help."""
+    c = walk(diagnosing("healthy_to_router"), [*OTHERS_WORK_PHONE, "Išjungtas", "Padariau"])
+    c.say("Ne, neveikia")
+    assert "bet internetas vis dar neveikia" in c.replies[-1]

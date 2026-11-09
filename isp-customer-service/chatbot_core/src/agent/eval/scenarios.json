@@ -214,6 +214,32 @@
       }
     },
     {
+      "id": "S9b_step_did_not_help_is_said",
+      "phone": "+37060020109",
+      "desc": "Patikra parodė, kad žingsnis nepadėjo — klientas išgirsta tai ir tik tada kitą žingsnį (2026-11-09)",
+      "turns": [
+        "Labas, neveikia internetas",
+        "Vakar vakare pastebėjau",
+        "Taip",
+        "Ona, aš žmona sutartį sudariusio",
+        "Kompiuteryje veikia, telefone ne",
+        "Telefone",
+        "Taip, galiu",
+        "Išjungtas",
+        "Padariau",
+        "Ne, neveikia"
+      ],
+      "expect": {
+        "verdict_in": "healthy_to_router",
+        "reply_any": [
+          "vis dar neveikia"
+        ],
+        "reply_none": [
+          "užregistravau"
+        ]
+      }
+    },
+    {
       "id": "S4_dead_router_bridge",
       "phone": "+37060012353",
       "desc": "Miręs routeris -> tiltas. Prijungus PC ir telemetrijai nepasikeitus, NEGALIMA kaltinti routerio maitinimo — turi sakyti kad įrenginys nematomas / nepririštas. (Buvęs known_bug — dr_intro desync fix jį uždarė; dabar must-pass regresijos sargas.) (2026-10-12: neaiškūs atsakymai — „Galėtume kartu patikrinti“, „Vis tiek nedega“ — dabar patikslinami; po jų eina kliento aiškus atsakymas.)",
