@@ -31,24 +31,143 @@ HEADER = "CONTEXT CARD (the engine's truth for this reply — never re-ask what 
 
 def context_card(state, rt) -> str | None:
     """The card for this turn, or None when nothing is known yet."""
-    lines: list[str] = []
-    for section in (
-        _dialogue,
-        _ticket_dialogue,
-        _delivery,
-        _identification_notes,
-        _case_facts,
-        _tool_trouble,
-        _case_step,
-        _dialogue_state,
-        _plan_goal,
-        _recall_and_notes,
-    ):
-        lines += section(state, rt) or []
-    lines += _open_question(state, lines)
-    if not lines:
+    # Built in this order on purpose: several sections consume one-shot notes and mark the step
+    # as said, and later ones read those marks. Only the ORDER SHOWN below differs from it.
+    built = {
+        section: section(state, rt) or []
+        for section in (
+            _dialogue,
+            _ticket_dialogue,
+            _delivery,
+            _identification_notes,
+            _case_facts,
+            _case_closing,
+            _tool_trouble,
+            _case_step,
+            _dialogue_state,
+            _plan_goal,
+            _recall_and_notes,
+        )
+    }
+    story = case_story(state, rt)
+    this_reply = (
+        built[_ticket_dialogue]
+        + built[_identification_notes]
+        + built[_case_closing]
+        + built[_tool_trouble]
+        + built[_dialogue_state]
+        + built[_case_step]
+        + built[_plan_goal]
+    )
+    # The goal comes last, nearest the reply, and what the model only needs if it comes up is
+    # kept out of its way (2026-11-09).
+    this_reply += _open_question(state, this_reply)
+    blocks = (
+        ("JUST NOW:", built[_delivery] + built[_dialogue] + built[_recall_and_notes]),
+        ("THE CASE SO FAR (yours to explain; only the engine decides and registers):", story),
+        ("KNOWN, use only if it comes up:", built[_case_facts]),
+        ("THIS REPLY:", this_reply),
+    )
+    if not any(lines for _, lines in blocks):
         return None
-    return HEADER + "\n" + "\n".join(f"- {line}" for line in lines)
+    out = [HEADER]
+    for title, lines in blocks:
+        if lines:
+            out.append(title)
+            out += [f"- {line}" for line in lines]
+    return "\n".join(out)
+
+
+# --- what the speaker knows about the case ---------------------------------------------------
+
+
+def case_story(state, rt) -> list[str]:
+    """What was checked, tried and found, why this step, and what comes next.
+
+    Andrius (2026-11-09): the speaker should be able to explain how things went and why it asks
+    for something; only registering stays out of its hands. So every line is the engine's own
+    record in words the caller may hear: never fact names, branches or rules.
+    """
+    from ..fact_catalog import said_back
+
+    case = state.case
+    card = _active_card(state)
+    if card is None or state.closing.case_closed:
+        return []
+    out: list[str] = []
+    checked = [
+        words
+        for key in case.said
+        if not key.startswith("_") and (words := said_back(key, case.facts.get(key)))
+    ]
+    if checked:
+        out.append("What the caller told us: " + ", ".join(checked[-4:]) + ".")
+    tried = _tried(state)
+    if tried:
+        after = phrase("case.still_down") if case.facts.get("restored") == "no" else ""
+        out.append("What we tried: " + ", ".join(tried) + (f" — {after}" if after else "") + ".")
+    if case.fault in case.announced:
+        meaning = phrase_or(str(card.explain.get("conclusion") or ""), "")
+        if meaning:
+            out.append(f"What it means: {meaning}")
+    why = _why_this_step(state, card)
+    if why:
+        out.append(f"Why this step: {why}")
+    following = _following_step(state, card)
+    if following is not None and following.module == "escalate" and not following.run_when:
+        out.append("If this does not help: " + phrase(_handover_key(state)) + ".")
+    if not out:
+        return []
+    registered = "registered" if state.ticket.ticket_id else "NOT registered, never say it is"
+    out.append(f"Ticket: {registered}.")
+    out.append(
+        "Use this to explain when a step did not help, when the direction changes, or when "
+        "they ask why or what happened. Otherwise do not recite it."
+    )
+    return out
+
+
+def _active_card(state):
+    from ..contract import cards as catalog
+
+    card = catalog.card(getattr(state.case, "fault", None))
+    return card if card is not None and state.case.solution is not None else None
+
+
+def _tried(state) -> list[str]:
+    """The work actually done, never the questions: the same words the ticket gets."""
+    found: list[str] = []
+    for module in state.case.worked:
+        words = phrase_or(f"summary.did.{module}", "")
+        if words and words not in found:
+            found.append(words)
+    return found
+
+
+def _current_call(state, card):
+    steps = card.solution[state.case.solution].steps
+    return steps[state.case.step] if 0 <= state.case.step < len(steps) else None
+
+
+def _following_step(state, card):
+    steps = card.solution[state.case.solution].steps
+    index = state.case.step + 1
+    return steps[index] if 0 <= index < len(steps) else None
+
+
+def _why_this_step(state, card) -> str:
+    call = _current_call(state, card)
+    if call is None:
+        return ""
+    written = phrase_or(f"step_why.{call.module}", "")
+    if written:
+        return written
+    need = card.needs.get(state.case.awaiting) if state.case.awaiting else None
+    return phrase_or(str(need.why), "") if need is not None and need.why else ""
+
+
+def _handover_key(state) -> str:
+    return "case.next_colleague" if _callback_only(state) else "case.next_technician"
 
 
 # --- the turn is off the fault path ------------------------------------------------------
@@ -772,6 +891,13 @@ def _case_facts(state, rt) -> list[str]:
     if s.ticket.ticket_id:
         out.append(f"Ticket: {s.ticket.ticket_id}")
     out += _debt_facts(state, rt)
+    return out
+
+
+def _case_closing(state, rt) -> list[str]:
+    """How the case stands at its end: these lines tell the reply what to do."""
+    s = state
+    out: list[str] = []
     resolved_now = str((s.turn.plan or {}).get("rule") or "") == "case.resolved"
     if s.closing.case_closed and s.closing.is_complete and resolved_now:
         pass  # „veikia… viso gero": the PLAN GOAL says the result AND the goodbye (2026-10-13)

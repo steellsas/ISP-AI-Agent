@@ -545,10 +545,10 @@ def case_call(make_state, make_runtime):
 
 
 def test_s7_solved_shows_after_a_case_resolution(case_call):
-    from agent.speak.context_card import _case_facts
+    from agent.speak.context_card import _case_closing
 
     state, rt = case_call
     state.closing.case_closed = True
     state.closing.closed_reason = "resolved"
 
-    assert any(line.startswith("SOLVED") for line in _case_facts(state, rt))
+    assert any(line.startswith("SOLVED") for line in _case_closing(state, rt))
