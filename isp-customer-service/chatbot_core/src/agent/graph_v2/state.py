@@ -622,6 +622,14 @@ class CaseState(BaseModel):
     # 2026-10-02 klientas kompiuterio neturėjo, tiltas buvo praleistas, o tikete rašė
     # „prijungėm kompiuterį, pririšom, perkrovėm prievadą" (7e banga).
     worked: list[str] = Field(default_factory=list)
+    # The steps that actually ran, as `module:device` (stage 4, 2026-11-11): when the branch is
+    # chosen again mid-fix, what was already done is not asked of the caller a second time.
+    done_steps: list[str] = Field(default_factory=list)
+    # How many times each card's branch was chosen again (stage 4): at most twice, then a new
+    # fact is only recorded — the case cannot go round in circles.
+    rebranched: dict[str, int] = Field(default_factory=dict)
+    # The step skipped as already done after a rebranch: its own check is skipped with it.
+    skipped_done: int = -1
     # Ar išvada („padarėm tai ir tai, todėl registruojam") jau pasakyta. Andrius (2026-10-02):
     # *„klientas atsimins galutinį pokalbį — svarbi informacija, ką agentas padėjo ir ko
     # nepadarė."* Ji sakoma VIENĄ kartą, savo ėjimu, prieš registraciją.

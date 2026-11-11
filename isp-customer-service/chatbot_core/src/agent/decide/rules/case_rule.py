@@ -538,28 +538,101 @@ def _still_on_it(state: Any) -> bool:
     return len(words) <= 2 and all(w in vocab("barge_consent_tokens") for w in words)
 
 
+MAX_REBRANCHES = 2
+
+
 def _branch_changed(state: Any, rt: Any, facts: dict[str, str]) -> bool:
-    """A late answer no longer fits the branch being walked, and nothing was done in it yet.
+    """The facts now lead to another branch of the same card than the one being walked.
 
     „Kompiuteryje veikia" said after the engine had assumed one device only: the branch is
-    chosen again from what the caller said (live 2026-11-04). Once something was DONE, the
-    branch stays — the new fact is only recorded."""
+    chosen again from what the caller said (live 2026-11-04). Since stage 4 (2026-11-11) this
+    holds after something was DONE too — „telefonas" → Wi-Fi did not help → „niekas neveikia"
+    goes to the router, not on through the phone's ladders. What already ran is skipped in the
+    new branch (`_done_before`), and a card is re-branched at most `MAX_REBRANCHES` times."""
     if state.case.fault is None or state.case.solution is None:
-        return False
-    if state.case.worked or state.case.did or state.case.step > _readiness_steps(state):
         return False
     card = catalog.card(state.case.fault)
     if card is None:
         return False
+    from ...case import branch_of
     from ...contract.schema import Condition
 
-    when = card.solution[state.case.solution].when
-    if all(Condition.parse(t).holds(facts) is not False for t in when):
+    current = state.case.solution
+    broken = any(Condition.parse(t).holds(facts) is False for t in card.solution[current].when)
+    found = branch_of(card, facts, ledger.unavailable(state))
+    target = found[0] if found else None
+    if not broken and (target is None or target == current):
         return False
-    rt.tracer.emit("case", move="rebranch", fault=state.case.fault, was=state.case.solution)
+    count = state.case.rebranched.get(card.fault, 0)
+    if count >= MAX_REBRANCHES:
+        rt.tracer.emit("case", move="rebranch_limit", fault=card.fault, was=current, to=target)
+        return False
+    state.case.rebranched[card.fault] = count + 1
+    rt.tracer.emit("case", move="rebranch", fault=state.case.fault, was=current, to=target)
     state.case.solution, state.case.step = None, 0
     state.case.awaiting, state.case.step_said = None, -1
+    state.case.retrying = False
     return True
+
+
+def _cause_fact(call: Any) -> str | None:
+    """`fixes: pack.healthy_to_router.cause.router_reboot` → `tried_router_reboot`."""
+    fixes = getattr(call, "fixes", None)
+    return f"tried_{fixes.rsplit('.', 1)[-1]}" if fixes else None
+
+
+def _fix_did_not_help(state: Any, rt: Any, call: Any, *, by_words: bool = False) -> str:
+    """A fix check came back negative (stage 4, 2026-11-11).
+
+    What did not help becomes a FACT the cards can reason over (`tried_<cause>=failed`), and
+    the case is judged again before the next step: the card may rule itself out, or the facts
+    may now lead to another branch. Only when neither happens does the card go on."""
+    rt.tracer.emit("case", move="fix_check_negative", fault=state.case.fault)
+    fact = _cause_fact(call)
+    if fact and state.case.facts.get(fact) != "failed":
+        state.case.facts[fact] = "failed"
+        rt.tracer.emit("facts", source="engine", changed={fact: "failed"})
+    facts = ledger.facts_of(state)
+    if _ruled_out_now(state, facts) or _branch_changed(state, rt, facts):
+        if state.case.solution is not None:  # ruled out: the card is dropped
+            rt.tracer.emit("case", move="ruled_out", fault=state.case.fault)
+            state.case.fault, state.case.solution, state.case.step = None, None, 0
+            state.case.awaiting, state.case.awaiting_probe = None, False
+            state.case.guide_step, state.case.guide_said = 0, -1
+        if by_words:
+            state.case.moved_on_turn = state.dialog.turn_count
+        return "reopen"
+    return _advance(state, rt, by_words=by_words)
+
+
+def _step_key(call: Any) -> str:
+    return f"{call.module}:{(call.args or {}).get('device', '')}"
+
+
+def _mark_done(state: Any, call: Any) -> None:
+    if call is not None and call.module != "verify":
+        key = _step_key(call)
+        if key not in state.case.done_steps:
+            state.case.done_steps.append(key)
+
+
+def _done_before(state: Any, call: Any, facts: dict[str, str]) -> bool:
+    """After a rebranch: was this step already done in this call? Then the new branch passes
+    over it — the caller is not asked to reconnect the same phone twice. A check goes with
+    the step it checks, and a fix check whose fix already failed is not run again."""
+    if not state.case.rebranched.get(state.case.fault or ""):
+        return False
+    if call.module == "verify":
+        fact = _cause_fact(call)
+        if fact and facts.get(fact) == "failed":
+            return True
+        return state.case.skipped_done == state.case.step - 1
+    if _is_escalate(call) or catalog.module(call.module) is None:
+        return False
+    spec = catalog.module(call.module)
+    if spec.kind not in ("action", "instruct"):
+        return False  # a question is passed over by its answer, not by having been asked
+    return _step_key(call) in state.case.done_steps
 
 
 def _hear_late_answer(state: Any, rt: Any) -> None:
@@ -576,17 +649,6 @@ def _hear_late_answer(state: Any, rt: Any) -> None:
             state.case.assumed.pop(fact, None)
             state.case.unavailable = [f for f in state.case.unavailable if f != fact]
             rt.tracer.emit("case", move="late_answer", fact=fact, value=value)
-
-
-def _readiness_steps(state: Any) -> int:
-    """How many asks at the start of the branch only prepare it (`wifi_ready`) — nothing done."""
-    count = 0
-    for call in _solution_steps(state):
-        spec = catalog.module(call.module)
-        if spec is None or spec.kind != "ask":
-            break
-        count += 1
-    return count
 
 
 def _understood(state: Any) -> str:
@@ -829,7 +891,7 @@ def _absorb(state: Any, rt: Any, facts: dict[str, str]) -> str:
         if said == "no":
             rt.tracer.emit("case", move="check_denied_by_caller", step=state.case.step)
             if getattr(call, "fixes", None):
-                return _advance(state, rt)  # the fix check found nothing — the card goes on
+                return _fix_did_not_help(state, rt, call)  # the fix check found nothing
             return _retry_or_give_up(state, rt)
         if said is None:
             return _answer_was_unclear(state, rt, call)
@@ -857,9 +919,8 @@ def _absorb(state: Any, rt: Any, facts: dict[str, str]) -> str:
             return "waiting"
         if getattr(call, "fixes", None):
             # The fix check did not bring the line back: that is information, not a spent
-            # card — the card goes on to its next step (v3 stage 4).
-            rt.tracer.emit("case", move="fix_check_negative", fault=state.case.fault)
-            return _advance(state, rt)
+            # card — the case is judged again, and the card goes on (v3 stage 4).
+            return _fix_did_not_help(state, rt, call)
         return _retry_or_give_up(state, rt)
     if _skip_now(call, facts):
         # It stopped applying while it was out („Neturiu kompiuterio" to „įkiškite laidą į
@@ -955,8 +1016,7 @@ def _absorb(state: Any, rt: Any, facts: dict[str, str]) -> str:
                 state.case.cause = call.fixes
                 rt.tracer.emit("case", move="fixed_by", fault=state.case.fault, cause=call.fixes)
                 return "solved"
-            rt.tracer.emit("case", move="fix_check_negative", fault=state.case.fault)
-            return _advance(state, rt, by_words=True)
+            return _fix_did_not_help(state, rt, call, by_words=True)
         if awaited == "restored" and facts[awaited] == "no":
             # Their own answer says it did not work: the card decides what that means.
             return _retry_or_give_up(state, rt)
@@ -2019,6 +2079,8 @@ def _advance(state: Any, rt: Any, *, by_words: bool = False, ran: bool = True) -
         state.case.did.append(done.module)
     if ran and done is not None and done.module not in state.case.worked:
         state.case.worked.append(done.module)
+    if ran:
+        _mark_done(state, done)
     _queue_reflection(state)
     state.case.step += 1
     state.case.awaiting = None
@@ -2553,8 +2615,10 @@ def _module_plan_inner(state: Any, rt: Any, call, facts: dict[str, str], *, rule
     if settled:
         facts = ledger.facts_of(state)
     insists = _confirms_hypothesis(call) and state.case.step_said != state.case.step
+    done_before = _done_before(state, call, facts)
     already = (
         settled
+        or done_before
         or _skip_now(call, facts)
         or _already_done(call, facts)
         or (
@@ -2575,6 +2639,9 @@ def _module_plan_inner(state: Any, rt: Any, call, facts: dict[str, str], *, rule
         # "esu prie routerio"). The ORDER of the fix is untouched: only what is already true is
         # passed over.
         rt.tracer.emit("case", move="known", module=call.module, fact=step.awaits)
+        if done_before:
+            rt.tracer.emit("case", move="done_before", module=call.module)
+            state.case.skipped_done = state.case.step
         _advance(state, rt, ran=False)
         following = _current(state)
         if following is not None:
