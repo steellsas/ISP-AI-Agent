@@ -571,6 +571,9 @@ class CaseState(BaseModel):
     # (2026-09-23), because "taip, esu prie routerio" read as a done-report.
     guide_said: int = -1
     step_said: int = -1
+    # What the last step mark replaced ({turn, step, guide, words, asked}): a reply cut before
+    # the caller heard it gives the marks back (`execute/step.unsay_unheard_step`).
+    said_mark: dict[str, Any] | None = None
     # Kuris žingsnis gavo NEAIŠKŲ atsakymą. Hipotezę patvirtinantis klausimas („ar lemputė
     # dega?") užskaitomas tik tada, kai klientas iš tikrųjų pasako, ką mato: „taip, padariau"
     # ar bendras „gerai" nėra atsakymas, o 2026-10-01 gyvai kaip tik taip buvo peršokta prie

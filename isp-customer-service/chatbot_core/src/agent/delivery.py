@@ -32,6 +32,9 @@ def apply_delivery(state: Any, rt: Any, sentences: list[str], delivered: int) ->
             msg["content"] = (heard + " —") if heard else "—"
             break
     tail = _owe_required(state, rt, heard, tail)
+    from .execute.step import unsay_unheard_step
+
+    unsay_unheard_step(state, rt, heard)
     state.voice.undelivered_tail = tail or None
     # Andrius 2026-08-26: the agent must NEVER believe it asked a question
     # the caller could not hear. When the "?" lives only in the unheard

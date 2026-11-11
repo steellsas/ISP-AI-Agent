@@ -282,6 +282,9 @@ def on_turn_cancelled(state: Any, rt: Any, spoken_text: str) -> None:
     if key and state.diagnosis.evidence_ask_counts.get(key, 0) > 0:
         state.diagnosis.evidence_ask_counts[key] -= 1
     rt.tracer.emit("turn_cancelled", spoken=spoken[:160])
+    from ..execute.step import unsay_unheard_step
+
+    unsay_unheard_step(state, rt, spoken)
 
 
 def record_llm_stats(state: Any, rt: Any, output: str | None = None) -> None:

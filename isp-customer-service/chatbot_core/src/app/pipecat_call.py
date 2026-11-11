@@ -632,6 +632,9 @@ class EngineProcessor(FrameProcessor):
         self._checkin_task = None
         self._hangup_task = None
         self._checked_in = False
+        # The running reply was cut before the caller heard a word of it: their next words
+        # are the rest of the same utterance (`AgentSession.rewind_cut_turn`).
+        self._cut_unheard = False
 
     async def process_frame(self, frame: Frame, direction: FrameDirection):
         await super().process_frame(frame, direction)
@@ -644,6 +647,9 @@ class EngineProcessor(FrameProcessor):
             if text and not self._session.is_complete:  # after the goodbye: no more turns
                 self._task = self.create_task(self._reply(text, self._task))
         elif isinstance(frame, InterruptionFrame):
+            running = self._task is not None and not self._task.done()
+            if not self._tracker.spoken and (running or self._tracker.unheard()):
+                self._cut_unheard = True
             self._stop.set()  # the running reply (if any) stops speaking
             if self._task is not None and not self._task.done():
                 self._session.request_cancel()
@@ -743,6 +749,11 @@ class EngineProcessor(FrameProcessor):
         for task in (previous, self._delivery_task):
             if task is not None and not task.done():
                 await task  # one reply at a time; the last delivery report lands first
+        if self._cut_unheard:
+            self._cut_unheard = False
+            before = await asyncio.to_thread(self._session.rewind_cut_turn)
+            if before:
+                text = f"{before} {text}"
         stop = self._stop = threading.Event()
         self._checked_in = False
         self._tracker.start()
