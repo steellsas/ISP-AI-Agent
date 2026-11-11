@@ -113,6 +113,8 @@ identification:
   anamnesis_last_used: "O kada paskutinį kartą internetas tikrai veikė?"
   # G3 (2026-08-20): aktyvus pasiteiravimas po tylos, kai klientas kažką daro.
   checkin: "Kaip sekasi — ar pavyksta?"
+  # Tyla UŽDUOTIES metu (~15 s): kad tyla neskambėtų kaip nutrūkęs ryšys (2026-11-11).
+  hold_on: "Neskubėkite — aš čia, laukiu."
   # Tyla po KLAUSIMO (ne po užduoties): klientas neturi ką daryti — gal negirdi (F4).
   checkin_question: "Ar mane girdite?"
   # Problemos vartai (2026-08-21): po kelių bandymų be aiškios mūsų srities problemos.
@@ -713,7 +715,7 @@ modules:
   device_restart:
     again: "Išjunkite įrenginį ir vėl įjunkite — pasakykite, kai įsijungs."
   wifi_reconnect:
-    again: "Pabandykite iš Wi-Fi sąrašo vėl pasirinkti savo tinklą ir įvesti slaptažodį nuo routerio lipduko — pasakykite, kas parašyta."
+    again: "Pabandykite iš Wi-Fi sąrašo vėl pasirinkti savo tinklą ir įvesti slaptažodį nuo routerio lipduko. Pasakykite, kas parašyta."
   other_devices:
     question: "Ryšio šiame įrenginyje atkurti kol kas nepavyko. Ar turite kitų įrenginių, kurie jungiasi prie interneto — ir ar juose internetas veikia?"
     again: "Ar namuose turite dar kokį įrenginį su internetu — kompiuterį, planšetę, kitą telefoną? Ar jame internetas veikia?"
@@ -740,7 +742,7 @@ equipment:
       power: "Ištraukite maitinimo laidą iš paties routerio, palaukite penkias sekundes ir įkiškite atgal."
       # Pakartojimas su PRIEŽASTIMI (G5, gyvai 2026-09-28): variklis matė, kad įrenginys iš linijos
       # nedingo, bet klientui nuskambėdavo ta pati instrukcija kitais žodžiais — be jokio paaiškinimo.
-      power.no_flap: "Linijoje nematome, kad routeris būtų buvęs išjungtas — galbūt perkrautas buvo ne tas įrenginys arba tik mygtuku. Pabandykime dar kartą: ištraukite maitinimo laidą iš pačios rozetės, palaukite penkias sekundes ir įkiškite atgal."
+      power.no_flap: "Linijoje nematome, kad routeris būtų buvęs išjungtas — galbūt perkrautas buvo ne tas įrenginys arba tik mygtuku. Pabandykime dar kartą. Ištraukite maitinimo laidą iš pačios rozetės, palaukite penkias sekundes ir įkiškite atgal."
     cable:
       reseat: "Ištraukite iš sienos ateinantį laidą iš routerio ir tvirtai įkiškite atgal."
     reach: "Ar galite dabar prieiti prie routerio?"
@@ -760,7 +762,7 @@ equipment:
     reach: "Ar galite dabar pasižiūrėti telefone?"
     check:
       wifi: "Telefone atidarykite nustatymus ir pažiūrėkite, ar Wi-Fi įjungtas ir prisijungęs prie jūsų namų tinklo."
-      reconnect: "Telefone paspauskite ant savo namų tinklo, pasirinkite „pamiršti šį tinklą“ ir prisijunkite iš naujo su slaptažodžiu."
+      reconnect: "Telefone paspauskite ant savo namų tinklo ir pasirinkite „pamiršti šį tinklą“. Tada prisijunkite iš naujo su slaptažodžiu."
     wifi_ready: "Pirmiausia reikia patikrinti, ar telefonas prisijungęs prie jūsų Wi-Fi. Ar galite dabar pasižiūrėti telefono nustatymuose?"
     again:
       wifi_ready: "Ar galite dabar atsidaryti telefono nustatymus — krumpliaračio ženkliukas?"
@@ -769,9 +771,9 @@ equipment:
     wifi_state: "Atidarykite telefono nustatymus — „Nustatymai“ arba „Settings“ — ir suraskite Wi-Fi. Ką ten rašo — Wi-Fi įjungtas ar išjungtas?"
     wifi_enable: "Įjunkite telefone Wi-Fi ir patikrinkite, kad neįjungtas lėktuvo režimas."
     wifi_network: "Ar po Wi-Fi rašo, prie kokio tinklo prisijungta? Ar tai jūsų tinklas — toks pat pavadinimas kaip ant routerio lipduko?"
-    wifi_join_own: "Wi-Fi sąraše pasirinkite savo tinklą — pavadinimas ant routerio lipduko; stovint prie routerio jis stipriausias."
-    wifi_join_same: "Telefone Wi-Fi sąraše pasirinkite tą patį tinklą, prie kurio prisijungęs veikiantis įrenginys, ir įveskite slaptažodį nuo routerio lipduko."
-    wifi_reconnect: "Pabandykime prisijungti iš naujo: Wi-Fi sąraše paspauskite savo tinklą, pasirinkite „Pamiršti“ ir prisijunkite vėl su slaptažodžiu nuo routerio lipduko."
+    wifi_join_own: "Wi-Fi sąraše pasirinkite savo tinklą — pavadinimas ant routerio lipduko. Stovint prie routerio jis stipriausias."
+    wifi_join_same: "Telefone Wi-Fi sąraše pasirinkite tą patį tinklą, prie kurio prisijungęs veikiantis įrenginys. Slaptažodį įveskite nuo routerio lipduko."
+    wifi_reconnect: "Pabandykime prisijungti iš naujo. Wi-Fi sąraše paspauskite savo tinklą ir pasirinkite „Pamiršti“. Tada prisijunkite vėl su slaptažodžiu nuo routerio lipduko."
     device_restart: "Perkraukite telefoną — išjunkite ir vėl įjunkite."
     offer_fix: "Iš mūsų pusės internetas veikia — kituose įrenginiuose jis yra, tad bėda greičiausiai pačiame telefone. Galime pasiūlyti mokamą meistro pagalbą, kainą pasakys meistras. Užregistruoti?"
     how:
@@ -782,7 +784,7 @@ equipment:
   android:
     how:
       wifi_state: "Nubraukite pirštu nuo ekrano viršaus žemyn — matysite mygtukus. Wi-Fi mygtukas su bangelėmis: jei jis pilkas, paspauskite, kad nusidažytų. Ten pat patikrinkite, ar neįjungtas lėktuvėlis."
-      wifi_network: "Nubraukite nuo ekrano viršaus žemyn ir palaikykite nuspaudę Wi-Fi mygtuką — atsidarys sąrašas, viršuje bus tinklas, prie kurio prisijungta."
+      wifi_network: "Nubraukite nuo ekrano viršaus žemyn ir palaikykite nuspaudę Wi-Fi mygtuką. Atsidarys sąrašas — viršuje bus tinklas, prie kurio prisijungta."
       wifi_reconnect: "Wi-Fi sąraše paspauskite savo tinklą, tada krumpliaratį ir „Pamiršti“ (Forget). Paspauskite tinklą vėl ir įveskite slaptažodį nuo routerio lipduko."
       device_restart: "Palaikykite nuspaudę šoninį mygtuką ir pasirinkite „Paleisti iš naujo“ (Restart)."
   iphone:
@@ -799,12 +801,12 @@ equipment:
     wifi_enable: "Įjunkite Wi-Fi ir patikrinkite, kad neįjungtas lėktuvo režimas."
     wifi_network: "Ar rašo, prie kokio tinklo prisijungta? Ar tai jūsų tinklas — toks pat pavadinimas kaip ant routerio lipduko?"
     wifi_join_own: "Wi-Fi sąraše pasirinkite savo tinklą — pavadinimas ant routerio lipduko; arčiausiai routerio jis stipriausias."
-    wifi_join_same: "Wi-Fi sąraše pasirinkite tą patį tinklą, prie kurio prisijungęs veikiantis įrenginys, ir įveskite slaptažodį nuo routerio lipduko."
-    wifi_reconnect: "Pabandykime prisijungti iš naujo: Wi-Fi sąraše paspauskite savo tinklą, pasirinkite „Pamiršti“ ir prisijunkite vėl su slaptažodžiu nuo routerio lipduko."
+    wifi_join_same: "Wi-Fi sąraše pasirinkite tą patį tinklą, prie kurio prisijungęs veikiantis įrenginys. Slaptažodį įveskite nuo routerio lipduko."
+    wifi_reconnect: "Pabandykime prisijungti iš naujo. Wi-Fi sąraše paspauskite savo tinklą ir pasirinkite „Pamiršti“. Tada prisijunkite vėl su slaptažodžiu nuo routerio lipduko."
     device_restart: "Perkraukite įrenginį — išjunkite ir vėl įjunkite."
     offer_fix: "Iš mūsų pusės internetas veikia — kituose įrenginiuose jis yra, tad bėda greičiausiai pačiame įrenginyje. Galime pasiūlyti mokamą meistro pagalbą, kainą pasakys meistras. Užregistruoti?"
     how:
-      wifi_state: "Atidarykite nustatymus — telefone tai krumpliaratis, kompiuteryje tinklo ženkliukas prie laikrodžio — ir suraskite „Wi-Fi“. Jis turi būti įjungtas."
+      wifi_state: "Atidarykite nustatymus — telefone tai krumpliaratis, kompiuteryje tinklo ženkliukas prie laikrodžio. Ten suraskite „Wi-Fi“. Jis turi būti įjungtas."
       wifi_network: "Nustatymuose atidarykite „Wi-Fi“ — ten matysite tinklą, prie kurio prisijungta."
       wifi_reconnect: "Nustatymuose atidarykite „Wi-Fi“, paspauskite savo tinklą ir pasirinkite „Pamiršti“. Tada paspauskite jį vėl ir įveskite slaptažodį nuo routerio lipduko."
   computer:
@@ -822,8 +824,8 @@ equipment:
     wifi_enable: "Įjunkite kompiuteryje Wi-Fi ir patikrinkite, kad neįjungtas lėktuvo režimas."
     wifi_network: "Ar kompiuteris prisijungęs prie jūsų tinklo — to, kurio pavadinimas užrašytas ant routerio lipduko?"
     wifi_join_own: "Wi-Fi sąraše pasirinkite savo tinklą — pavadinimas ant routerio lipduko; arčiausiai routerio jis stipriausias."
-    wifi_join_same: "Kompiuteryje paspauskite tinklo ženkliuką ir pasirinkite tą patį tinklą, prie kurio prisijungęs veikiantis įrenginys; slaptažodis — ant routerio lipduko."
-    wifi_reconnect: "Pabandykime prisijungti iš naujo: pamirškite savo Wi-Fi tinklą ir prisijunkite vėl su slaptažodžiu nuo routerio lipduko."
+    wifi_join_same: "Kompiuteryje paspauskite tinklo ženkliuką. Pasirinkite tą patį tinklą, prie kurio prisijungęs veikiantis įrenginys. Slaptažodis — ant routerio lipduko."
+    wifi_reconnect: "Pabandykime prisijungti iš naujo. Pamirškite savo Wi-Fi tinklą ir prisijunkite vėl su slaptažodžiu nuo routerio lipduko."
     cable_seated: "Ar laidas tarp kompiuterio ir routerio tvirtai įkištas abiejuose galuose — routeryje į LAN lizdą?"
     cable_reseat: "Ištraukite laidą ir tvirtai įkiškite atgal — į kompiuterį ir į routerio LAN lizdą, kol spragtelės."
     nic_enabled: "Ar kompiuteryje laidinė tinklo jungtis įjungta ir rodo, kad prisijungta?"
@@ -833,13 +835,13 @@ equipment:
     how:
       wifi_state: "Pažiūrėkite prie laikrodžio — ten yra tinklo ženkliukas. Paspauskite jį: Wi-Fi turi būti įjungtas, lėktuvo režimas — išjungtas."
       wifi_network: "Paspauskite tinklo ženkliuką prie laikrodžio — sąraše bus pažymėta, prie kurio tinklo prisijungta."
-      wifi_reconnect: "Paspauskite tinklo ženkliuką prie laikrodžio, atsijunkite nuo savo tinklo ir prisijunkite vėl su slaptažodžiu nuo routerio lipduko."
+      wifi_reconnect: "Paspauskite tinklo ženkliuką prie laikrodžio ir atsijunkite nuo savo tinklo. Tada prisijunkite vėl su slaptažodžiu nuo routerio lipduko."
       nic_enabled: "Atidarykite tinklo nustatymus ir suraskite laidinę jungtį (Ethernet) — ji turi būti įjungta ir rodyti „prijungta“."
       device_restart: "Išjunkite kompiuterį per meniu ir vėl įjunkite."
   windows:
     how:
       wifi_state: "Apačioje dešinėje, prie laikrodžio, paspauskite tinklo ženkliuką. Wi-Fi mygtukas turi būti mėlynas, lėktuvo režimas — išjungtas."
-      wifi_network: "Paspauskite tinklo ženkliuką prie laikrodžio, tada rodyklę prie Wi-Fi — prie tinklo, prie kurio prisijungta, parašyta „Prisijungta“ (Connected)."
+      wifi_network: "Paspauskite tinklo ženkliuką prie laikrodžio, tada rodyklę prie Wi-Fi. Prie tinklo, prie kurio prisijungta, parašyta „Prisijungta“ (Connected)."
       wifi_reconnect: "Nustatymai → Tinklas ir internetas → Wi-Fi → Tvarkyti žinomus tinklus: prie savo tinklo „Pamiršti“ (Forget). Tada prisijunkite vėl su slaptažodžiu nuo lipduko."
       nic_enabled: "Paspauskite Windows mygtuką, parašykite ncpa.cpl ir Enter. Jei Ethernet ženkliukas pilkas — paspauskite jį dešiniu pelės mygtuku ir „Įjungti“ (Enable)."
       device_restart: "Pradžia → maitinimo ženkliukas → „Paleisti iš naujo“ (Restart)."
