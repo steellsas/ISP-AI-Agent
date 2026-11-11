@@ -129,8 +129,15 @@ def stream_reply(state: Any, rt: Any, owner: str):
         # The user message is already on the history (appended up front, so scripted
         # turns record it too); the prompt builds from history.
         messages = build_messages(state, rt, owner)
+        # Read AFTER the card was built: a step that waits for the caller drops the check.
+        fallback = ((state.turn.plan or {}).get("say") or {}).get("fallback")
         try:
-            content = yield from _stream_tokens(state, rt, messages)
+            if fallback:
+                content = _checked(state, rt, messages, fallback)
+                if content:
+                    yield content
+            else:
+                content = yield from _stream_tokens(state, rt, messages)
         except _Cancelled:
             return
         except Exception as e:  # pragma: no cover - provider/transport failures
@@ -162,11 +169,35 @@ def stream_reply(state: Any, rt: Any, owner: str):
     yield rt.config.timeout_message
 
 
+def _checked(state: Any, rt: Any, messages: list[dict], fallback: str) -> str:
+    """A guided step the speaker worded: held until the engine checked it kept the step.
+
+    Held, not streamed: once a sentence is heard it cannot be taken back, and a reply that lost
+    the step is replaced whole by the written words. The cost is the first sentence waiting for
+    the last (~2 short sentences)."""
+    from .step_check import lost
+
+    tokens = _stream_tokens(state, rt, messages, held=True)
+    while True:
+        try:
+            next(tokens)
+        except StopIteration as done:
+            reply = done.value or ""
+            break
+    step = (((state.turn.plan or {}).get("say") or {}).get("text") or "").strip()
+    why = lost(reply, step)
+    if why is None:
+        rt.tracer.emit("case", move="step_phrased", chars=len(reply))
+        return reply
+    rt.tracer.emit("case", move="step_phrased_rejected", why=why, said=reply[:200])
+    return fallback
+
+
 class _Cancelled(Exception):
     """A barge-in closed the stream mid-generation."""
 
 
-def _stream_tokens(state: Any, rt: Any, messages: list[dict]):
+def _stream_tokens(state: Any, rt: Any, messages: list[dict], *, held: bool = False):
     """Yield the reply's tokens and return the final text. Manual consumption instead of
     `yield from`: the cancel flag is checked BETWEEN TOKENS — closing the inner
     generator closes the LLM HTTP stream, so the generation itself stops (PR3)."""
@@ -213,7 +244,8 @@ def _stream_tokens(state: Any, rt: Any, messages: list[dict]):
         if rt.cancel.is_set():
             with suppress(Exception):
                 inner.close()
-            on_turn_cancelled(state, rt, "".join(streamed))
+            # A held reply (`_checked`) was never heard, however much of it was generated.
+            on_turn_cancelled(state, rt, "" if held else "".join(streamed))
             raise _Cancelled
         if isinstance(token, str):
             token = guard.feed(token)

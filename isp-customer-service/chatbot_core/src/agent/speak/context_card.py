@@ -497,6 +497,8 @@ def _case_step(state, rt) -> list[str]:
     if dialogue.choose(state).move == dialogue.WAIT and state.case.step_said == state.case.step:
         # They are on their way / still doing it: the step waits, and saying it again under
         # „palauksiu" was the live 2026-10-12 mix-up („palauksiu… pažiūrėkite į panelę").
+        # Nothing of the step is said, so nothing to check it against (`speak.node._checked`).
+        say["fallback"] = None
         return ["THE STEP WAITS for them — do not say it again and give no new step."]
     out: list[str] = []
     if goal:

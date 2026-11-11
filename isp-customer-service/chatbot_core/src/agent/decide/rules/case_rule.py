@@ -1894,6 +1894,9 @@ def _say_as_written(state: Any, step: Any, rt: Any = None) -> bool:
         # A guided fix on the caller's own device always says the catalogue's words: the model
         # invented a symbol to look for there (live 2026-11-04).
         why = "off"
+    elif _phrased(state, step):
+        # …unless the speaker words it and the engine checks it kept the step (2026-11-10).
+        why = "phrased"
     elif step.kind not in ("ask", "instruct"):
         why = f"kind={step.kind}"
     elif state.case.step_said == state.case.step:
@@ -2711,7 +2714,9 @@ def _module_plan_inner(state: Any, rt: Any, call, facts: dict[str, str], *, rule
             # The same step again, in OTHER written words: a simpler question, then where to tap
             # (Andrius, 2026-11-05: „pasitikslinti galima tą pačią info kitokiais klausimais").
             rt.tracer.emit("case", move="said_differently", module=call.module, at=state.case.waits)
-            return _written_plan(state, rt, call, step, variant, rule)
+            if not _phrased(state, step):
+                return _written_plan(state, rt, call, step, variant, rule)
+            asked = variant
     if (asked or step.text) and _say_as_written(state, step, rt):
         return _written_plan(state, rt, call, step, asked, rule)
     return TurnPlan(
@@ -2727,8 +2732,24 @@ def _module_plan_inner(state: Any, rt: Any, call, facts: dict[str, str], *, rule
             # Kortelės paprašytos gilesnės žinios keliauja su ŠIO žingsnio planu: jei žingsnį perėmė
             # kitas modulis (praleistas, jau padarytas), poreikis eina su juo, ne su šiuo.
             knowledge_need=call.knowledge_need,
+            fallback=_written_words(state, step, asked) if _phrased(state, step) else None,
         ),
         awaiting=step.awaits,
+    )
+
+
+def _phrased(state: Any, step: Any) -> bool:
+    """Does the speaker word this guided step itself, checked by the engine?
+
+    Live 2026-11-10: the written words went out the same whatever the caller had just said
+    („palaukit", „kurį tinklą?"), with the same prefix and tail each turn. The speaker sees the
+    case and the moment; the engine still decides the step and checks the reply kept it."""
+    from ...contract import limits
+
+    return (
+        bool(limits.get("phrase_guided_steps"))
+        and _guided(state)
+        and step.kind in ("ask", "instruct")
     )
 
 

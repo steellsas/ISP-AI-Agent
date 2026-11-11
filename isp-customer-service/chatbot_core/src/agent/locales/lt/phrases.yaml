@@ -1011,14 +1011,14 @@ evidence:
     rebooted: {"yes": "routerį jau perkrovėte", "no": "routerio dar neperkrovėte"}
     recent_events: {"yes": "neseniai buvo kažkas su elektra ar laidais", "no": "nieko neįvyko"}
     restored: {"yes": "internetas veikia", "no": "internetas vis dar neveikia"}
-    wifi_network: {own: "prisijungta prie jūsų tinklo", other: "prisijungta prie kito tinklo"}
+    wifi_network: {own: "prisijungta prie jūsų tinklo", other: "neprisijungta prie jūsų tinklo"}
     wifi_on: {"yes": "Wi-Fi įjungtas", "no": "Wi-Fi išjungtas"}
   fact_value:
     same_network: {"yes": "tas pats tinklas", "no": "buvo kitas tinklas"}
     bridge_agreed: {"yes": "jums tinka", "no": "jums netinka"}
     fail_scope: {all: "visuose įrenginiuose", one: "tik viename įrenginyje (kituose veikia)", single: "vienintelis įrenginys"}
     wifi_on: {"yes": "Wi-Fi įjungtas", "no": "Wi-Fi buvo išjungtas"}
-    wifi_network: {own: "prisijungęs prie savo tinklo", other: "buvo prisijungęs ne prie savo tinklo"}
+    wifi_network: {own: "prisijungęs prie savo tinklo", other: "buvo neprisijungęs prie savo tinklo"}
     cable_seated: {"yes": "laidas įkištas", "no": "laidas buvo neįkištas"}
     nic_enabled: {"yes": "tinklo jungtis įjungta", "no": "tinklo jungtis buvo išjungta"}
     fix_wanted: {"yes": "prašo mokamos meistro pagalbos", "no": "pagalbos atsisakė"}
