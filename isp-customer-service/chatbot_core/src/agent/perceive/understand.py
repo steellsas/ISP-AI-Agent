@@ -101,6 +101,15 @@ def _knowledge_map() -> tuple[str, list[str]]:
     return listing, sources
 
 
+def _may_ask(utterance: str) -> bool:
+    """Could this turn be the caller asking us something? Generous on purpose: a „?" from the
+    STT, or a question by its words — a missed question loses its document, an extra one only
+    costs the list."""
+    from .detectors import is_real_question
+
+    return "?" in (utterance or "") or is_real_question(utterance)
+
+
 def _system(
     anchor: str,
     needs: str,
@@ -109,6 +118,8 @@ def _system(
     step_options: dict[str, str] | None = None,
     ticket_stage: str | None = None,
     problem_options: dict[str, str] | None = None,
+    *,
+    with_knowledge: bool = True,
 ) -> str:
     """Render the merged perception prompt from prompts/sensors/*.md (R4:
     understanding + step classification in ONE call; R5: instructions live in
@@ -128,7 +139,10 @@ def _system(
     # (`ticket_stage`) klausimas yra uždaras — vardas, laikas, telefonas — ir 17 papildomų eilučių
     # promptą tik praskiedžia. Išmatuota: su jomis D5 paskutinis „Ačiū, viso gero" nustojo būti
     # skaitomas kaip atsakymas („bet kada"), ir tiketas nebeįvyko (2026-09-25).
-    listing, _sources = ("", []) if ticket_stage else _knowledge_map()
+    #
+    # Ir tik tada, kai klientas gali KLAUSTI: ~4 tūkst. simbolių sąrašas eidavo su kiekvienu „taip"
+    # ir „neveikia" (2026-11-11: ~1/3 prompto) — atsakymui jo niekada nereikia.
+    listing, _sources = ("", []) if ticket_stage or not with_knowledge else _knowledge_map()
     if listing:
         extra_json += ', "knowledge": int|null'
         extra_rules += "\n" + load_node_prompt("sensors/knowledge_route").replace(
@@ -194,6 +208,7 @@ def understand(
                     step_options,
                     ticket_stage=ticket_stage,
                     problem_options=problem_options,
+                    with_knowledge=_may_ask(utterance),
                 ),
             }
         ]
