@@ -131,7 +131,11 @@ def hedged(text: str | None) -> bool:
 
 # Answers that mean something only to their OWN question: „galite pasižiūrėti dabar" heard out
 # of turn is a misreading („Tik viename" became `device_ready=yes`, eval S9 2026-11-06).
-ASKED_ONLY = frozenset({"device_ready", "reachable"})
+# „Nenoriu pats krapštytis" said to „ar galite prieiti?" is a wish for a technician, not a no to
+# the settings walk-through nobody offered (`guide_agreed`) nor a yes to paid help (`fix_wanted`):
+# eval D8e 2026-11-11, the offer to try together was dropped and the summary said „nustatymų
+# kartu neėjome" on a router card.
+ASKED_ONLY = frozenset({"device_ready", "reachable", "guide_agreed", "fix_wanted"})
 
 _POLARITY_WORDS = frozenset(
     {"taip", "ne", "jo", "aha", "mhm", "gerai", "tai", "dabar", "nu", "na", "ok", "o"}

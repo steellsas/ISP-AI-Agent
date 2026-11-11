@@ -76,3 +76,20 @@ class TestTheBranchIsChosenAgain:
         c.say(EVERYWHERE)
         assert not moves(c, "rebranch") and moves(c, "rebranch_limit")
         assert c.state.case.facts["fail_scope"] == "all"  # the fact is still recorded
+
+
+class TestNowhereIsNotAQuestion:
+    """„Niekur neveikia" held „kur " and was passed to the narrator as a question (2026-11-11)."""
+
+    def test_the_words(self):
+        from agent.perceive.detectors import is_real_question
+
+        assert not is_real_question("Kompiuteryje irgi neveikia, niekur neveikia")
+        assert not is_real_question("Niekada taip nebuvo")
+        assert is_real_question("O kur jį rasti?")
+        assert is_real_question("Kada atvažiuos meistras")
+
+    def test_the_case_keeps_the_turn(self, diagnosing):
+        c = walk(diagnosing("healthy_to_router"), RECONNECT_FAILED)
+        c.say("Kompiuteryje irgi neveikia, niekur neveikia")
+        assert c.rule == "case.ask" and "perkrauti router" in c.replies[-1]

@@ -4,6 +4,8 @@ They read; the rules that act on a reading live in decide."""
 
 from __future__ import annotations
 
+import re
+
 from ..contract import limits
 from ..contract.locale import vocab, vocab_re, vocab_set
 from ..resolution import Outcome
@@ -347,7 +349,7 @@ def detect_turn_intent(text: str | None) -> str:
     low = text.lower()
     if detect_confusion(low):
         return INTENT_CONFUSED
-    if "?" in low or any(m in low for m in vocab("question_marks")):
+    if "?" in low or _has_question_mark(low):
         return INTENT_QUESTION
     if _said_unnegated(low, vocab("in_progress")):
         return INTENT_IN_PROGRESS
@@ -858,6 +860,12 @@ def asks_about_the_news(state, text: str | None) -> bool:
     )
 
 
+def _has_question_mark(low: str) -> bool:
+    """A question word at the START of a word: „niekur neveikia" and „niekada" are answers,
+    not questions (2026-11-11 — „kur " matched inside „niekur ")."""
+    return any(re.search(r"(?<!\w)" + re.escape(m), low) for m in vocab("question_marks"))
+
+
 def is_real_question(text: str | None) -> bool:
     """A QUESTION by its words, not by punctuation — STT sticks '?' onto rising
     intonation ("Tomas?"), which is not the caller asking us something. Token
@@ -866,9 +874,7 @@ def is_real_question(text: str | None) -> bool:
     if not text:
         return False
     low = text.lower()
-    if any(m in low for m in vocab("question_marks")) or any(
-        low.startswith(w) for w in vocab("question_openers")
-    ):
+    if _has_question_mark(low) or any(low.startswith(w) for w in vocab("question_openers")):
         return True
     tokens = [t.strip(".,!?") for t in low.split()]
     return any(t in vocab_set("question_tokens") for t in tokens)
