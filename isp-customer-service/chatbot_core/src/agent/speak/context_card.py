@@ -503,6 +503,11 @@ def _case_step(state, rt) -> list[str]:
     out: list[str] = []
     if goal:
         out.append(f"PLAN GOAL — {goal}. Nothing else in this reply.")
+    if say.get("lead"):
+        out.append(
+            f"SAY FIRST: „{say['lead']}“ — in your words, but the caller must hear that it did "
+            "NOT help before the next step. Do not guess a new cause."
+        )
     if words:
         # Precision beats style here: these words come from the equipment catalogue, so the
         # concrete action and the device must survive the paraphrase (full eval: the reboot

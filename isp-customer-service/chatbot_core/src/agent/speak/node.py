@@ -184,8 +184,14 @@ def _checked(state: Any, rt: Any, messages: list[dict], fallback: str) -> str:
         except StopIteration as done:
             reply = done.value or ""
             break
-    step = (((state.turn.plan or {}).get("say") or {}).get("text") or "").strip()
+    say = (state.turn.plan or {}).get("say") or {}
+    step = (say.get("text") or "").strip()
     why = lost(reply, step)
+    if why is None and say.get("lead"):
+        from ..perceive.detectors import says_it_fails
+
+        if not says_it_fails(reply):
+            why = "lost_lead"  # „X did not help" was left out (eval S9b)
     if why is None:
         rt.tracer.emit("case", move="step_phrased", chars=len(reply))
         return reply

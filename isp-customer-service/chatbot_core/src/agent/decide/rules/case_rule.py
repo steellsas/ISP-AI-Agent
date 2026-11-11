@@ -1117,18 +1117,26 @@ def _works_now(state: Any, rt: Any, call: Any) -> str | None:
     line reads is left to the line, so a reboot is never declared a success on words alone
     (Andrius, 2026-10-13).
     """
-    if call.module == "verify" or state.turn.ident_answer:
+    if state.turn.ident_answer:
         return None
+    if call.module == "verify" and _step_was_asked(state):
+        return None  # asked: its answer is read the usual way
     entry = (state.diagnosis.evidence or {}).get("restored") or {}
     if state.case.facts.get("restored") != "yes" or entry.get("turn") != state.dialog.turn_count:
         return None
-    steps = _solution_steps(state)
-    at = next(
-        (i for i in range(state.case.step + 1, len(steps)) if steps[i].module == "verify"), None
-    )
-    if at is None:
-        return None
-    check = steps[at]
+    if call.module == "verify":
+        # The check is due but not yet asked, and they said it first (eval S9c, 2026-11-11:
+        # „gedimo nebėra, viskas susitvarkė" was answered with „ar dabar veikia?").
+        check = call
+    else:
+        steps = _solution_steps(state)
+        at = next(
+            (i for i in range(state.case.step + 1, len(steps)) if steps[i].module == "verify"),
+            None,
+        )
+        if at is None:
+            return None
+        check = steps[at]
     if check.args.get("evidence"):
         # The LINE reads this check: the steps before it (a reboot the demo must reflect) run
         # in their order, and the probe decides — words alone never close it.
@@ -2733,6 +2741,7 @@ def _module_plan_inner(state: Any, rt: Any, call, facts: dict[str, str], *, rule
             # kitas modulis (praleistas, jau padarytas), poreikis eina su juo, ne su šiuo.
             knowledge_need=call.knowledge_need,
             fallback=_written_words(state, step, asked) if _phrased(state, step) else None,
+            lead=(_did_not_help(state, step) or None) if _phrased(state, step) else None,
         ),
         awaiting=step.awaits,
     )

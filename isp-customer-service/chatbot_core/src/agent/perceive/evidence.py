@@ -308,6 +308,8 @@ def ingest_client_evidence(state, rt, user_input: str | None) -> None:
                 spec_item = (spec.get("client") or {}).get(key) if spec else None
                 if read_pending_answer(key, user_input, spec_item) == facts[key]:
                     continue
+                if _detector_reads(key, user_input) == facts[key]:
+                    continue
                 rt.tracer.emit(
                     "evidence", action="uncorroborated_flip_dropped", key=key, value=facts[key]
                 )
@@ -385,6 +387,10 @@ def _conflict_to_clarify(state, rt, key: str, entry: dict) -> bool:
     old = entry["value"]
     entry["value"] = entry.pop("pending", old)
     entry["conflict"] = False
+    # The newest reading is THIS turn's: what reads „said now" (the Case's `_works_now`) must
+    # see it as now, not as the turn of the reading it replaced (S9c, 2026-11-11).
+    if entry.get("history"):
+        entry["turn"] = entry["history"][-1].get("turn", entry.get("turn"))
     rt.tracer.emit("evidence", action="conflict_silent", key=key, old=old, new=entry["value"])
     return True
 
@@ -418,3 +424,15 @@ def _story_flip_gate(state, rt, key: str, value: str, pending: str | None) -> bo
     hypothesis.doubt(state, rt, "flip", key, None, value)
     rt.tracer.emit("evidence", action="fact_gate", key=key, value=value)
     return True
+
+
+def _detector_reads(key: str, text: str) -> str | None:
+    """A third corroboration for a flip: the fact's own detector. `restored` is a reading of
+    NOW — the earlier „neveikia" belonged to an earlier check — and neither extractor reads it,
+    so „gedimo nebėra, viskas susitvarkė" was dropped as a hallucination (S9c, 2026-11-10)."""
+    if key != "restored":
+        return None
+    from .detectors import Outcome, detect_restored
+
+    outcome = detect_restored(text)
+    return {Outcome.YES: "yes", Outcome.NO: "no"}.get(outcome) if outcome else None

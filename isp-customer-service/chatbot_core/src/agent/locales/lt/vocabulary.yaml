@@ -91,7 +91,11 @@ restored_no:
 
 # The RESULT said outright — not a bare „taip", which answers whatever was asked (2026-10-13:
 # „Taip, galiu prieiti" was read as „it works").
-works_words: ["veikia", "atsirad", "atsarad", "satsarad", "susitvark", "pavyko", "sugrįžo", "sugrizo"]
+# „Man gedimo nebėra, aš išsprendžiau, viskas pasitvarkė" (eval S9c, live call 2026-11-10) was
+# heard as nothing and the model's correct read was dropped as an uncorroborated flip.
+works_words: ["veikia", "atsirad", "atsarad", "satsarad", "susitvark", "pasitvark", "pasisitvark",
+              "sutvark", "išsprend", "issprend", "gedimo nebėr", "gedimo nebe", "problemos nebėr",
+              "pavyko", "sugrįžo", "sugrizo"]
 restored_yes:
   - "taip"  # the plain answer to "ar internetas atsirado?" — was missing, so a
   - "aha"  # confirmed fix looked unanswered and ended in a needless ticket
@@ -105,6 +109,15 @@ restored_yes:
   - "yra internet"
   - "dirba"
   - "atgal"
+  - "susitvark"  # viskas susitvarkė (S9c, 2026-11-10)
+  - "pasitvark"
+  - "pasisitvark"  # STT garble of "pasitvarkė"
+  - "sutvark"
+  - "išsprend"  # išsprendžiau / išsprendėme
+  - "issprend"
+  - "gedimo nebėr"
+  - "gedimo nebe"
+  - "problemos nebėr"
 
 # S6 rh_check (2026-09-02): the post-reboot check asks about the INTERNET
 # LIGHT and a web page — "dega" vocabulary must NOT read as restored (live:
