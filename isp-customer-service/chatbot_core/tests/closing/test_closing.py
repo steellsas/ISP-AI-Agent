@@ -452,6 +452,32 @@ class TestT1GoodbyeWithAnOpenRegistration:
         end_confirm_answer(state, rt, "Taip, užregistruokite")
         assert state.ticket.stage == "phone"
 
+    def test_an_unclear_answer_to_the_technician_offer_is_asked_again(self, dead_router):
+        from agent.decide.rules.head import end_confirm_answer, farewell_mid_process
+
+        state, rt, _ = dead_router
+        farewell_mid_process(state, rt, "Viso gero")
+        end_confirm_answer(state, rt, "Taip, baigiam")
+
+        end_confirm_answer(state, rt, "Bet kada")
+        assert state.dialog.end_ticket_offer and state.dialog.end_confirm_pending
+        assert not state.closing.case_closed
+
+        end_confirm_answer(state, rt, "Taip, užregistruokite")
+        assert state.ticket.stage == "phone"
+
+    def test_a_second_unclear_answer_ends_the_call_unregistered(self, dead_router):
+        from agent.decide.rules.head import end_confirm_answer, farewell_mid_process
+
+        state, rt, _ = dead_router
+        farewell_mid_process(state, rt, "Viso gero")
+        end_confirm_answer(state, rt, "Taip, baigiam")
+        end_confirm_answer(state, rt, "Bet kada")
+        end_confirm_answer(state, rt, "Nu nežinau")
+
+        assert state.closing.case_closed
+        assert state.ticket.stage is None
+
     def test_a_declined_technician_closes(self, dead_router):
         from agent.decide.rules.head import end_confirm_answer, farewell_mid_process
 

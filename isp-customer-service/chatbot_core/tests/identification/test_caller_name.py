@@ -396,3 +396,23 @@ class TestV5OnlyTheCallersOwnNameCorrects:
 
     def test_their_own_name_corrects(self, case_call):
         assert self._answer(case_call, "Ne, mano vardas Giedrius.") == "Giedrius"
+
+
+class TestAnAddressIsNotAName:
+    """Live 2026-11-10: at „koks jūsų vardas?" the caller corrected the ADDRESS — „Ne, aš
+    skambinu dėl Žeimių 12 būtų 6" — and was asked „ar teisingai išgirdau, jūsų vardas
+    Žeimių?"."""
+
+    def test_another_address_goes_to_the_address_correction(self, db_connection):
+        from agent.decide.rules.head import address_correction, caller_intro
+
+        agent = _agent()
+        agent.state.identity.customer_id = "CUST009"
+        agent.state.identity.customer_address = "Šiauliai, Tilžės g. 60-7"
+        agent.state.identity.result_pending = True
+        said = "Ne, aš skambinu, dėl Žeimių 12 būtų 6."
+
+        assert not caller_intro(agent.state, agent.runtime, said)
+        assert agent.state.identity.caller_name is None
+        address_correction(agent.state, agent.runtime, said)
+        assert agent.state.identity.reopen_confirm_utterance == said

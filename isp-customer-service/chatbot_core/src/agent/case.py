@@ -234,32 +234,44 @@ def _solve(fault: str, facts: dict[str, str], unavailable: frozenset[str]) -> Mo
     card = catalog.card(fault)
     if card is None:  # pragma: no cover - a fault id always comes from the catalogue
         return _honest_end(f"{fault}: no card")
-    for solution in card.solution:
+    found = branch_of(card, facts, unavailable)
+    if found is None:
+        return Move("escalate", fault=fault, why=f"{fault}: no solution fits these facts")
+    index, fact, source = found
+    if fact is not None:
+        return Move(
+            "learn", fact=fact, source=source, fault=fault, why=f"{fault}: which solution applies"
+        )
+    solution = card.solution[index]
+    if solution.hands_to:
+        return _solve(solution.hands_to, facts, unavailable)
+    return Move("solve", fault=fault, steps=tuple(solution.steps), why=f"{fault} confirmed")
+
+
+def branch_of(
+    card: FaultCard, facts: dict[str, str], unavailable: frozenset[str] = frozenset()
+) -> tuple[int, str | None, Source | None] | None:
+    """The branch of the card's solution the facts lead to now: (index, None, None) when it
+    is settled, (index, fact, source) when one learnable fact still decides it, None when no
+    branch fits. The first branch in the card's order wins — the card's order IS the priority.
+    """
+    for index, solution in enumerate(card.solution):
         conditions = [Condition.parse(text) for text in solution.when]
         if any(c.holds(facts) is False for c in conditions):
             continue
         pending = [c.fact for c in conditions if c.holds(facts) is None]
-        if pending:
-            for fact in pending:
-                if fact in unavailable or not worth_asking(fact, card, facts):
-                    continue
-                need = card.needs.get(fact)
-                if need is not None and need.volunteered:
-                    continue  # only when the caller says it — a later step asks it if needed
-                found = sources_for(fact, card)
-                if found:
-                    return Move(
-                        "learn",
-                        fact=fact,
-                        source=found[0],
-                        fault=fault,
-                        why=f"{fault}: which solution applies",
-                    )
-            continue
-        if solution.hands_to:
-            return _solve(solution.hands_to, facts, unavailable)
-        return Move("solve", fault=fault, steps=tuple(solution.steps), why=f"{fault} confirmed")
-    return Move("escalate", fault=fault, why=f"{fault}: no solution fits these facts")
+        if not pending:
+            return index, None, None
+        for fact in pending:
+            if fact in unavailable or not worth_asking(fact, card, facts):
+                continue
+            need = card.needs.get(fact)
+            if need is not None and need.volunteered:
+                continue  # only when the caller says it — a later step asks it if needed
+            found = sources_for(fact, card)
+            if found:
+                return index, fact, found[0]
+    return None
 
 
 def _discriminator(

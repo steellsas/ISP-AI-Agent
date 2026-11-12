@@ -139,6 +139,11 @@ def _check_cards(cards: dict | None = None, modules: dict | None = None) -> None
     for card in cards.values():
         for fact, need in card.needs.items():
             values.setdefault(fact, set()).update(need.values)
+        # A fix check that did not help is a fact of its own (`tried_<cause>=failed`, stage 4).
+        for solution in card.solution:
+            for step in solution.steps:
+                if step.fixes:
+                    values.setdefault(f"tried_{step.fixes.rsplit('.', 1)[-1]}", set()).add("failed")
     for spec in modules.values():
         for fact in spec.produces:
             values.setdefault(fact, set())

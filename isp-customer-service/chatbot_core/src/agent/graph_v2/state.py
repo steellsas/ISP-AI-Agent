@@ -313,6 +313,7 @@ class DialogState(BaseModel):
     end_confirm_pending: bool = False
     # F-27: the end is confirmed and the second question — register the fault? — is out.
     end_ticket_offer: bool = False
+    end_ticket_offer_repeated: bool = False
     # Hold the process one turn after a detour / re-anchor from the ledger next reply.
     resume_hold_due: bool = False
     resync_note: bool = False
@@ -451,6 +452,13 @@ class TurnScratch(BaseModel):
     heard_said: str | None = None
     # The evidence key the caller reported as done this turn.
     done_report_key: str | None = None
+    # How the caller met the question that was out (perception, 2026-11-06): answered | doing |
+    # asks_back | pushback | not_now | refuses | off_topic. The VALUE of an answer is never
+    # here — it is a fact; this says only what the caller did with the question.
+    reply_status: str | None = None
+    # Facts the caller gave this turn that the engine says back („Supratau, Wi-Fi įjungtas"):
+    # said out of turn, a correction, or several at once — never a plain yes to the question.
+    said_back: list[str] = Field(default_factory=list)
     directives: TurnDirectives = Field(default_factory=TurnDirectives)
     # The caller asked an off-script question during the contact dialogue.
     ticket_offscript_question: bool = False
@@ -563,6 +571,9 @@ class CaseState(BaseModel):
     # (2026-09-23), because "taip, esu prie routerio" read as a done-report.
     guide_said: int = -1
     step_said: int = -1
+    # What the last step mark replaced ({turn, step, guide, words, asked}): a reply cut before
+    # the caller heard it gives the marks back (`execute/step.unsay_unheard_step`).
+    said_mark: dict[str, Any] | None = None
     # Kuris žingsnis gavo NEAIŠKŲ atsakymą. Hipotezę patvirtinantis klausimas („ar lemputė
     # dega?") užskaitomas tik tada, kai klientas iš tikrųjų pasako, ką mato: „taip, padariau"
     # ar bendras „gerai" nėra atsakymas, o 2026-10-01 gyvai kaip tik taip buvo peršokta prie
@@ -611,6 +622,14 @@ class CaseState(BaseModel):
     # 2026-10-02 klientas kompiuterio neturėjo, tiltas buvo praleistas, o tikete rašė
     # „prijungėm kompiuterį, pririšom, perkrovėm prievadą" (7e banga).
     worked: list[str] = Field(default_factory=list)
+    # The steps that actually ran, as `module:device` (stage 4, 2026-11-11): when the branch is
+    # chosen again mid-fix, what was already done is not asked of the caller a second time.
+    done_steps: list[str] = Field(default_factory=list)
+    # How many times each card's branch was chosen again (stage 4): at most twice, then a new
+    # fact is only recorded — the case cannot go round in circles.
+    rebranched: dict[str, int] = Field(default_factory=dict)
+    # The step skipped as already done after a rebranch: its own check is skipped with it.
+    skipped_done: int = -1
     # Ar išvada („padarėm tai ir tai, todėl registruojam") jau pasakyta. Andrius (2026-10-02):
     # *„klientas atsimins galutinį pokalbį — svarbi informacija, ką agentas padėjo ir ko
     # nepadarė."* Ji sakoma VIENĄ kartą, savo ėjimu, prieš registraciją.
@@ -640,6 +659,12 @@ class CaseState(BaseModel):
     # The step is being retried, so the card's `on_fail` call is what runs — a retry that
     # repeats the identical instruction teaches the caller nothing.
     retrying: bool = False
+    # What the caller said WITH their own doubt („lyg ir įjungtas", „turbūt dega"):
+    # {fact: {value, quote, turn}}. Remembered, never written as a fact — it may not skip a check
+    # or close the call; when its step comes, the caller is asked to LOOK (Andrius, 2026-11-06).
+    hedged: dict[str, dict[str, Any]] = Field(default_factory=dict)
+    # How often the „pažiūrėkite, prašau" for a hedged answer went out on this step.
+    hedge_asks: int = 0
 
 
 class ToolsState(BaseModel):

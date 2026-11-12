@@ -118,3 +118,45 @@ def test_the_call_end_waits_for_the_turn_still_running(session):
     session._turn_running.release()  # the turn finished
     worker.join(5)
     assert ended.is_set()
+
+
+def test_a_task_silence_hears_hold_on_before_the_checkin(monkeypatch):
+    """2026-11-11: 35 s of silence while the caller does a task sounds like a dropped line — a
+    short „neskubėkite, aš čia" first, the „kaip sekasi?" only later."""
+    from app.pipecat_call import EngineProcessor, SpokenTracker, StandaloneTurns
+    from pipecat.frames.frames import LLMTextFrame
+
+    monkeypatch.setenv("VOICE_HOLD_AFTER_S", "1")
+    monkeypatch.setenv("VOICE_CHECKIN_AFTER_S", "2")
+
+    class Tracer:
+        def emit(self, *_a, **_k):
+            pass
+
+    class Session:
+        is_complete = False
+        tracer = Tracer()
+
+        def awaiting_closing_answer(self):
+            return False
+
+        def awaiting_caller(self):
+            return True
+
+    tracker = SpokenTracker()
+    tracker.reply = "Įjunkite telefone Wi-Fi."
+    engine = EngineProcessor(Session(), StandaloneTurns(), tracker)
+    pushed = []
+
+    async def push(frame, *_a):
+        pushed.append(frame)
+
+    engine.push_frame = push
+
+    async def go():
+        await engine._checkin()  # the hold, then this task ends (speaking disarms it)
+        await engine._checkin()  # the next silence: the check-in
+
+    asyncio.run(go())
+    said = [f.text for f in pushed if isinstance(f, LLMTextFrame)]
+    assert said == [phrase("identification.hold_on"), phrase("identification.checkin")]

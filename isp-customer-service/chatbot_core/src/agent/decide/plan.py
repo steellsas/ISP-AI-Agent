@@ -50,6 +50,12 @@ class Say(BaseModel):
     # Words the caller MUST hear (PERZIURA §6 I-1): the AI disclosure, the debt / outage news,
     # the ticket confirmation. Cut by a barge-in, they are owed and said on the next turn.
     required: str | None = None
+    # The written words of a step the speaker words itself (`phrase_guided_steps`): the reply is
+    # held until the engine checked it kept the step, and these words go out if it did not.
+    fallback: str | None = None
+    # What the caller must hear BEFORE the step, in substance, when the speaker words it: that
+    # the last step did not help (eval S9b, 2026-11-11). The engine checks it like the step.
+    lead: str | None = None
 
 
 class Action(BaseModel):

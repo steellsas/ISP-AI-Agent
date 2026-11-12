@@ -61,6 +61,13 @@ def record_client(state: Any, rt: Any, fact: str, value: str | None) -> bool:
         if rt is not None:
             rt.tracer.emit("facts", source=CLIENT, refused=fact, said=value, seen=known)
         return False
+    if known is not None and fact in state.case.said and not fact.startswith("_"):
+        # A CORRECTION of what they told us („ne, palaukit, išjungtas"): the engine says it back,
+        # so both sides know which value stands (2026-11-06).
+        said_back = getattr(getattr(state, "turn", None), "said_back", None)
+        if isinstance(said_back, list) and fact not in said_back:
+            said_back.append(fact)
+    state.case.hedged.pop(fact, None)  # their plain word replaces their doubt
     state.case.facts[fact] = value
     state.case.unavailable = [f for f in state.case.unavailable if f != fact]
     if fact not in state.case.said:

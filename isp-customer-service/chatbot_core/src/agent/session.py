@@ -93,6 +93,10 @@ class AgentSession:
             analyst_signals=inbox.get("analyst_signals"),
         )
         values = self._graph.get_state(self._graph_config).values
+        # What the call was before this turn, so a turn cut before the caller heard a word of
+        # it can be undone and run again with the rest of their words (`rewind_cut_turn`).
+        self._before_turn = GraphState(**values).model_copy(deep=True) if values else None
+        self._turn_text = text
         update: dict[str, Any] = {}
         if not values:
             initial = self._state
@@ -388,6 +392,37 @@ class AgentSession:
         self._write_between_turns(write)
         return text
 
+    def rewind_cut_turn(self) -> str | None:
+        """Undo the last turn — it was cut before the caller heard a word of it, and they are
+        still talking. Returns its words, to run again together with the rest.
+
+        Live: 19 of 1244 caller turns came in two pieces („Adreso su…" and then the whole
+        address). Run alone, the first piece is read as an answer — „Ne, palaukit…" can write
+        `no` — and its turn is cut by the second. Nothing of it was heard, so it is as if it
+        never ran: the state goes back to before it, and the next turn reads both pieces as
+        one. A turn that changed something outside the call (a ticket, a port reset, a
+        simulated reboot) is never undone — only its marks are (`unsay_unheard_step`)."""
+        before, text = getattr(self, "_before_turn", None), getattr(self, "_turn_text", None)
+        self._before_turn = self._turn_text = None
+        if before is None or not text:
+            return None
+        now = self._current_state()
+        wrote = [
+            name
+            for name, count in now.tools.calls.items()
+            if count > before.tools.calls.get(name, 0) and _changes_the_world(name)
+        ]
+        if wrote:
+            self._runtime.tracer.emit("turn_rewind", done=False, why="acted", tools=wrote)
+            return None
+        self._graph.update_state(
+            self._graph_config,
+            {name: getattr(before, name) for name in type(before).model_fields if name != "turn"},
+        )
+        self._state = before
+        self._runtime.tracer.emit("turn_rewind", done=True, text=text[:160])
+        return text
+
     def request_cancel(self) -> None:
         """Barge-in (Phase 5 PR3): stop the running streaming turn — the engine's
         token loop closes the LLM stream and re-asks the interrupted question.
@@ -417,3 +452,14 @@ class AgentSession:
     def stats(self) -> dict[str, Any]:
         """Accumulated LLM statistics for this conversation."""
         return self._runtime.llm_stats.to_dict()
+
+
+# Tools that change something outside the call: a turn that ran one is never undone.
+_WORLD_CHANGING = ("action", "ticketing", "simulate")
+
+
+def _changes_the_world(tool: str) -> bool:
+    from .contract import tools as manifests
+
+    spec = manifests.manifest(tool)
+    return spec is None or spec.capability in _WORLD_CHANGING

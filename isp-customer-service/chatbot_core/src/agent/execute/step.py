@@ -33,11 +33,61 @@ def mark_case_step_said(state, rt=None) -> None:
     rule = str((state.turn.plan or {}).get("rule") or "")
     if not rule.startswith("case."):
         return
+    _remember_the_mark(state)
     state.case.step_said = state.case.step
     if rule == "case.guide":
         state.case.guide_said = state.case.guide_step
     if rt is not None:
         rt.tracer.emit("case", move="step_said", step=state.case.step, rule=rule)
+
+
+def _remember_the_mark(state) -> None:
+    """What this turn's mark replaced, so a reply the caller never heard can take it back."""
+    say = (state.turn.plan or {}).get("say") or {}
+    turn = state.dialog.turn_count
+    state.case.said_mark = {
+        "turn": turn,
+        "step": state.case.step_said,
+        "guide": state.case.guide_said,
+        "words": say.get("text") or "",
+        # The fact this turn asked (`_learn` counts it before the reply bumps the turn).
+        "asked": [
+            f for f, turns in state.case.asks.items() if turns and turns[-1] in (turn - 1, turn)
+        ],
+    }
+
+
+def unsay_unheard_step(state, rt, heard: str) -> None:
+    """The reply was cut before the caller heard the step: it was NOT said (bug 2, live
+    2026-11-10: „Klausu." over an unheard lights instruction was read as an unclear answer
+    to it, and the agent said „Nesupratau"; 11-04: an unheard question counted as asked
+    twice and its answer was assumed).
+
+    Only the marks go back — the step, the written step and the ask count. What the caller
+    SAID in that turn stays: they often interrupt because they already know the answer.
+    Called from both cut paths: mid-generation (`on_turn_cancelled`) and mid-playback
+    (`apply_delivery`)."""
+    from ..speak.step_check import lost
+
+    mark = state.case.said_mark
+    state.case.said_mark = None
+    if not mark or mark.get("turn") != state.dialog.turn_count:
+        return  # no step went out in the reply that was cut
+    words = mark.get("words") or ""
+    if words and (heard or "").strip() and lost(heard, words) is None:
+        return  # the step itself was heard; only its tail was cut
+    if state.case.step_said == state.case.step:
+        state.case.step_said = mark.get("step", -1)
+    if state.case.guide_said == state.case.guide_step:
+        state.case.guide_said = mark.get("guide", -1)
+    for fact in mark.get("asked") or []:
+        turns = state.case.asks.get(fact) or []
+        if turns:
+            turns.pop()
+    if rt is not None:
+        rt.tracer.emit(
+            "case", move="step_unheard", step=state.case.step, asked=mark.get("asked") or []
+        )
 
 
 def mark_step_presented(state, rt) -> None:

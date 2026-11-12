@@ -64,7 +64,9 @@ def classify_side_topic(state, rt, user_input: str | None) -> bool:
     # a question word in the text or a FAQ keyword hit.
     u = state.turn.understanding
     if u is not None:
-        if u["type"] in ("question", "deviation") and not u["facts"]:
+        # Facts mean an answer rather than a detour, except the result of a fix said together
+        # with a question: the rule that gives the Case that turn is reached through here.
+        if u["type"] in ("question", "deviation") and (not u["facts"] or _reports_the_fix(state)):
             if extract_client_facts(user_input):
                 # The keyword layer read facts the pass missed — an
                 # informative interruption, not a deviation (they already
@@ -120,6 +122,12 @@ def classify_side_topic(state, rt, user_input: str | None) -> bool:
         streak=state.dialog.side_topic_streak,
     )
     return True
+
+
+def _reports_the_fix(state) -> bool:
+    from ..decide.rules.stage import carries_a_fix_answer
+
+    return carries_a_fix_answer(state)
 
 
 def is_howto(text: str | None) -> bool:

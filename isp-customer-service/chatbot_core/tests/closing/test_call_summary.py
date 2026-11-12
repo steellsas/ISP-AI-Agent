@@ -545,10 +545,39 @@ def case_call(make_state, make_runtime):
 
 
 def test_s7_solved_shows_after_a_case_resolution(case_call):
-    from agent.speak.context_card import _case_facts
+    from agent.speak.context_card import _case_closing
 
     state, rt = case_call
     state.closing.case_closed = True
     state.closing.closed_reason = "resolved"
 
-    assert any(line.startswith("SOLVED") for line in _case_facts(state, rt))
+    assert any(line.startswith("SOLVED") for line in _case_closing(state, rt))
+
+
+class TestAnAnswerOnlyToItsOwnQuestion:
+    """Eval D8e 2026-11-11: „Užregistruokit meistrą, nenoriu pats krapštytis" to „ar galite
+    prieiti?" came back from the model as `guide_agreed=no` — a no to a walk-through nobody had
+    offered. The offer to try together was dropped, and the summary said „nustatymų kartu
+    neėjome" on a router card."""
+
+    def _read(self, facts):
+        from types import SimpleNamespace
+
+        from agent.perceive.perception import Fact, Perception, _drop_short_out_of_turn
+
+        state = SimpleNamespace(
+            diagnosis=SimpleNamespace(pending_evidence_key="reachable"),
+            case=SimpleNamespace(awaiting="reachable"),
+        )
+        rt = SimpleNamespace(tracer=SimpleNamespace(emit=lambda *a, **k: None))
+        read = Perception(
+            source="llm",
+            facts={k: Fact(value=v, quote="nenoriu pats krapštytis") for k, v in facts.items()},
+        )
+        return _drop_short_out_of_turn(
+            state, rt, read, None, "Užregistruokit meistrą, nenoriu pats krapštytis"
+        )
+
+    def test_a_declined_walk_through_needs_its_own_question(self):
+        read = self._read({"guide_agreed": "no", "fix_wanted": "yes"})
+        assert "guide_agreed" not in read.facts and "fix_wanted" not in read.facts

@@ -138,6 +138,29 @@ class TestRound2Fixes:
         assert classify_side_topic(agent.state, agent.runtime, "Galim dabar patikrinti") is False
         assert agent.state.turn.side_topic_active is False
 
+    def _running_fix(self, monkeypatch, facts):
+        agent = _diagnosing_agent(monkeypatch)
+        agent.state.case.fault, agent.state.case.solution = "no_mac_observed", 0
+        agent.state.turn.understanding = _canned(turn_type="question", facts=facts)
+        return agent
+
+    def test_a_fix_result_with_a_question_enters_despite_its_fact(self, db_connection, monkeypatch):
+        from agent.perceive.side_topic import classify_side_topic
+
+        # S4b: the fact now collected kept the turn from the rule that gives the Case the result.
+        text = "Gerai, ačiū, veikia. Alio, kada dėl routerio paskambinsit?"
+        agent = self._running_fix(monkeypatch, {"restored": "yes"})
+        agent.state.dialog.last_heard = text
+        assert classify_side_topic(agent.state, agent.runtime, text) is True
+
+    def test_another_fact_with_a_question_does_not_enter(self, db_connection, monkeypatch):
+        from agent.perceive.side_topic import classify_side_topic
+
+        text = "Wi-Fi įjungiau, bet kur slaptažodis?"
+        agent = self._running_fix(monkeypatch, {"wifi_on": "yes"})
+        agent.state.dialog.last_heard = text
+        assert classify_side_topic(agent.state, agent.runtime, text) is False
+
     def test_side_entry_allowed_with_question_word(self, db_connection, monkeypatch):
         from agent.perceive.side_topic import classify_side_topic
 

@@ -62,10 +62,20 @@ def enabled() -> bool:
     return os.getenv("UNDERSTAND", "on").lower() == "on"
 
 
+REPLY_STATUSES = (
+    "answered", "doing", "asks_back", "pushback", "not_now", "refuses", "off_topic"
+)  # fmt: skip
+
+
 def _merged_allowed(extra: dict[str, set[str]] | None) -> dict[str, set[str]]:
-    """Built-in keys + whatever the fault's evidence spec declares via
-    `answers` (universal: a NEW fault extends the vocabulary by file edit)."""
+    """EVERY fact a caller can state (`fact_catalog`, 2026-11-06) + whatever the active spec
+    adds. Collect everything, use by branch: before this only the active card's needs were
+    allowed, and „Patikrinau, WiFi įjungtas" had no key to land on (eval S9)."""
+    from ..fact_catalog import allowed_map
+
     merged = {k: set(v) for k, v in _ALLOWED.items()}
+    for k, vals in allowed_map().items():
+        merged[k] = merged.get(k, set()) | vals
     for k, vals in (extra or {}).items():
         merged[k] = merged.get(k, set()) | {str(v) for v in vals}
     return merged
@@ -91,6 +101,15 @@ def _knowledge_map() -> tuple[str, list[str]]:
     return listing, sources
 
 
+def _may_ask(utterance: str) -> bool:
+    """Could this turn be the caller asking us something? Generous on purpose: a „?" from the
+    STT, or a question by its words — a missed question loses its document, an extra one only
+    costs the list."""
+    from .detectors import is_real_question
+
+    return "?" in (utterance or "") or is_real_question(utterance)
+
+
 def _system(
     anchor: str,
     needs: str,
@@ -99,28 +118,31 @@ def _system(
     step_options: dict[str, str] | None = None,
     ticket_stage: str | None = None,
     problem_options: dict[str, str] | None = None,
+    *,
+    with_knowledge: bool = True,
 ) -> str:
     """Render the merged perception prompt from prompts/sensors/*.md (R4:
     understanding + step classification in ONE call; R5: instructions live in
     files, code only fills the tokens)."""
+    from ..fact_catalog import fact_line
     from ..prompts import load_node_prompt
 
-    allowed = "; ".join(f"{k}: {sorted(v)}" for k, v in allowed_map.items())
+    allowed = "\n".join(fact_line(k, v) for k, v in sorted(allowed_map.items()))
     step_json = ""
     step_rules = ""
     if step_options:
         opts = "\n".join(f'    - "{k}": {v}' for k, v in step_options.items())
-        step_json = (
-            ', "step": {"label": "...", "is_answer": bool, '
-            '"internally_inconsistent": bool, "confidence": 0.0-1.0}'
-        )
+        step_json = ', "status": "' + "|".join(REPLY_STATUSES) + '"'
         step_rules = load_node_prompt("sensors/perception_step").replace("<<options>>", opts)
     extra_json, extra_rules = "", ""
     # Žinių žemėlapis dedamas TIK tada, kai jis gali būti reikalingas. Kontakto dialogo metu
     # (`ticket_stage`) klausimas yra uždaras — vardas, laikas, telefonas — ir 17 papildomų eilučių
     # promptą tik praskiedžia. Išmatuota: su jomis D5 paskutinis „Ačiū, viso gero" nustojo būti
     # skaitomas kaip atsakymas („bet kada"), ir tiketas nebeįvyko (2026-09-25).
-    listing, _sources = ("", []) if ticket_stage else _knowledge_map()
+    #
+    # Ir tik tada, kai klientas gali KLAUSTI: ~4 tūkst. simbolių sąrašas eidavo su kiekvienu „taip"
+    # ir „neveikia" (2026-11-11: ~1/3 prompto) — atsakymui jo niekada nereikia.
+    listing, _sources = ("", []) if ticket_stage or not with_knowledge else _knowledge_map()
     if listing:
         extra_json += ', "knowledge": int|null'
         extra_rules += "\n" + load_node_prompt("sensors/knowledge_route").replace(
@@ -160,6 +182,7 @@ def understand(
     step_options: dict[str, str] | None = None,
     ticket_stage: str | None = None,
     problem_options: dict[str, str] | None = None,
+    step_answers: dict[str, str] | None = None,
 ) -> dict[str, Any] | None:
     """Read one caller turn. None on any failure -> keyword fallback.
 
@@ -185,6 +208,7 @@ def understand(
                     step_options,
                     ticket_stage=ticket_stage,
                     problem_options=problem_options,
+                    with_knowledge=_may_ask(utterance),
                 ),
             }
         ]
@@ -209,6 +233,18 @@ def understand(
         raw_facts = data.get("facts")
         facts: dict[str, str] = {}
         quotes: dict[str, str] = {}
+        hedged: set[str] = set()
+        if isinstance(raw_facts, dict) and isinstance(raw_facts.get("quote"), str):
+            # A flattened fact (gpt-4o-mini, 2026-11-06): {"restored": "yes", "quote": "dabar
+            # veikia"}. With ONE fact the quote is plainly its own; with more it is nobody's.
+            flat = dict(raw_facts)
+            quote_word = flat.pop("quote")
+            doubt = flat.pop("hedged", False) is True
+            if len(flat) == 1:
+                key, value = next(iter(flat.items()))
+                raw_facts = {key: {"value": value, "quote": quote_word, "hedged": doubt}}
+            else:
+                raw_facts = flat
         if isinstance(raw_facts, dict):
             for k, v in raw_facts.items():
                 # Wave 2a: a fact may come as {"value": …, "quote": the caller's words} —
@@ -217,33 +253,40 @@ def understand(
                 value, quote = (
                     (v.get("value"), v.get("quote")) if isinstance(v, dict) else (v, None)
                 )
+                if isinstance(value, list):
+                    # Eval S9 (2026-11-06): ["yes"] was dropped whole — one value is a value.
+                    value = value[0] if len(value) == 1 else None
+                if isinstance(quote, list):
+                    quote = " ".join(str(q) for q in quote)
                 if k in allowed_map and str(value) in allowed_map[k]:
                     facts[k] = str(value)
                     if quote:
                         quotes[k] = str(quote)[:120]
+                    if isinstance(v, dict) and v.get("hedged") is True:
+                        hedged.add(k)
         confidence = float(data.get("confidence") or 0.5)
         # Hallucination guards (live 2026-08-10: "Galim patikrinti, ką man
         # reikia daryti?" came back with FIVE facts the caller never said,
         # poisoning the ledger and forcing two phantom clarifies):
         # a question/confusion does not STATE facts, and low-confidence facts
         # are worse than no facts — the deterministic layers cover the gap.
-        if turn_type not in ("answer", "contradiction") or confidence < limits.get(
-            "understand_facts_min_confidence"
-        ):
+        # 2026-11-06: a QUESTION may carry a fact too („Wi-Fi įjungiau, bet kur slaptažodis?") —
+        # the quote check guards it now; only a turn that did not make sense states nothing.
+        if turn_type == "confusion" or confidence < limits.get("understand_facts_min_confidence"):
             facts = {}
+        elif turn_type == "question":
+            # A question states a fact only in the caller's OWN words (live 2026-08-10: five
+            # unquoted facts came back for „Galim patikrinti, ką man reikia daryti?").
+            facts = {k: v for k, v in facts.items() if quotes.get(k)}
         # Merged step classification (R4): validated exactly like the standalone
         # classifier — unknown labels are dropped so the walker falls back.
         step: dict[str, Any] | None = None
-        raw_step = data.get("step")
-        if step_options and isinstance(raw_step, dict):
-            label = str(raw_step.get("label") or "unclear")
-            if label in set(step_options) | {"unclear"}:
-                step = {
-                    "label": label,
-                    "is_answer": bool(raw_step.get("is_answer", True)),
-                    "internally_inconsistent": bool(raw_step.get("internally_inconsistent", False)),
-                    "confidence": max(0.0, min(1.0, float(raw_step.get("confidence") or 0.5))),
-                }
+        status: str | None = None
+        if step_options:
+            status = str(data.get("status") or "").strip().lower() or None
+            if status not in REPLY_STATUSES:
+                status = None
+            step = step_from_status(status, facts, quotes, step_options, step_answers)
         ticket = data.get("ticket") if isinstance(data.get("ticket"), dict) else None
         if ticket is not None:
             answer_type = str(ticket.get("type") or "other").lower()
@@ -283,10 +326,55 @@ def understand(
             "confusion": str(data.get("confusion") or "")[:200],
             "confidence": confidence,
             "step": step,
+            "status": status,
+            "hedged": sorted(hedged),
         }
     except Exception as e:  # any failure -> deterministic fallback
         logger.warning(f"understand pass failed: {e}")
         return None
+
+
+def step_from_status(
+    status: str | None,
+    facts: dict[str, str],
+    quotes: dict[str, str],
+    options: dict[str, str],
+    answers: dict[str, str] | None,
+) -> dict[str, Any] | None:
+    """The asked step's answer in the shape the engine reads, made from the reply STATUS and
+    the FACTS (2026-11-06: the model no longer returns a separate step label).
+
+    An instruction: answered → done, doing → waiting. A question: the label is the one whose
+    `fact=value` the facts carry. „answered" with no such fact is not an answer (the phantom
+    answer: „Aha, supratau") — the step is asked again, briefly. A fact with no quote is the
+    model's guess: it rides as the label, so the engine confirms it before using it.
+    """
+    if status is None:
+        return None
+    unclear = {"label": "unclear", "is_answer": False, "internally_inconsistent": False}
+    if set(options) == {"done", "waiting"}:
+        if status == "answered":
+            return {"label": "done", "is_answer": True, "internally_inconsistent": False,
+                    "confidence": 1.0}  # fmt: skip
+        label = "waiting" if status == "doing" else "unclear"
+        return {**unclear, "label": label, "confidence": 1.0}
+    if status == "answered":
+        for label, stated in (answers or {}).items():
+            if label not in options or "=" not in stated:
+                continue
+            key, value = stated.split("=", 1)
+            if facts.get(key) == value:
+                return {
+                    "label": label,
+                    "is_answer": True,
+                    "internally_inconsistent": False,
+                    "confidence": 1.0 if quotes.get(key) else 0.6,
+                }
+        # The phantom answer: answered, but nothing this step waits for. No VALUE comes from it
+        # — yet it is not „still doing" either: the engine's own readers („ištraukiau ir
+        # įkišau atgal" = done) still get to read it (eval S6, 2026-11-06).
+        return {**unclear, "is_answer": True, "confidence": 1.0}
+    return {**unclear, "confidence": 1.0}
 
 
 def understand_ticket(

@@ -239,7 +239,9 @@ def test_a_fact_is_said_back_without_its_label_twice():
     from agent.decide.rules.case_rule import fact_words
 
     assert fact_words("wifi_on", "yes") == "Wi-Fi įjungtas"
-    assert fact_words("restored", "yes") == ""
+    # 2026-11-06: every caller fact has its own prepared phrase (`evidence.said_back`).
+    assert fact_words("restored", "yes") == "internetas veikia"
+    assert fact_words("device_ready", "yes") == "galite pasižiūrėti dabar"  # finding #56
 
 
 class TestLiveCall0105:
@@ -328,3 +330,39 @@ class TestTheNewTree:
 
         assert detect_ready("Dabar.") == "yes"
         assert detect_ready("Ne dabar, esu darbe") == "no"
+
+
+class TestHeardFacts:
+    """2026-11-06 (eval S9): what the caller says is collected whenever they say it, kept, and
+    given to the engine; the caller's own doubt is remembered, not used."""
+
+    def test_the_next_answer_answers_the_readiness_question(self, diagnosing):
+        """„Patikrinau, WiFi įjungtas" to „ar galite pasižiūrėti?" — no „ar teisingai?", no
+        repeated Wi-Fi question; it is said back"""
+        c = walk(diagnosing("healthy_to_router"), OTHERS_WORK_PHONE[:-1])
+        assert c.rule == "case.wifi_ready"
+        c.say("Patikrinau, WiFi įjungtas")
+        assert c.state.case.facts["wifi_on"] == "yes"
+        assert c.state.case.facts["device_ready"] == "yes"
+        assert c.rule not in ("case.confirm", "case.wifi_state", "case.wifi_ready")
+        assert "Wi-Fi įjungtas" in c.replies[-1]
+
+    def test_doubt_asks_to_look_then_takes_the_answer(self, diagnosing):
+        c = walk(diagnosing("healthy_to_router"), OTHERS_WORK_PHONE)
+        assert c.rule == "case.wifi_state"
+        c.say("Lyg ir įjungtas")
+        assert c.rule == "case.hedged" and "wifi_on" not in c.state.case.facts
+        c.say("Taip, įjungtas")
+        assert c.state.case.facts["wifi_on"] == "yes"
+
+    def test_does_not_know_is_not_no(self, diagnosing):
+        c = walk(diagnosing("healthy_to_router"), OTHERS_WORK_PHONE)
+        c.say("Nežinau")
+        assert "wifi_on" not in c.state.case.facts
+
+
+def test_a_step_that_did_not_help_is_named_before_the_next(diagnosing):
+    """2026-11-09: „Ne, neveikia" after a fix check — the caller hears it did not help."""
+    c = walk(diagnosing("healthy_to_router"), [*OTHERS_WORK_PHONE, "Išjungtas", "Padariau"])
+    c.say("Ne, neveikia")
+    assert "bet internetas vis dar neveikia" in c.replies[-1]

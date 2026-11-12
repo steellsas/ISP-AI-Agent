@@ -632,6 +632,11 @@ class EngineProcessor(FrameProcessor):
         self._checkin_task = None
         self._hangup_task = None
         self._checked_in = False
+        # The running reply was cut before the caller heard a word of it: their next words
+        # are the rest of the same utterance (`AgentSession.rewind_cut_turn`).
+        self._cut_unheard = False
+        # The „neskubėkite, aš čia" of this turn's silence has been said (`_checkin`).
+        self._held = False
 
     async def process_frame(self, frame: Frame, direction: FrameDirection):
         await super().process_frame(frame, direction)
@@ -644,6 +649,18 @@ class EngineProcessor(FrameProcessor):
             if text and not self._session.is_complete:  # after the goodbye: no more turns
                 self._task = self.create_task(self._reply(text, self._task))
         elif isinstance(frame, InterruptionFrame):
+            running = self._task is not None and not self._task.done()
+            if not self._tracker.spoken and (running or self._tracker.unheard()):
+                self._cut_unheard = True
+            if running or self._tracker.unheard():
+                # The moment of the cut: with the next `user_turn` it measures what an
+                # interruption costs before the new turn starts (2026-11-11).
+                self._session.tracer.emit(
+                    "interrupted",
+                    running=running,
+                    heard=len(self._tracker.spoken),
+                    transport="pipecat",
+                )
             self._stop.set()  # the running reply (if any) stops speaking
             if self._task is not None and not self._task.done():
                 self._session.request_cancel()
@@ -697,10 +714,26 @@ class EngineProcessor(FrameProcessor):
             return
         # After a task („įkiškite laidą") the caller needs time; after a question, silence
         # more likely means they did not hear it (F4).
-        asked = self._tracker.reply.rstrip().endswith("?")
+        asked = self._tracker.reply.rstrip().endswith("?") and not self._held
         delay = (
             limits.get("voice_checkin_question_s") if asked else limits.get("voice_checkin_after_s")
         )
+        hold = float(limits.get("voice_hold_after_s") or 0)
+        if not asked and 0 < hold < float(delay):
+            if not self._held:
+                # First a short „neskubėkite, aš čia" — 35 s of silence sounds like a dropped
+                # line. Speaking ends this task; the next one waits the rest (2026-11-11).
+                await asyncio.sleep(hold)
+                if self._session.is_complete or not self._session.awaiting_caller():
+                    return
+                self._held = True
+                text = phrase("identification.hold_on")
+                self._session.tracer.emit("checkin", text=text, transport="pipecat", hold=True)
+                await self.push_frame(LLMFullResponseStartFrame())
+                await self.push_frame(LLMTextFrame(text))
+                await self.push_frame(LLMFullResponseEndFrame())
+                return
+            delay = float(delay) - hold
         await asyncio.sleep(float(delay))
         if self._session.is_complete or not self._session.awaiting_caller():
             return
@@ -743,8 +776,14 @@ class EngineProcessor(FrameProcessor):
         for task in (previous, self._delivery_task):
             if task is not None and not task.done():
                 await task  # one reply at a time; the last delivery report lands first
+        if self._cut_unheard:
+            self._cut_unheard = False
+            before = await asyncio.to_thread(self._session.rewind_cut_turn)
+            if before:
+                text = f"{before} {text}"
         stop = self._stop = threading.Event()
         self._checked_in = False
+        self._held = False
         self._tracker.start()
         self._recorder.next_turn()
         async with self._turns.turn():

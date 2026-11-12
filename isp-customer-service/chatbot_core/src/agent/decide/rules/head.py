@@ -88,10 +88,28 @@ def end_confirm_answer(state: Any, rt: Any, user_input: str) -> bool:
 
     if state.dialog.end_confirm_pending and not s.closing.case_closed:
         state.dialog.end_confirm_pending = False
+        if s.case.in_progress and _says_it_works(user_input):
+            # „Gedimo nebėra, viskas susitvarkė, ačiū" answering „Ar tikrai baigti?" / „Ar
+            # užregistruoti?": the result comes first, as on the farewell itself — the Case reads
+            # it and closes as solved (eval S9c, live call 2026-11-10: offered a ticket instead).
+            state.dialog.end_ticket_offer = False
+            rt.tracer.emit("decision", intent="end_confirm", action="result_first")
+            return False
         if state.dialog.end_ticket_offer:
             # F-27: the answer to "register the fault?" — only a yes registers.
+            answer = detect_ticket_consent(user_input)
+            if (
+                answer is None
+                and not detect_farewell(user_input)
+                and not state.dialog.end_ticket_offer_repeated
+            ):
+                # An unclear answer is not a no: asked once more before the call ends.
+                state.dialog.end_ticket_offer_repeated = True
+                state.dialog.end_confirm_pending = True
+                rt.tracer.emit("decision", intent="end_ticket_offer", action="clarify")
+                return True
             state.dialog.end_ticket_offer = False
-            consent = detect_ticket_consent(user_input) == "yes"
+            consent = answer == "yes"
             if consent and _case_can_escalate(s):
                 request_ticket(state, rt, "klientas_nenori")
                 rt.tracer.emit("decision", intent="end_ticket_offer", action="register")
@@ -217,6 +235,13 @@ def farewell_mid_process(state: Any, rt: Any, user_input: str) -> bool:
     return False
 
 
+def _names_another_address(state: Any, rt: Any, user_input: str) -> bool:
+    from ...perceive.detectors import detect_address_correction
+    from ...perceive.slots import mentions_other_street
+
+    return detect_address_correction(user_input) or mentions_other_street(state, rt, user_input)
+
+
 def _says_it_works(user_input: str | None) -> bool:
     """„Veikia" in a statement (not in a question)."""
     from ...perceive.detectors import says_it_works
@@ -311,6 +336,11 @@ def caller_intro(state: Any, rt: Any, user_input: str) -> bool:
         # Question by WORDS only — STT sticks "?" onto rising intonation
         # ("Tomas? Ne, mano vardas Tomas…" is the ANSWER, not a question).
         names_self = any(m in low_intro for m in vocab("caller_own_name_markers"))
+        if not names_self and _names_another_address(state, rt, user_input):
+            # „Ne, aš skambinu dėl Žeimių 12-6" answers the ADDRESS, not the name question (live
+            # 2026-11-10: „jūsų vardas Žeimių?"). The address correction owns it.
+            rt.tracer.emit("caller_intro", name=None, why="address")
+            return False
         if is_real_question(user_input) and not names_self:
             # off-script — the LLM answers; the ladder re-asks next turn. But „Mano vardas —
             # koks jūsų vardas? Mano vardas — Andrius" GIVES the name (live 2026-10-09: the

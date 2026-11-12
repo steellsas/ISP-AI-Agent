@@ -1031,6 +1031,34 @@ class TestIdentificationFinishesBeforeTheCaseAsks:
         assert state.case.fault == "no_mac_observed", "the thinking happened"
         assert state.case.step_said == -1, "and nothing was marked as asked"
 
+    @pytest.mark.parametrize("problem", ["billing", "disconnection"])
+    def test_a_request_call_holds_no_finding_about_the_line(self, call, problem):
+        # Eval R1, 2026-11-09: a caller asking about the bill heard about their router.
+        state, rt = call
+        record_telemetry(state, rt, {**BASE, "observed_mac": None})
+        record_client(state, rt, "has_computer", "yes")
+        state.intake.problem_type = problem
+        state.identity.holder_clarify_open = True
+        state.identity.holder_clarify_asked = False
+
+        case_rule.plan(state, rt)
+
+        assert state.case.fault is None and state.case.finding is None
+        assert state.case.announced == [], "still news if a connection problem comes up later"
+
+    def test_a_request_call_hears_no_finding_after_identification_either(self, call):
+        # The first fix guarded only the quiet path; R1 still leaked once the name was known.
+        state, rt = call
+        record_telemetry(state, rt, {**BASE, "observed_mac": None})
+        record_client(state, rt, "has_computer", "yes")
+        state.intake.problem_type = "billing"
+        state.identity.holder_clarify_open = False
+
+        case_rule.plan(state, rt)
+
+        assert state.turn.directives.findings is None and state.case.finding is None
+        assert state.case.announced == []
+
     def test_once_identification_is_done_the_question_goes_out(self, call):
         state, rt = call
         record_telemetry(state, rt, {**BASE, "observed_mac": None})  # nieko linijoje

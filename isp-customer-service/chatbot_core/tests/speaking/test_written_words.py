@@ -109,7 +109,9 @@ class TestL2WrittenWordsGoOutAsWritten:
         state, rt = _at_module(call, "router_hung", "reboot")
         state.case.awaiting = "reachable"
         _remember_what_we_heard(state)
-        assert state.turn.heard_said is None
+        # 2026-11-06: every caller fact has ONE prepared statement (`evidence.said_back`) —
+        # never the question-shaped label glued to a value.
+        assert state.turn.heard_said in (None, "galite prieiti prie įrenginio")
 
     def test_a_statement_fact_label_is_read_back(self, call):
         from agent.decide.rules.case_rule import _remember_what_we_heard
@@ -119,3 +121,53 @@ class TestL2WrittenWordsGoOutAsWritten:
         state.case.awaiting = "lights"
         _remember_what_we_heard(state)
         assert state.turn.heard_said and "nedega" in state.turn.heard_said.lower()
+
+
+class TestCaseStory:
+    """2026-11-09: the speaker knows how the case went; only the engine registers."""
+
+    def test_every_step_the_caller_does_has_a_reason(self):
+        from agent.contract.locale import phrase_or
+
+        needed = [
+            "reboot",
+            "cable_seated",
+            "cable_reseat",
+            "nic_enabled",
+            "wifi_state",
+            "check_power",
+        ]
+        assert [m for m in needed if not phrase_or(f"step_why.{m}", "")] == []
+
+    def test_story_says_what_was_tried_and_ticket_state(self, call):
+        from agent.speak.context_card import case_story
+
+        state, rt = _at_module(call, "router_hung", "verify")
+        state.case.worked = ["reboot"]
+        state.case.facts["restored"] = "no"
+        story = "\n".join(case_story(state, rt))
+        assert "perkrovėme routerį" in story and "vis dar neveikia" in story
+        assert "NOT registered" in story
+        assert "restored" not in story
+
+    def test_goal_is_shown_last(self, call):
+        from agent.speak.context_card import context_card
+
+        state, rt = _at_module(call, "router_hung", "reboot")
+        state.turn.plan = {"rule": "case.reboot", "say": {"goal": "the reboot done"}}
+        card = context_card(state, rt)
+        assert card.index("THE CASE SO FAR") < card.index("THIS REPLY:") < card.index("PLAN GOAL")
+
+    def test_failed_step_is_named_on_the_written_path(self, call):
+        from types import SimpleNamespace
+
+        from agent.decide.rules.case_rule import _did_not_help
+
+        state, rt = _at_module(call, "router_hung", "verify")
+        state.case.worked = ["cable_reseat", "verify"]
+        state.case.facts["restored"] = "no"
+        state.case.moved_on_turn = state.dialog.turn_count
+        said = _did_not_help(state, SimpleNamespace(text="trumpas"))
+        assert said.startswith("Įkišome laidą iš naujo, bet internetas vis dar neveikia.")
+        state.case.moved_on_turn = state.dialog.turn_count - 1
+        assert _did_not_help(state, SimpleNamespace(text="trumpas")) == ""

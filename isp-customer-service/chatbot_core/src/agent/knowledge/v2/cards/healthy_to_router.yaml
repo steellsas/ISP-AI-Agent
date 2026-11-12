@@ -88,6 +88,13 @@ needs:
       "no": answers_healthy_to_router_rebooted_no
 
 solution:
+# Niekur neveikia, o routerį jau perkrovėme MES ir tai nepadėjo (4 etapas, 2026-11-11): antrą
+# kartą neprašom ir neklausiam, ar perkrovė — telefonu nebeliko ko daryti.
+- when: [fail_scope=all, tried_router_reboot=failed]
+  steps:
+  - module: escalate
+    args: {note: "routerį perkrovėme kartu su klientu, nepadėjo; tinklas iki routerio veikia"}
+
 # Niekur neveikia (klientas pasakė pats), routeris dar neperkrautas — perkrovimas pigiausias.
 - when: [fail_scope=all, rebooted=no]
   steps:
