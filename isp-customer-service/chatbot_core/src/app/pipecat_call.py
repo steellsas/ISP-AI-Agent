@@ -12,6 +12,7 @@ turn runs under the session lock and ends with the same `turn_summary`.
 
 Env: SMART_TURN_STOP_SECS (silence fallback when Smart Turn says “not finished”, default
 1.2 — 2.0 left a caller waiting 1.5 s after a finished “Ne, …”, DELSA §5.4), VAD_STOP_SECS (pause that triggers a Smart Turn check, default 0.2).
+PHONE_LINE=on (the caller's audio through an 8 kHz G.711 line, `call_audio`).
 
 After a barge-in the engine hears which sentences were played out (`SpokenTracker`), as on
 the old voice path. Not yet: check-ins.
@@ -80,11 +81,17 @@ class CallRecorder:
     (`smart_turn_eval.py`) read it. The greeting is `turn_00_agent.wav`. Off with
     API_RECORD_AUDIO=0."""
 
-    def __init__(self, session_id: str, enabled: bool | None = None) -> None:
+    def __init__(self, session_id: str, enabled: bool | None = None, line: str = "browser") -> None:
         if enabled is None:
             enabled = os.environ.get("API_RECORD_AUDIO", "1") != "0"
         self.enabled = enabled
         self._sid = session_id
+        # The whole caller side before VAD (call_audio.RawCallTrack) — what a noise filter
+        # is measured on; the turn files below keep only what VAD let through.
+        from .call_audio import RawCallTrack
+        from .voice import _record_dir
+
+        self.raw = RawCallTrack(_record_dir(session_id) if enabled else None, line)
         self._turn = 0
         self._caller = bytearray()
         self._caller_rate = 16000
@@ -125,6 +132,7 @@ class CallRecorder:
         self._caller = bytearray()
 
     def close(self) -> None:
+        self.raw.close()
         self._write_agent()
         if self._caller:  # the caller spoke after the last reply (a goodbye over the hang-up)
             self._turn += 1
@@ -196,6 +204,8 @@ class EngineSTT(SegmentedSTTService):
 
         await self.start_processing_metrics()
         self._recorder.caller(audio)
+        segment_end = self._recorder.raw.t
+        segment_secs = _wav_secs(audio)
         t0 = time.perf_counter()
         context = self._session.asr_context()
         try:
@@ -221,6 +231,15 @@ class EngineSTT(SegmentedSTTService):
             dropped=dropped,
             context=context or "",
             transport="pipecat",
+        )
+        # Where in call_caller_raw.wav this segment lies (its end ≈ when VAD handed it over).
+        self._recorder.raw.mark(
+            "asr",
+            start=round(max(segment_end - segment_secs, 0.0), 3),
+            end=segment_end,
+            transcript=text,
+            dropped=dropped,
+            over_agent=self._over_agent,
         )
         if not dropped:
             yield TranscriptionFrame(text, self._user_id, time_now_iso8601())
@@ -841,6 +860,23 @@ async def _in_one_thread(make_tokens):
         yield item
 
 
+def _wav_secs(wav: bytes) -> float:
+    """Length of a WAV segment in seconds (0 when it cannot be read)."""
+    import io
+    import wave
+
+    try:
+        with wave.open(io.BytesIO(wav)) as w:
+            return w.getnframes() / w.getframerate()
+    except Exception:
+        return 0.0
+
+
+def phone_line_enabled() -> bool:
+    """PHONE_LINE=on: the caller's audio through an 8 kHz G.711 line (call_audio)."""
+    return os.environ.get("PHONE_LINE", "off").lower() in ("on", "1", "true")
+
+
 def _last_user_text(context: LLMContext) -> str:
     for message in reversed(context.get_messages()):
         if message.get("role") != "user":
@@ -857,13 +893,22 @@ def build_call(connection, session, asr, tts_provider, turns, greeting: str | No
     """The pipeline for one call; returns its worker and the call's audio recorder (close it
     when the call ends). `greeting=None` asks the engine for one when the browser connects;
     a string is spoken as is (the dashboard made it)."""
+    from .call_audio import PHONE_RATE, CallerTap, PhoneLineFilter
+
+    phone = phone_line_enabled()
     transport = SmallWebRTCTransport(
         webrtc_connection=connection,
-        params=TransportParams(audio_in_enabled=True, audio_out_enabled=True),
+        params=TransportParams(
+            audio_in_enabled=True,
+            audio_out_enabled=True,
+            # A phone call's input is 8 kHz: run it so, the transport resamples (no delay).
+            audio_in_sample_rate=PHONE_RATE if phone else None,
+            audio_in_filter=PhoneLineFilter() if phone else None,
+        ),
     )
     tracker = SpokenTracker()
     gate = PacedHoldGate()
-    recorder = CallRecorder(session.session_id)
+    recorder = CallRecorder(session.session_id, line="phone" if phone else "browser")
     engine = EngineProcessor(session, turns, tracker, recorder, gate)
     user_params = LLMUserAggregatorParams(
         vad_analyzer=SileroVADAnalyzer(
@@ -886,6 +931,7 @@ def build_call(connection, session, asr, tts_provider, turns, greeting: str | No
     pipeline = Pipeline(
         [
             transport.input(),
+            CallerTap(recorder.raw),
             EngineSTT(session, asr, recorder, gate),
             user_agg,
             engine,
@@ -929,7 +975,7 @@ def build_call(connection, session, asr, tts_provider, turns, greeting: str | No
     async def _on_disconnected(_transport, _client):
         await worker.cancel()
 
-    session.tracer.emit("transport", name="pipecat")
+    session.tracer.emit("transport", name="pipecat", line="phone" if phone else "browser")
     return worker, recorder
 
 
