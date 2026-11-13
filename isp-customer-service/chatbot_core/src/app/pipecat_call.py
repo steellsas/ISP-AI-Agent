@@ -13,6 +13,8 @@ turn runs under the session lock and ends with the same `turn_summary`.
 Env: SMART_TURN_STOP_SECS (silence fallback when Smart Turn says “not finished”, default
 1.2 — 2.0 left a caller waiting 1.5 s after a finished “Ne, …”, DELSA §5.4), VAD_STOP_SECS (pause that triggers a Smart Turn check, default 0.2).
 PHONE_LINE=on (the caller's audio through an 8 kHz G.711 line, `call_audio`).
+ASR_WHOLE_TURN (default on): every VAD segment is transcribed together with the turn so far,
+and the turn's text replaces what the turn had — Whisper never hears half a sentence.
 
 After a barge-in the engine hears which sentences were played out (`SpokenTracker`), as on
 the old voice path. Not yet: check-ins.
@@ -31,6 +33,7 @@ from agent.barge_in import overlap_decision
 from loguru import logger
 from pipecat.audio.turn.smart_turn.base_smart_turn import SmartTurnParams
 from pipecat.audio.turn.smart_turn.local_smart_turn_v3 import LocalSmartTurnAnalyzerV3
+from pipecat.audio.utils import pcm_to_wav
 from pipecat.audio.vad.silero import SileroVADAnalyzer
 from pipecat.audio.vad.vad_analyzer import VADParams
 from pipecat.frames.frames import (
@@ -48,6 +51,7 @@ from pipecat.frames.frames import (
     TranscriptionFrame,
     TTSAudioRawFrame,
     TTSTextFrame,
+    UserStoppedSpeakingFrame,
     VADUserStartedSpeakingFrame,
     VADUserStoppedSpeakingFrame,
 )
@@ -57,6 +61,7 @@ from pipecat.pipeline.worker import PipelineParams, PipelineWorker
 from pipecat.processors.aggregators.llm_context import LLMContext
 from pipecat.processors.aggregators.llm_response_universal import (
     LLMContextAggregatorPair,
+    LLMUserAggregator,
     LLMUserAggregatorParams,
 )
 from pipecat.processors.frame_processor import FrameDirection, FrameProcessor
@@ -172,7 +177,17 @@ class CallRecorder:
 
 class EngineSTT(SegmentedSTTService):
     """Our ASR on each VAD segment: Lithuanian domain prompt + the agent's last question
-    as context, numbers normalised, noise dropped."""
+    as context, numbers normalised, noise dropped.
+
+    Whole turn (ASR_WHOLE_TURN, default on): VAD ends a segment at a 0.2 s pause, so a
+    sentence with a pause in it came as pieces ("Mano vardas yra" / "Tomas."), each heard
+    without the rest — on 8 kHz phone audio that cost a third of the letters (noise bench,
+    2026-11-13: CER 33 % → 23 %). Now a segment is transcribed with the turn so far, and its
+    text replaces what the turn sent before (`WholeTurnUserAggregator`). Turn-taking does
+    not change: VAD and Smart Turn see the same pauses, and only the last ASR call is waited
+    for, as before. A segment said wholly over the agent (no barge-in) never joins a turn."""
+
+    MAX_TURN_SECS = 30.0  # longer, and the turn starts afresh (its text is then appended)
 
     def __init__(
         self, session, asr, recorder: CallRecorder, gate: PacedHoldGate | None = None, **kwargs
@@ -184,6 +199,16 @@ class EngineSTT(SegmentedSTTService):
         self._gate = gate
         self._started_over = False
         self._over_agent = False
+        self._whole_turn = whole_turn_enabled()
+        # Each queued segment's (turn, said wholly over the agent), in queue order: the
+        # segment is transcribed later, by when the next turn may have begun.
+        self._queued: collections.deque[tuple[int, bool]] = collections.deque()
+        self._turn = 0  # moves on when the turn ends or the agent speaks
+        self._turn_of_pcm = -1
+        self._turn_pcm = bytearray()
+        self._turn_rate = 0
+        self._turn_start = 0.0
+        self._turn_sent = 0  # transcripts of this turn the aggregator holds
 
     def can_generate_metrics(self) -> bool:
         return True
@@ -192,20 +217,55 @@ class EngineSTT(SegmentedSTTService):
         # Without barge-in a segment begun AND ended while the agent spoke is not heard: noise,
         # an „aha" or a word to someone in the room must not answer the next question (live
         # 2026-11-04). One still going on when the agent ends is the caller's answer.
-        if self._gate is not None:
-            if isinstance(frame, VADUserStartedSpeakingFrame):
-                self._started_over = self._gate.busy
-            elif isinstance(frame, VADUserStoppedSpeakingFrame):
-                self._over_agent = self._started_over and self._gate.busy
+        if isinstance(frame, (UserStoppedSpeakingFrame, BotStartedSpeakingFrame)):
+            self._turn += 1
+        if self._gate is not None and isinstance(frame, VADUserStartedSpeakingFrame):
+            self._started_over = self._gate.busy
+        if isinstance(frame, VADUserStoppedSpeakingFrame):
+            self._over_agent = self._gate is not None and self._started_over and self._gate.busy
+            self._queued.append((self._turn, self._over_agent))
         await super().process_frame(frame, direction)
+
+    def _with_the_turn(self, segment: bytes, turn: int, start: float) -> tuple[bytes, float, int]:
+        """The segment joined to its turn so far: (audio for ASR, where the audio starts in
+        the raw track, how many earlier transcripts of this turn it replaces)."""
+        import io
+        import wave
+
+        try:
+            with wave.open(io.BytesIO(segment)) as w:
+                rate = w.getframerate()
+                pcm = w.readframes(w.getnframes())
+        except Exception:  # pragma: no cover - not a WAV: heard alone
+            return segment, start, 0
+        pad = int(rate * self._trailing_silence_secs) * 2
+        speech = pcm[: len(pcm) - pad] if pad and len(pcm) > pad else pcm
+        too_long = (len(self._turn_pcm) + len(speech)) / 2 / rate > self.MAX_TURN_SECS
+        # A turn whose earlier pieces were all noise starts over from this one.
+        if turn != self._turn_of_pcm or rate != self._turn_rate or too_long or not self._turn_sent:
+            self._turn_of_pcm, self._turn_rate = turn, rate
+            self._turn_pcm = bytearray()
+            self._turn_start = start
+            self._turn_sent = 0
+        self._turn_pcm += speech
+        if self._turn_sent == 0:
+            return segment, start, 0
+        audio = pcm_to_wav(bytes(self._turn_pcm) + bytes(pad), rate)
+        return audio, self._turn_start, self._turn_sent
 
     async def run_stt(self, audio: bytes):
         from adapters.asr.lt_text import is_asr_noise, normalize_lt_numbers
 
         await self.start_processing_metrics()
+        turn, over_agent = (
+            self._queued.popleft() if self._queued else (self._turn, self._over_agent)
+        )
         self._recorder.caller(audio)
         segment_end = self._recorder.raw.t
-        segment_secs = _wav_secs(audio)
+        start = max(segment_end - _wav_secs(audio), 0.0)
+        replaces = 0
+        if self._whole_turn and not (over_agent and not barge_in_enabled()):
+            audio, start, replaces = self._with_the_turn(audio, turn, start)
         t0 = time.perf_counter()
         context = self._session.asr_context()
         try:
@@ -218,7 +278,7 @@ class EngineSTT(SegmentedSTTService):
         await self.stop_processing_metrics()
         text = normalize_lt_numbers(raw or "")
         dropped = not text or is_asr_noise(text)
-        if not dropped and self._over_agent and not barge_in_enabled():
+        if not dropped and over_agent and not barge_in_enabled():
             self._session.tracer.emit(
                 "barge_in", verdict="ignored", transcript=text, transport="pipecat"
             )
@@ -231,18 +291,42 @@ class EngineSTT(SegmentedSTTService):
             dropped=dropped,
             context=context or "",
             transport="pipecat",
+            replaces=replaces,
         )
-        # Where in call_caller_raw.wav this segment lies (its end ≈ when VAD handed it over).
+        # Where in call_caller_raw.wav this audio lies (its end ≈ when VAD handed it over).
         self._recorder.raw.mark(
             "asr",
-            start=round(max(segment_end - segment_secs, 0.0), 3),
+            start=round(start, 3),
             end=segment_end,
             transcript=text,
             dropped=dropped,
-            over_agent=self._over_agent,
+            over_agent=over_agent,
+            replaces=replaces,
         )
-        if not dropped:
-            yield TranscriptionFrame(text, self._user_id, time_now_iso8601())
+        if dropped:
+            return
+        if self._whole_turn and turn == self._turn_of_pcm:
+            self._turn_sent = 1  # the aggregator now holds one transcript for the turn
+        yield TranscriptionFrame(
+            text, self._user_id, time_now_iso8601(), result={"replaces": replaces}
+        )
+
+
+class WholeTurnUserAggregator(LLMUserAggregator):
+    """Pipecat's user aggregator, where a transcript of the whole turn so far replaces the
+    turn's earlier ones (`EngineSTT`, ASR_WHOLE_TURN) instead of being added after them.
+    Pipecat builds its own in `LLMContextAggregatorPair`; `build_call` swaps the class."""
+
+    async def _handle_transcription(self, frame: TranscriptionFrame):
+        replaces = frame.result.get("replaces", 0) if isinstance(frame.result, dict) else 0
+        if replaces and frame.text.strip() and self._aggregation:
+            del self._aggregation[-min(replaces, len(self._aggregation)) :]
+        await super()._handle_transcription(frame)
+
+
+def whole_turn_enabled() -> bool:
+    """ASR_WHOLE_TURN (default on): each segment heard with the turn so far."""
+    return os.environ.get("ASR_WHOLE_TURN", "on").lower() in ("on", "1", "true")
 
 
 class EnginePiperTTS(TTSService):
@@ -928,6 +1012,7 @@ def build_call(connection, session, asr, tts_provider, turns, greeting: str | No
         ),
     )
     user_agg, assistant_agg = LLMContextAggregatorPair(LLMContext(), user_params=user_params)
+    user_agg.__class__ = WholeTurnUserAggregator  # same object, the turn's text revisable
     pipeline = Pipeline(
         [
             transport.input(),

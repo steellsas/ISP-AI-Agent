@@ -214,6 +214,15 @@ SCHEMA: list[dict[str, Any]] = [
         "kind": "env",
     },
     {
+        # The turn heard whole: each segment transcribed with the turn so far (noise bench
+        # 2026-11-13: CER 33 % → 23 % on 8 kHz phone audio, no added wait).
+        "key": "ASR_WHOLE_TURN",
+        "label": "ASR girdi visą ėjimą (ne sakinio gabalus)",
+        "options": ["on", "off"],
+        "scope": "new_calls",
+        "kind": "env",
+    },
+    {
         "key": "VAD_STOP_SECS",
         "label": "Pipecat: pauzė, po kurios klausiama Smart Turn, s",
         "options": ["0.2", "0.3", "0.4"],
