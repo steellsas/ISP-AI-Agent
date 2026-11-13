@@ -962,7 +962,13 @@ def build_call(connection, session, asr, tts_provider, turns, greeting: str | No
 
     worker = PipelineWorker(
         pipeline,
-        params=PipelineParams(enable_metrics=True, enable_usage_metrics=True),
+        params=PipelineParams(
+            # VAD, Smart Turn and the STT take the input rate from here, not from the
+            # transport: at 16 kHz they read an 8 kHz call as twice its speed.
+            audio_in_sample_rate=PHONE_RATE if phone else 16000,
+            enable_metrics=True,
+            enable_usage_metrics=True,
+        ),
         observers=[latency],
     )
 

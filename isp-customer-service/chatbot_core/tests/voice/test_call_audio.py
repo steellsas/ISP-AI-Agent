@@ -116,3 +116,19 @@ class TestTheWholeCallerSide:
         track.audio(np.zeros(320, np.int16).tobytes(), RATE)
         track.mark("asr")
         track.close()
+
+
+@pytest.mark.parametrize(("phone", "rate"), [("on", 8000), ("off", 16000)])
+def test_vad_turn_and_asr_hear_the_line_at_its_own_rate(monkeypatch, phone, rate):
+    # The transport ran at 8 kHz while VAD, Smart Turn and the STT were told 16 kHz:
+    # Whisper heard every phone call at twice its speed ("Dėkis" for "Giedrius mano vardas").
+    from unittest.mock import MagicMock
+
+    from app.pipecat_call import build_call
+
+    monkeypatch.setenv("PHONE_LINE", phone)
+    monkeypatch.setenv("API_RECORD_AUDIO", "0")
+    session = MagicMock(session_id="rate-test")
+    worker, recorder = build_call(MagicMock(), session, MagicMock(), MagicMock(), MagicMock(), "")
+    recorder.close()
+    assert worker._params.audio_in_sample_rate == rate
