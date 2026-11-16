@@ -154,6 +154,7 @@ def debt_offer_turn(state: Any, rt: Any, user_input: str | None) -> str | None:
 
     Returns what the engine says this turn:
       "ask_facts" — the caller says they paid: ask for the missing details (twice at most);
+      "confirm_amount" — a bare number for the asked sum („39 sol."): „Ar teisingai — 39 €?";
       "facts_question" — a question while the details are asked: answered, then asked again;
       "offer"     — the details are in (or it is not about a payment): offer to register;
       "explain"   — a question while the offer stands: what the agent sees, then the offer;
@@ -171,7 +172,14 @@ def debt_offer_turn(state: Any, rt: Any, user_input: str | None) -> str | None:
     if not _debt_news_open(state):
         return None
     if c.debt_offer == "facts":
+        _settle_amount(state, user_input)
         _note(state, user_input)
+        if _amount_to_check(state, user_input):
+            register(state, rt, "inform", "debt_amount_check")
+            rt.tracer.emit(
+                "decision", intent="debt_offer", action="confirm_amount", amount=c.debt_amount_check
+            )
+            return "confirm_amount"
         if (
             missing_parts(c.debt_claim)
             and c.debt_claim_asks < limits.get("debt_claim_asks_max")
@@ -219,6 +227,41 @@ def debt_offer_turn(state: Any, rt: Any, user_input: str | None) -> str | None:
         _note(state, user_input)
         return _offer(state, rt)
     return None
+
+
+AMOUNT_CHECKS_MAX = 2  # „Ar teisingai — 39 €?" asked at most twice; then the sum stays unsaid
+
+
+def _settle_amount(state: Any, user_input: str | None) -> None:
+    """The answer to „Ar teisingai supratau — 39 €?": „taip" makes it the caller's sum;
+    anything else leaves the sum unsaid (a new number in the answer is read again)."""
+    from ...perceive.detectors import detect_yes_no
+    from ...resolution import Outcome
+
+    c = state.closing
+    guessed, c.debt_amount_check = c.debt_amount_check, None
+    if guessed and detect_yes_no(user_input) == Outcome.YES:
+        c.debt_claim = {**c.debt_claim, "amount": guessed}
+
+
+def _amount_to_check(state: Any, user_input: str | None) -> bool:
+    """A bare number after the sum was asked („39 sol." — the phone line lost „eurų") is
+    the sum the agent heard — asked back, never taken on a guess (Andrius: patikslinti,
+    ne spėti; live 2026-11-16 the sum was lost and the ticket went without it)."""
+    from ...perceive.payment_claim import bare_amount, missing_parts
+
+    c = state.closing
+    if (
+        c.debt_claim_asks == 0
+        or "amount" not in missing_parts(c.debt_claim)
+        or c.debt_amount_checks >= AMOUNT_CHECKS_MAX
+    ):
+        return False
+    guess = bare_amount(user_input)
+    if guess:
+        c.debt_amount_check = guess
+        c.debt_amount_checks += 1
+    return bool(guess)
 
 
 def _offer(state: Any, rt: Any) -> str:

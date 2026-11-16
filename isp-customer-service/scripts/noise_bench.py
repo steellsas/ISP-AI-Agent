@@ -128,6 +128,10 @@ def background_spans(
             busy.append((x["end"] - secs - MARGIN_S, x["end"] + MARGIN_S))
     for k, t in opened.items():
         busy.append((t - MARGIN_S, total_s))
+    # The greeting starts before the track: a first agent_stop with no start before it.
+    agent = [x for x in timeline if x["kind"] in ("agent_start", "agent_stop")]
+    if agent and agent[0]["kind"] == "agent_stop":
+        busy.append((0.0, agent[0]["t"] + AGENT_MARGIN_S))
     busy.sort()
     free, cursor = [], 0.0
     for a, b in busy:
@@ -167,6 +171,10 @@ def _gain(seg: np.ndarray) -> np.ndarray:
     return scale_to(seg, -20.0) if dbfs(seg) < -20.0 else seg
 
 
+def _vad(**params) -> dict:
+    return {"stop_secs": 0.2, **params}
+
+
 VARIANTS = {
     "none": Variant("none"),
     "gain": Variant("gain", pre_asr=_gain),
@@ -176,7 +184,19 @@ VARIANTS = {
     "stop08": Variant("stop08", vad_params={"stop_secs": 0.8}),
     # B: VAD stays at 0.2 s for turn-taking; the turn goes to ASR once, whole.
     "turn": Variant("turn", whole_turn=True),
+    # On top of the whole turn (the call since 77dc9f4): VAD made deafer to a far room.
+    # min_volume is BS.1770 loudness mapped -110..-10 LUFS → 0..1: 0.6 (Pipecat's
+    # default) ≈ -50 LUFS, 0.7 ≈ -40, 0.75 ≈ -35; a caller into the phone is ~-25..-30,
+    # the TV across the room ~-45 (2026-11-16).
+    "vol07": Variant("vol07", vad_params=_vad(min_volume=0.7), whole_turn=True),
+    "vol075": Variant("vol075", vad_params=_vad(min_volume=0.75), whole_turn=True),
+    "conf085": Variant("conf085", vad_params=_vad(confidence=0.85), whole_turn=True),
+    "start04": Variant("start04", vad_params=_vad(start_secs=0.4), whole_turn=True),
 }
+
+# Calls made to record the room alone (TV, people talking, no caller): every second the
+# agent is silent is background — including what the call's ASR took for the caller.
+BACKGROUND_ONLY = ("20261116-081020-227382-0002",)
 
 
 # --- data -----------------------------------------------------------------------------------
@@ -198,14 +218,48 @@ def phone_calls() -> list[Path]:
     return out
 
 
-def background_bank(calls: list[Path]) -> list[np.ndarray]:
+def split_at_zeros(pcm: np.ndarray, rate: int = RATE, min_s: float = 1.0) -> list[np.ndarray]:
+    """Pieces between runs of exact digital silence (≥ 0.1 s). The browser sends nothing
+    in quiet stretches (Opus DTX) and the server fills them with zeros — a phone line
+    carries the room there, so zeros are not a room to measure on."""
+    frame = int(0.02 * rate)
+    n = len(pcm) // frame
+    if n == 0:
+        return []
+    silent = np.abs(pcm[: n * frame].reshape(n, frame)).max(axis=1) == 0
+    pieces, start, i = [], 0, 0
+    while i < n:
+        if not silent[i]:
+            i += 1
+            continue
+        j = i
+        while j < n and silent[j]:
+            j += 1
+        if j - i >= 5:  # 0.1 s of zeros ends the piece before it
+            if (i - start) * 0.02 >= min_s:
+                pieces.append(pcm[start * frame : i * frame])
+            start = j
+        i = j
+    if (n - start) * 0.02 >= min_s:
+        pieces.append(pcm[start * frame : n * frame])
+    return pieces
+
+
+def background_bank(calls: list[Path], pure: bool) -> list[np.ndarray]:
+    """The room: from calls made for it (`BACKGROUND_ONLY`, every agent-free second), or
+    with `pure=False` also the gaps of ordinary calls (which may hold the caller)."""
     bank = []
     for d in calls:
+        only_room = d.name in BACKGROUND_ONLY
+        if pure and not only_room:
+            continue
         pcm, rate = read_wav(d / "call_caller_raw.wav")
         timeline = _lines(d / "call_timeline.jsonl")
+        if only_room:
+            timeline = [x for x in timeline if x["kind"] in ("agent_start", "agent_stop")]
         scale = 2.0 if _code(d) == "f88d177" else 1.0  # recorded before the 8 kHz fix
         for a, b in background_spans(timeline, len(pcm) / rate, scale):
-            bank.append(pcm[int(a * rate) : int(b * rate)])
+            bank += split_at_zeros(pcm[int(a * rate) : int(b * rate)], rate)
     return bank
 
 
@@ -376,10 +430,16 @@ def main() -> int:
     ap.add_argument("--phantoms", type=int, default=20, help="kiek vien fono atkarpų")
     ap.add_argument("--seed", type=int, default=13)
     ap.add_argument("--show", type=int, default=0, help="parodyti blogiausius ėjimus")
+    ap.add_argument(
+        "--bank",
+        choices=["room", "all"],
+        default="room",
+        help="fonas: room — tik tam įrašyti skambučiai (BACKGROUND_ONLY); all — ir tarpai",
+    )
     args = ap.parse_args()
 
     calls = phone_calls()
-    bank = background_bank(calls)
+    bank = background_bank(calls, pure=args.bank == "room")
     if not bank:
         print("nėra telefono režimo įrašų su fonu (PHONE_LINE=on, 8 kHz)")
         return 1
@@ -405,7 +465,11 @@ def main() -> int:
         lead = np.zeros(int(LEAD_S * RATE), np.int16)
         placed = np.concatenate([lead, speech, lead])
         cases.append((f, ref, placed, background(len(placed))))
-    phantom_clips = [background(int(4 * RATE)) for _ in range(args.phantoms)]
+    # The room alone: a recorded room is heard once, whole; gaps of calls by random 4 s.
+    if args.bank == "room":
+        phantom_clips = list(bank)
+    else:
+        phantom_clips = [background(int(4 * RATE)) for _ in range(args.phantoms)]
     speech_db = float(np.median([dbfs(p[p != 0]) for _, _, p, _ in cases]))
 
     rows, worst, phantom_texts = [], [], []

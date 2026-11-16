@@ -254,7 +254,7 @@ class EngineSTT(SegmentedSTTService):
         return audio, self._turn_start, self._turn_sent
 
     async def run_stt(self, audio: bytes):
-        from adapters.asr.lt_text import is_asr_noise, normalize_lt_numbers
+        from adapters.asr.lt_text import is_asr_noise, is_prompt_echo, normalize_lt_numbers
 
         await self.start_processing_metrics()
         turn, over_agent = (
@@ -278,6 +278,9 @@ class EngineSTT(SegmentedSTTService):
         await self.stop_processing_metrics()
         text = normalize_lt_numbers(raw or "")
         dropped = not text or is_asr_noise(text)
+        # Whisper copying its prompt (the agent's question) on noise is not the caller.
+        echo = not dropped and is_prompt_echo(text, context)
+        dropped = dropped or echo
         if not dropped and over_agent and not barge_in_enabled():
             self._session.tracer.emit(
                 "barge_in", verdict="ignored", transcript=text, transport="pipecat"
@@ -292,6 +295,7 @@ class EngineSTT(SegmentedSTTService):
             context=context or "",
             transport="pipecat",
             replaces=replaces,
+            echo=echo,
         )
         # Where in call_caller_raw.wav this audio lies (its end ≈ when VAD handed it over).
         self._recorder.raw.mark(
@@ -302,6 +306,7 @@ class EngineSTT(SegmentedSTTService):
             dropped=dropped,
             over_agent=over_agent,
             replaces=replaces,
+            echo=echo,
         )
         if dropped:
             return

@@ -555,6 +555,11 @@ def _debt_words(state: Any, rt: Any, offer: str) -> TurnPlan:
         if offer == "facts_question":
             key = "debt_claim_question"
         return _words("inform.debt_claim", phrase(f"identification.{key}", parts=joined))
+    if offer == "confirm_amount":
+        return _words(
+            "inform.debt_claim",
+            phrase("identification.debt_amount_confirm", amount=c.debt_amount_check),
+        )
     if offer == "noted":
         return _words(
             "inform.debt_offer",

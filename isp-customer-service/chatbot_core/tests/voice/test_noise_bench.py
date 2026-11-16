@@ -62,6 +62,21 @@ class TestWhereTheRoomComesFrom:
         spans = bench.background_spans(timeline, 20.0)
         assert spans == [(0.0, 1.6), (5.8, 9.6), (12.4, 20.0)]
 
+    def test_the_greeting_before_the_track_is_cut_out(self):
+        # The agent greets before the caller's track starts: its stop comes first.
+        timeline = [{"t": 10.0, "kind": "agent_stop"}]
+        assert bench.background_spans(timeline, 20.0) == [(10.8, 20.0)]
+
+    def test_digital_silence_is_not_a_room(self):
+        # The browser sends nothing in quiet stretches; the server fills them with zeros.
+        rate = 8000
+        room = np.full(2 * rate, 50, np.int16)
+        gap = np.zeros(int(0.5 * rate), np.int16)
+        blip = np.zeros(int(0.04 * rate), np.int16)  # a short dip is kept inside
+        pcm = np.concatenate([room, gap, room[: rate // 2], gap, room, blip, room])
+        pieces = bench.split_at_zeros(pcm, rate)
+        assert [round(len(p) / rate, 2) for p in pieces] == [2.0, 4.04]
+
     def test_marks_from_before_the_fix_are_twice_as_long(self):
         # Before the 8 kHz fix a turn file said 16 kHz: its length in the mark is half.
         timeline = [{"t": 10.0, "kind": "asr", "start": 9.0, "end": 10.0}]

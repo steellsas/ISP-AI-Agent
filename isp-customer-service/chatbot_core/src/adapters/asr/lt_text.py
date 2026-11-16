@@ -90,6 +90,57 @@ def is_asr_noise(text: str) -> bool:
     return not re.search(r"[^\W_]", stripped, re.UNICODE)
 
 
+def _words(text: str) -> list[str]:
+    return [t for t in re.split(r"\W+", (text or "").lower(), flags=re.UNICODE) if t]
+
+
+def _longest_common_run(a: list[str], b: list[str]) -> tuple[int, int]:
+    """Most words `a` and `b` share in a row, in the same order, and where in `b` that
+    run ends (index of its last word)."""
+    best, end, prev = 0, -1, [0] * (len(b) + 1)
+    for x in a:
+        cur = [0] * (len(b) + 1)
+        for j, y in enumerate(b, 1):
+            if x == y:
+                cur[j] = prev[j - 1] + 1
+                if cur[j] > best:
+                    best, end = cur[j], j - 1
+        prev = cur
+    return best, end
+
+
+def is_prompt_echo(text: str, context: str | None) -> bool:
+    """True when the ASR gave back the agent's own question — the per-turn context we
+    prime Whisper with — instead of what was said. On noise Whisper copies its prompt:
+    live 2026-11-16 the TV between turns became „Aš padedu dėl interneto." (from the
+    context „Ačiū, kad paskambinote! Aš padedu dėl interneto ir televizijos gedimų…")
+    and started a call; 2026-11-13 a whole agent sentence came back twice as the caller's.
+
+    Only an almost pure copy counts, so a caller who repeats the question's words is
+    heard: at least 3 words, ≥ 75 % of them in one run in the question's order, at most
+    one short (≤ 3 letters) word that is not in the question, and no digits — an answer
+    naming an address, a sum or a time is never an echo („Taip, Tilžės g. 60-3"). A copy
+    of a question's end is a question too: „Lemputė su interneto simboliu dega." answers
+    „Ar lemputė su interneto simboliu dega?", „…iš kurio skambinate?" copies it."""
+    if not text or not context:
+        return False
+    words = _words(text)
+    if len(words) < 3 or any(ch.isdigit() for ch in text):
+        return False
+    question = re.sub(r"^\s*Klausimas:\s*", "", context)
+    found = list(re.finditer(r"[^\W_]+", question.lower(), flags=re.UNICODE))
+    source = [m.group() for m in found]
+    pool = set(source)
+    foreign = [w for w in words if w not in pool]
+    if len(foreign) > 1 or any(len(w) > 3 for w in foreign):
+        return False
+    run, end = _longest_common_run(words, source)
+    if run < 3 or run < 0.75 * len(words):
+        return False
+    asks = question[found[end].end() :].lstrip().startswith("?")
+    return not asks or text.rstrip().endswith("?")
+
+
 # --- Whisper domain prime (proper nouns + vocabulary it must spell right) -----
 # Kept short (Whisper's initial_prompt is ~224 tokens) and focused on the demo's
 # localities/streets plus the words that recur in ISP support.
