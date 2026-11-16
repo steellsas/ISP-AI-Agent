@@ -28,6 +28,7 @@ import contextlib
 import os
 import threading
 import time
+from dataclasses import dataclass
 
 from agent.barge_in import overlap_decision
 from loguru import logger
@@ -39,6 +40,7 @@ from pipecat.audio.vad.vad_analyzer import VADParams
 from pipecat.frames.frames import (
     BotStartedSpeakingFrame,
     BotStoppedSpeakingFrame,
+    DataFrame,
     EndWorkerFrame,
     ErrorFrame,
     Frame,
@@ -175,6 +177,16 @@ class CallRecorder:
             logger.warning(f"audio recording failed: {name}", exc_info=True)
 
 
+@dataclass
+class HeldWordsFrame(DataFrame):
+    """Words the caller said wholly over the agent, kept until it finished and the caller
+    did not go on (`EngineSTT`): the engine decides whether they are a turn.
+    `asked`: the agent was asking a question while they were said."""
+
+    text: str = ""
+    asked: bool = False
+
+
 class EngineSTT(SegmentedSTTService):
     """Our ASR on each VAD segment: Lithuanian domain prompt + the agent's last question
     as context, numbers normalised, noise dropped.
@@ -185,18 +197,38 @@ class EngineSTT(SegmentedSTTService):
     2026-11-13: CER 33 % → 23 %). Now a segment is transcribed with the turn so far, and its
     text replaces what the turn sent before (`WholeTurnUserAggregator`). Turn-taking does
     not change: VAD and Smart Turn see the same pauses, and only the last ASR call is waited
-    for, as before. A segment said wholly over the agent (no barge-in) never joins a turn."""
+    for, as before. A segment said wholly over the agent (no barge-in) never joins a turn.
+
+    Held words (Andrius 2026-11-16: what the caller says over the agent must not be lost):
+    without barge-in the agent finishes its phrase, and a segment said wholly over it is
+    kept — unless it is noise, our own words heard back or a backchannel
+    (`overlap_decision`). When the agent stops: if the caller goes on within
+    `HELD_WAIT_SECS`, the kept words open that turn; if not, they go to the engine as a
+    `HeldWordsFrame`, which decides whether they are the caller's turn."""
 
     MAX_TURN_SECS = 30.0  # longer, and the turn starts afresh (its text is then appended)
+    HELD_WAIT_SECS = 0.5  # after the agent stops: does the caller go on?
 
     def __init__(
-        self, session, asr, recorder: CallRecorder, gate: PacedHoldGate | None = None, **kwargs
+        self,
+        session,
+        asr,
+        recorder: CallRecorder,
+        gate: PacedHoldGate | None = None,
+        tracker: SpokenTracker | None = None,
+        **kwargs,
     ) -> None:
         super().__init__(settings=STTSettings(model=None, language=None), **kwargs)
         self._session = session
         self._asr = asr
         self._recorder = recorder
         self._gate = gate
+        self._tracker = tracker
+        self._held: list[str] = []
+        self._held_asked = False
+        self._held_task: asyncio.Task | None = None
+        self._prefix = ""  # held words that open the turn `_prefix_turn`
+        self._prefix_turn = -1
         self._started_over = False
         self._over_agent = False
         self._whole_turn = whole_turn_enabled()
@@ -219,12 +251,52 @@ class EngineSTT(SegmentedSTTService):
         # 2026-11-04). One still going on when the agent ends is the caller's answer.
         if isinstance(frame, (UserStoppedSpeakingFrame, BotStartedSpeakingFrame)):
             self._turn += 1
+        if isinstance(frame, BotStoppedSpeakingFrame):
+            self._arm_held()
         if self._gate is not None and isinstance(frame, VADUserStartedSpeakingFrame):
             self._started_over = self._gate.busy
+            if self._held and not self._gate.busy:
+                # The caller goes on after the agent: the kept words open this turn.
+                self._cancel_held()
+                self._prefix, self._prefix_turn = " ".join(self._held), self._turn
+                self._held, self._held_asked = [], False
         if isinstance(frame, VADUserStoppedSpeakingFrame):
             self._over_agent = self._gate is not None and self._started_over and self._gate.busy
             self._queued.append((self._turn, self._over_agent))
         await super().process_frame(frame, direction)
+
+    def _hold(self, text: str) -> str:
+        """Words said wholly over the agent: "held" when kept, "ignored" when not."""
+        if self._tracker is None:
+            return "ignored"
+        asked = self._tracker.agent_asked()
+        decision = overlap_decision(
+            text, self._tracker.reply, asked, self._tracker.question_is_yes_no()
+        )
+        if decision != "yield":
+            return "ignored"
+        self._held.append(text)
+        self._held_asked = self._held_asked or asked
+        if self._gate is None or not self._gate.busy:  # the agent finished meanwhile
+            self._arm_held()
+        return "held"
+
+    def _arm_held(self) -> None:
+        if self._held and (self._held_task is None or self._held_task.done()):
+            self._held_task = asyncio.get_running_loop().create_task(self._deliver_held())
+
+    def _cancel_held(self) -> None:
+        if self._held_task is not None and not self._held_task.done():
+            self._held_task.cancel()
+        self._held_task = None
+
+    async def _deliver_held(self) -> None:
+        await asyncio.sleep(self.HELD_WAIT_SECS)
+        if not self._held or (self._gate is not None and self._gate.busy):
+            return
+        text, asked = " ".join(self._held), self._held_asked
+        self._held, self._held_asked = [], False
+        await self.push_frame(HeldWordsFrame(text=text, asked=asked))
 
     def _with_the_turn(self, segment: bytes, turn: int, start: float) -> tuple[bytes, float, int]:
         """The segment joined to its turn so far: (audio for ASR, where the audio starts in
@@ -283,7 +355,7 @@ class EngineSTT(SegmentedSTTService):
         dropped = dropped or echo
         if not dropped and over_agent and not barge_in_enabled():
             self._session.tracer.emit(
-                "barge_in", verdict="ignored", transcript=text, transport="pipecat"
+                "barge_in", verdict=self._hold(text), transcript=text, transport="pipecat"
             )
             dropped = True
         self._session.tracer.emit(
@@ -312,6 +384,11 @@ class EngineSTT(SegmentedSTTService):
             return
         if self._whole_turn and turn == self._turn_of_pcm:
             self._turn_sent = 1  # the aggregator now holds one transcript for the turn
+        if self._prefix and turn == self._prefix_turn:
+            # Words held over the agent open the turn (each whole-turn text carries them).
+            text = f"{self._prefix} {text}"
+            if not self._whole_turn:
+                self._prefix = ""
         yield TranscriptionFrame(
             text, self._user_id, time_now_iso8601(), result={"replaces": replaces}
         )
@@ -756,6 +833,21 @@ class EngineProcessor(FrameProcessor):
             text = _last_user_text(frame.context)
             if text and not self._session.is_complete:  # after the goodbye: no more turns
                 self._task = self.create_task(self._reply(text, self._task))
+        elif isinstance(frame, HeldWordsFrame):
+            # Words said over the agent, the caller silent since: the engine decides.
+            from agent.barge_in import held_words_count
+
+            taken = held_words_count(frame.text, frame.asked)
+            self._session.tracer.emit(
+                "held_words",
+                transcript=frame.text,
+                asked=frame.asked,
+                taken=taken,
+                transport="pipecat",
+            )
+            if taken and not self._session.is_complete:
+                await self._disarm_checkin()
+                self._task = self.create_task(self._reply(frame.text, self._task))
         elif isinstance(frame, InterruptionFrame):
             running = self._task is not None and not self._task.done()
             if not self._tracker.spoken and (running or self._tracker.unheard()):
@@ -1022,7 +1114,7 @@ def build_call(connection, session, asr, tts_provider, turns, greeting: str | No
         [
             transport.input(),
             CallerTap(recorder.raw),
-            EngineSTT(session, asr, recorder, gate),
+            EngineSTT(session, asr, recorder, gate, tracker),
             user_agg,
             engine,
             EnginePiperTTS(session, tts_provider, recorder),
