@@ -73,5 +73,17 @@ def _when(low: str) -> str | None:
     return None
 
 
+def bare_amount(text: str | None) -> str | None:
+    """„39 sol." — one number with no currency, no date, no other part of a payment: the
+    sum, once the agent asked for it (ASR loses „eurų" on a phone line). Never taken
+    without the caller's „taip": the engine asks „Ar teisingai supratau — 39 €?"."""
+    if not text or read_payment_claim(text):
+        return None
+    numbers = re.findall(r"\d+(?:[.,]\d{1,2})?", lang().normalize_numbers(text))
+    if len(numbers) != 1 or not 0 < float(numbers[0].replace(",", ".")) < 10000:
+        return None
+    return f"{numbers[0].replace('.', ',')} €"
+
+
 def missing_parts(claim: dict[str, str]) -> list[str]:
     return [p for p in ASK_ORDER if not claim.get(p)]

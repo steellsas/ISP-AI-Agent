@@ -1452,6 +1452,12 @@ caller_plain_yes: ["taip", "aš", "as "]
 # Barge-in: a word starting with these halts the agent ("nestabdykit" is still a stop).
 barge_stop_prefixes: ["nesta", "nebe"]
 
+# Words held over the agent (no barge-in) that answer nothing on their own — with
+# `backchannel`: „mhm" while listening is not „taip" to a question that came after it
+# (records 2026-11: „Mhm.", „A.", „Aha, va." over „…Ar registruoti?"). „Taip", „gerai",
+# „jo" are answers and stay out of this list.
+held_words_fillers: ["va", "labas", "laba", "o", "ė", "ee", "ėė"]
+
 # --- knowledge/intents.yaml: call intent triggers ---------------------------------
 
 # L1 trigger words per call purpose, matched as substrings of " <utterance> ";

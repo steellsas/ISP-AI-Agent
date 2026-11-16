@@ -357,6 +357,10 @@ class ClosingState(BaseModel):
     # The caller's payment as they told it — {"when", "how", "amount"}; the ticket carries it.
     debt_claim: dict[str, str] = Field(default_factory=dict)
     debt_claim_asks: int = 0
+    # A bare number said when the sum was asked („39 sol." — ASR lost „eurų"): the sum the
+    # agent heard, waiting for the caller's „taip" (patikslinti, ne spėti; live 2026-11-16).
+    debt_amount_check: str | None = None
+    debt_amount_checks: int = 0
     # The caller's questions the agent could not answer — the responsible person answers them.
     debt_questions: list[str] = Field(default_factory=list)
     debt_offer_unclear: int = 0

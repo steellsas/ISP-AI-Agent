@@ -204,6 +204,25 @@ SCHEMA: list[dict[str, Any]] = [
         "kind": "env",
     },
     {
+        # I-4/I-5: test as a phone sounds — 8 kHz G.711 on the server, and the browser's
+        # own noise suppression and level control off (its echo canceller stays: a handset
+        # has its own).
+        "key": "PHONE_LINE",
+        "label": "Telefono linija (8 kHz G.711, be naršyklės triukšmo slopinimo)",
+        "options": ["off", "on"],
+        "scope": "new_calls",
+        "kind": "env",
+    },
+    {
+        # The turn heard whole: each segment transcribed with the turn so far (noise bench
+        # 2026-11-13: CER 33 % → 23 % on 8 kHz phone audio, no added wait).
+        "key": "ASR_WHOLE_TURN",
+        "label": "ASR girdi visą ėjimą (ne sakinio gabalus)",
+        "options": ["on", "off"],
+        "scope": "new_calls",
+        "kind": "env",
+    },
+    {
         "key": "VAD_STOP_SECS",
         "label": "Pipecat: pauzė, po kurios klausiama Smart Turn, s",
         "options": ["0.2", "0.3", "0.4"],

@@ -117,6 +117,53 @@ class TestDebtDispute:
         assert state.closing.debt_offer_unclear == 0
         assert requests.debt_offer_turn(state, rt, "Taip") == "start"
 
+    def _sum_asked(self, make_state, make_runtime):
+        """Live 2026-11-16: the month and the way were said, the sum was asked last."""
+        state = self._told_debt(make_state)
+        rt = make_runtime()
+        assert requests.debt_offer_turn(state, rt, "Aš mokėjau sąskaitą.") == "ask_facts"
+        assert requests.debt_offer_turn(state, rt, "Liepos mėnesį, grynais.") == "ask_facts"
+        return state, rt
+
+    def test_a_bare_number_for_the_asked_sum_is_asked_back(self, make_state, make_runtime):
+        state, rt = self._sum_asked(make_state, make_runtime)
+        # The phone line lost „eurų": the agent asks, it does not guess.
+        assert requests.debt_offer_turn(state, rt, "39 sol.") == "confirm_amount"
+        assert state.closing.debt_amount_check == "39 €"
+        assert "amount" not in state.closing.debt_claim
+        assert requests.debt_offer_turn(state, rt, "Taip, teisingai.") == "offer"
+        assert state.closing.debt_claim["amount"] == "39 €"
+        assert requests.debt_claim_text(state) == "liepos mėn., grynais, 39 €"
+
+    def test_a_no_leaves_the_sum_unsaid_and_a_new_number_is_asked_back(
+        self, make_state, make_runtime
+    ):
+        state, rt = self._sum_asked(make_state, make_runtime)
+        requests.debt_offer_turn(state, rt, "39 sol.")
+        assert requests.debt_offer_turn(state, rt, "Ne, 49.") == "confirm_amount"
+        assert state.closing.debt_amount_check == "49 €"
+        # Asked back twice at most: then the offer goes on without the sum.
+        assert requests.debt_offer_turn(state, rt, "Ne, 59.") == "offer"
+        assert "amount" not in state.closing.debt_claim
+
+    def test_a_sum_with_its_currency_needs_no_asking_back(self, make_state, make_runtime):
+        state, rt = self._sum_asked(make_state, make_runtime)
+        assert requests.debt_offer_turn(state, rt, "39 eurus.") == "offer"
+        assert state.closing.debt_claim["amount"] == "39 €"
+
+    def test_a_number_before_the_sum_is_asked_is_no_sum(self, make_state, make_runtime):
+        state = self._told_debt(make_state)
+        # „Aš sumokėjau 30" opens the dispute: 30 may be a day — the details are asked.
+        assert requests.debt_offer_turn(state, make_runtime(), "Aš sumokėjau 30") == "ask_facts"
+
+    def test_a_date_is_no_sum(self):
+        from agent.perceive.payment_claim import bare_amount
+
+        assert bare_amount("Liepos 30 d.") is None
+        assert bare_amount("39 sol.") == "39 €"
+        assert bare_amount("12,50") == "12,50 €"
+        assert bare_amount("Nuo 9 iki 13") is None  # two numbers: not one sum
+
     def test_asr_variants_of_a_bank_are_the_bank(self):
         from agent.perceive.payment_claim import read_payment_claim
 

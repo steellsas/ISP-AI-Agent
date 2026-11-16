@@ -49,8 +49,12 @@ function resetUI(){
 let pc=null, rtcMic=null, rtcAudio=null, callEnded=false;
 async function startWebRTC(){
   callEnded = false;
+  // Phone line (PHONE_LINE=on): a phone call gets no browser cleaning, so neither does the
+  // test — only the echo canceller stays, a handset has its own.
+  const cfg = await fetch("/admin/config").then(r=>r.ok?r.json():null).catch(()=>null);
+  const phone = !!cfg && cfg.settings.some(it => it.key==="PHONE_LINE" && String(it.value)==="on");
   rtcMic = await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,
-    noiseSuppression:true, autoGainControl:true, channelCount:1}});
+    noiseSuppression:!phone, autoGainControl:!phone, channelCount:1}});
   pc = new RTCPeerConnection({iceServers:[{urls:"stun:stun.l.google.com:19302"}]});  // reachable outside this network
   for(const t of rtcMic.getTracks()) pc.addTrack(t, rtcMic);
   pc.createDataChannel("events");            // Pipecat's message channel (unused here)
@@ -79,7 +83,8 @@ async function startWebRTC(){
     body:JSON.stringify({sdp:pc.localDescription.sdp, type:pc.localDescription.type})});
   if(!resp.ok){ addMsg("note","Pipecat: "+(await resp.text())); stopWebRTC(); return; }
   await pc.setRemoteDescription(await resp.json());
-  addMsg("note","🎙 Pipecat balsas (WebRTC, Smart Turn)");
+  addMsg("note", phone ? "📞 Pipecat balsas — telefono linija (8 kHz, be naršyklės valymo)"
+                       : "🎙 Pipecat balsas (WebRTC, Smart Turn)");
 }
 function stopWebRTC(){
   VoiceViz.detachStreams();

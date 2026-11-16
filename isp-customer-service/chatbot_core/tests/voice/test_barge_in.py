@@ -244,7 +244,10 @@ def _stt_drops(monkeypatch, *, start_busy, stop_busy, barge="0"):
     session = FakeSession()
     session.asr_context = lambda: ""
     gate = FakeGate(busy=start_busy)
-    stt = EngineSTT(session, Asr(), type("R", (), {"caller": lambda *_a: None})(), gate)
+    from app.call_audio import RawCallTrack
+
+    recorder = type("R", (), {"caller": lambda *_a: None, "raw": RawCallTrack(None, "browser")})()
+    stt = EngineSTT(session, Asr(), recorder, gate)
 
     async def passthrough(*_a, **_k):
         return None
