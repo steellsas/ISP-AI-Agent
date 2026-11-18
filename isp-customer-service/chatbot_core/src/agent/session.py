@@ -237,9 +237,27 @@ class AgentSession:
             q = (a.state.dialog.last_question or "").strip()
             if q:
                 parts.append(f"Klausimas: {q}")
+            name = self._expected_name()
+            if name:
+                parts.append(f"Vardas: {name}")
             return (" ".join(parts)[:400]) or None
         except Exception:  # pragma: no cover - biasing must never break a turn
             return None
+
+    def _expected_name(self) -> str | None:
+        """While the agent asks who is calling (or checks the name it heard): the contract
+        holder's first name, so Whisper spells it as the CRM does — on a phone line „Lina"
+        came back as „Lenakas", then „Liūna" (live 2026-11-18). The caller says the name;
+        the prompt only biases its spelling, and a different name is still heard as said.
+        Never spoken to the caller (the agent does not reveal the holder's name)."""
+        s = self._state.identity
+        question = self._state.dialog.active_question
+        asking = (question is not None and question.key == "caller_name") or s.name_confirm_open
+        if not asking:
+            return None
+        holder = s.customer_name or (s.phone_candidate or {}).get("name")
+        first = str(holder or "").split()
+        return first[0] if first else None
 
     def apply_delivery(self, sentences: list[str], delivered: int) -> None:
         """D1: after a barge-in, keep in history only the sentences the caller

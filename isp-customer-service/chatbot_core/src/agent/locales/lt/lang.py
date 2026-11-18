@@ -136,6 +136,20 @@ def _locative(word: str) -> str:
     return word
 
 
+# First names to address someone by („Malonu, Tomai!"): ending → vocative ending, longest first.
+_VOCATIVE = (("ius", "iau"), ("as", "ai"), ("us", "au"), ("is", "i"), ("ys", "y"), ("ė", "e"))
+
+
+def vocative(name: str) -> str:
+    """The vocative („šauksmininkas") of a Lithuanian first name: Tomas → Tomai, Paulius →
+    Pauliau, Giedrius → Giedriau, Kęstutis → Kęstuti, Agnė → Agne; Lina, Aldona stay."""
+    word = (name or "").strip()
+    for end, voc in _VOCATIVE:
+        if word.lower().endswith(end) and len(word) > len(end) + 1:
+            return word[: -len(end)] + voc
+    return word
+
+
 def speech_text(text: str) -> str:
     """The spoken form of a reply for TTS.
 

@@ -122,6 +122,38 @@ class TestSessionAsrContext:
         session.state.dialog.last_question = ""
         assert session.asr_context() is None
 
+    def _asking_the_name(self, holder="Lina Jankauskienė"):
+        from agent.graph_v2.state import ActiveQuestion
+        from agent.session import AgentSession
+
+        session = AgentSession(caller_phone="unknown")
+        session.state.dialog.last_question = "O su kuo kalbu — koks jūsų vardas?"
+        session.state.identity.customer_name = holder
+        session.state.dialog.active_question = ActiveQuestion(owner="ident", key="caller_name")
+        return session
+
+    def test_while_the_name_is_asked_the_holders_first_name_biases_the_spelling(
+        self, db_connection
+    ):
+        """Live 2026-11-18 on a phone line „Lina" came back as „Lenakas", then „Liūna"."""
+        ctx = self._asking_the_name().asr_context()
+        assert ctx.endswith("Vardas: Lina") and "Jankauskienė" not in ctx
+
+    def test_and_while_the_heard_name_is_checked(self, db_connection):
+        session = self._asking_the_name()
+        session.state.dialog.active_question = None
+        session.state.identity.name_confirm_open = True
+        assert "Vardas: Lina" in session.asr_context()
+
+    def test_never_at_another_question(self, db_connection):
+        session = self._asking_the_name()
+        session.state.dialog.active_question = None
+        assert "Vardas" not in session.asr_context()
+
+    def test_no_holder_no_name(self, db_connection):
+        session = self._asking_the_name(holder=None)
+        assert "Vardas" not in session.asr_context()
+
 
 class TestTtsCache:
     def test_tts_cache_short_circuits(self, monkeypatch):

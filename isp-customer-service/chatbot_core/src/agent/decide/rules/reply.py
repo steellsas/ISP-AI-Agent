@@ -511,9 +511,7 @@ def reply_plan(state: Any, rt: Any, user_input: str | None) -> TurnPlan | None:
         rt.tracer.emit("decision", intent="inform", action="template", reason=reason)
         return _plan(
             "inform.template",
-            " ".join(
-                [phrase("identification.thanks"), inf, phrase("identification.anything_else")]
-            ),
+            " ".join([_thanks(state), inf, phrase("identification.anything_else")]),
             action=inform_action,
             required=inf,
         )
@@ -522,7 +520,7 @@ def reply_plan(state: Any, rt: Any, user_input: str | None) -> TurnPlan | None:
         return None
     zinia = zinia[0].upper() + zinia[1:]  # sentence-cased after "…iki jūsų buto."
     bits = [
-        phrase("identification.thanks"),
+        _thanks(state),
         phrase("identification.check_result", news=zinia + "."),
     ]
     if verdict_flag(reason, "inform") == "debt":
@@ -534,6 +532,20 @@ def reply_plan(state: Any, rt: Any, user_input: str | None) -> TurnPlan | None:
     state.identity.result_pending = False
     state.diagnosis.news_delivered = True
     return _words("inform.verdict_gloss", " ".join(b for b in bits if b))
+
+
+def _thanks(state: Any) -> str:
+    """The opening of the result the caller's name just unlocked: „Malonu, Tomai!" when they
+    have just said it, „Ačiū!" otherwise. The welcome is said here, with the name, or not at
+    all — left to a later reply, the model said „Malonu, Tomai!" after the news (#58, #30)."""
+    from ...contract.locale import lang, phrase
+
+    name = state.identity.caller_name
+    heard = state.identity.caller_name_heard
+    state.identity.caller_name_heard = False
+    if heard and name and name != "nenurodyta":
+        return phrase("identification.welcome_name", name=lang().vocative(name))
+    return phrase("identification.thanks")
 
 
 def _debt_words(state: Any, rt: Any, offer: str) -> TurnPlan:

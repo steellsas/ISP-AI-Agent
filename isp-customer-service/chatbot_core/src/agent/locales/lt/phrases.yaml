@@ -53,6 +53,8 @@ identification:
   outage_eta: "Numatomas atstatymas iki {eta}."
   anything_else: "Ar dar kuo galiu padėti?"
   thanks: "Ačiū!"
+  # The caller has just said their name and the result follows (#58): welcomed here, once.
+  welcome_name: "Malonu, {name}!"
   confirm_end: "Ar tikrai norite baigti pokalbį?"
   # U3 (Andrius, 2026-10-09): prieš baigiant pasakoma, kas liks nepadaryta.
   confirm_end_unidentified: "Dar neradau jūsų sutarties, todėl linijos patikrinti negalėjau. Ar tikrai norite baigti pokalbį?"
