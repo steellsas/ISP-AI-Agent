@@ -497,6 +497,10 @@ consent_yes:
   - "registruok"
   - "užregistruok"
   - "uzregistruok"
+  # „Būtinai, registruoju." (live 2026-11-18) — the caller's own verb form.
+  - "registruoj"
+  - "būtinai"
+  - "butinai"
   # Gyvai 2026-10-19: „Registruoti, bet jinai…" — bendratis, ne liepiamoji nuosaka.
   - "registruot"
   - "darykit"
@@ -522,6 +526,7 @@ consent_no:
   - "atsisak"
   - "neregistruok"
   - "neregistruot"
+  - "neregistruoj"
   - "nedarykit"
   - "ne ačiū"
   - "ne, ačiū"

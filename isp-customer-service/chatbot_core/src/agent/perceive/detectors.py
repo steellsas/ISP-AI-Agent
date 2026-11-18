@@ -700,10 +700,26 @@ def detect_plugged(text: str | None) -> bool:
 
 def detect_ticket_consent(text: str | None) -> str | None:
     """'yes' / 'no' / None from the caller's reply to "užregistruosiu gedimą — ar
-    tinka?". Denials win; a bare "ne" is a decline; anything unclear returns None so
-    the step holds and re-asks instead of registering on a garble."""
+    tinka?". Denials win within a sentence; a bare "ne" is a decline; anything unclear
+    returns None so the step holds and re-asks instead of registering on a garble.
+
+    Across sentences the caller's LAST answer counts: „Ne. Taip, registruokit." corrects
+    itself. Live 2026-11-18 the start said over the agent came out as „Būtų ne." and the
+    clear „Būtinai, registruoju." after it lost to that „ne" — the agent said „Gerai,
+    neregistruoju" and the caller needed two more turns to get the ticket."""
     if not text:
         return None
+    sentences = [s for s in re.split(r"(?<=[.!?])\s+", text.strip()) if s.strip()]
+    if len(sentences) > 1:
+        for sentence in reversed(sentences):
+            answer = _ticket_consent_in(sentence)
+            if answer is not None:
+                return answer
+        return None
+    return _ticket_consent_in(text)
+
+
+def _ticket_consent_in(text: str) -> str | None:
     low = text.lower()
     if _marked(low, vocab("consent_no")):
         return "no"

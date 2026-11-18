@@ -241,6 +241,33 @@ def test_consent_reads_the_infinitive(said, answer):
     assert detect_ticket_consent(said) == answer
 
 
+@pytest.mark.parametrize(
+    "said, answer",
+    [
+        ("Būtų ne. Būtinai, registruoju.", "yes"),  # live 2026-11-18: a garbled start, then yes
+        ("Neregistruoju. Registruokit, registruokit.", "yes"),  # the same call, two turns on
+        ("Taip. Ne, nereikia.", "no"),  # a yes taken back
+        ("Neregistruoju.", "no"),
+        ("Ne, nereikia. Ačiū.", "no"),  # a sentence with no answer does not undo one
+        ("Būtinai.", "yes"),
+    ],
+)
+def test_the_last_answer_in_a_turn_counts(said, answer):
+    """Across sentences the caller's LAST answer counts; inside one, a denial still wins."""
+    from agent.perceive.detectors import detect_ticket_consent
+
+    assert detect_ticket_consent(said) == answer
+
+
+def test_a_garbled_start_does_not_decline_the_debt_offer(make_state, make_runtime):
+    """Live 2026-11-18 (`…123816…0001`): „Būtų ne. Būtinai, registruoju." → „Gerai,
+    neregistruoju"; the caller needed two more turns to get the ticket."""
+    state = TestDebtDispute()._told_debt(make_state)
+    rt = make_runtime()
+    requests.debt_offer_turn(state, rt, "Nesutinku su ta skola")
+    assert requests.debt_offer_turn(state, rt, "Būtų ne. Būtinai, registruoju.") == "start"
+
+
 def test_a_request_ticket_is_about_its_own_intent():
     from agent.intents import intent_for_ticket_type
 
