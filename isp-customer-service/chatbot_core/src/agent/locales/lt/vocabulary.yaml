@@ -277,6 +277,8 @@ farewell:
 # Klausimą pradedantys žodžiai — „nežinau, kaip čia" nėra klausimas, „kodėl nematot" yra.
 debt_question_openers: ["kodėl", "kodel", "kaip", "kada", "kiek", "ką", "ka", "ar", "kas", "kur", "kokia", "koks"]
 news_asked_marks: ["gedim", "neveik", "nevei", "nevyk", "nėra interneto", "nera interneto", "kas atsitiko", "kas nutiko", "kodėl", "kodel", "negirdėjau", "negirdejau", "nesupratau"]
+# „O kada sutvarkysit?" after the news asks about THAT fault: answered from the news only (#59).
+news_when_marks: ["kada", "sutvark", "pataisys", "kiek laiko", "kiek ilgai", "įjungs", "ijungs", "atstatys"]
 repeat_request:
   - "pakartok"
   - "pakartot"
@@ -441,6 +443,8 @@ step_wont: ["nenoriu", "nebandysiu", "nebandysim", "nenorėčiau", "nenoreciau",
 step_cant: ["negaliu", "nepasiekiu", "neturiu kaip", "nėra kaip", "nera kaip", "neįmanoma", "neimanoma", "nepavyks man", "neišeina pasiekti", "neiseina pasiekti"]
 # „Gal pabandome?" (darbas telefonu prieš meistrą) — sutikimas pabandyti.
 phone_work_try: ["pabandom", "pabandykim", "bandom", "bandykim", "gerai", "galim", "darom", "darykim"]
+# „Ar galite prieiti?" — „galiu" as a phone line's ASR writes it (#75), short answers only.
+reach_can_asr: ["galiu", "galo", "galu", "galiū", "galim", "galime"]
 reach_there: ["stoviu prie", "esu prie", "prie routerio", "prie jo", "jau čia", "jau cia", "šalia jo", "salia jo", "šalia routerio", "salia routerio", "priėjau", "priejau", "jau priėj", "jau priej"]
 reported_plug_power: ["įkišau", "ikisau", "įjungiau", "ijungiau", "įsijungė", "isijunge", "užsidegė", "uzsidege", "dega lemput", "lemputės dega", "lemputes dega", "jau dega"]
 reported_reboot:
@@ -497,6 +501,10 @@ consent_yes:
   - "registruok"
   - "užregistruok"
   - "uzregistruok"
+  # „Būtinai, registruoju." (live 2026-11-18) — the caller's own verb form.
+  - "registruoj"
+  - "būtinai"
+  - "butinai"
   # Gyvai 2026-10-19: „Registruoti, bet jinai…" — bendratis, ne liepiamoji nuosaka.
   - "registruot"
   - "darykit"
@@ -522,6 +530,7 @@ consent_no:
   - "atsisak"
   - "neregistruok"
   - "neregistruot"
+  - "neregistruoj"
   - "nedarykit"
   - "ne ačiū"
   - "ne, ačiū"

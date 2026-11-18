@@ -407,6 +407,18 @@ def _news_facts(state, rt) -> str:
     return inform_text(state, rt, reason) or ""
 
 
+def _asks_about_the_fault(state, text: str | None) -> bool:
+    """After the news: a question about that fault — what it is, or when it will work."""
+    from ..contract.locale import vocab
+    from ..evidence import _fold
+    from ..perceive.detectors import asks_about_the_news
+
+    low = _fold(text or "")
+    return asks_about_the_news(state, text) or any(
+        _fold(m) in low for m in vocab("news_when_marks")
+    )
+
+
 def _side_topic(state, rt) -> list[str]:
     """A deviation: the ONLY permitted content is the FAQ hit (or an honest "not my
     area"), then the return anchor — the engine's exact pending question."""
@@ -417,6 +429,10 @@ def _side_topic(state, rt) -> list[str]:
 
     hits = faq_match(state.dialog.last_heard)
     news = _news_facts(state, rt)
+    # „O kada sutvarkysit?" after the network-fault news is about that fault: the news
+    # answers it, and nothing else. A knowledge-base hit there was a troubleshooting step
+    # („…paklausti, ar internetas atsirado"), and the agent asked it (eval 2026-11-16, #59).
+    about_news = bool(news) and _asks_about_the_fault(state, state.dialog.last_heard)
     known = " ".join(f"[{e.get('topic')}] {_faq_answer(state, rt, e)}" for e in hits) or (
         # After the news, a question about the fault is answered from the news' own facts.
         # Beyond the five FAQ topics there is a tagged knowledge base — equipment
@@ -424,7 +440,10 @@ def _side_topic(state, rt) -> list[str]:
         # the agent says honestly that it is not its area.
         " ".join(
             p
-            for p in ((f"[the news already told] {news}" if news else ""), _kb_answer(state, rt))
+            for p in (
+                (f"[the news already told] {news}" if news else ""),
+                "" if about_news else _kb_answer(state, rt),
+            )
             if p
         )
         or "(NO KNOWN ANSWER for this topic - say politely that it is not your area)"

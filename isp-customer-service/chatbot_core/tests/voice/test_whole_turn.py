@@ -94,6 +94,7 @@ class Call:
         self.session = Session()
         recorder = type("R", (), {"caller": lambda *_a: None, "raw": RawCallTrack(None, "x")})()
         self.stt = EngineSTT(self.session, self.asr, recorder, self.gate)
+        self.stt.UNFINISHED_WAIT_SECS = 0.01
         self.stt.start_processing_metrics = passthrough
         self.stt.stop_processing_metrics = passthrough
         self.frames: list[TranscriptionFrame] = []
@@ -159,7 +160,7 @@ class TestTheTurnIsHeardWhole:
     def test_the_turn_is_counted_when_queued_not_when_heard(self, monkeypatch):
         # Pipecat transcribes later, in order: the turn may have ended before a piece said
         # in it is heard — it still belongs to its own turn.
-        call = Call(monkeypatch, "Mano vardas", "Mano vardas Tomas.")
+        call = Call(monkeypatch, "Tomas.", "Tomas, taip.")
         call.say(1.0)
         call.say(0.5)
         call.frame(UserStoppedSpeakingFrame())
@@ -258,3 +259,43 @@ class TestTheAggregatorKeepsTheWholeTurn:
 
         users = [p for p in walk(worker._pipeline) if isinstance(p, WholeTurnUserAggregator)]
         assert len(users) == 1
+
+
+class TestAnUnfinishedStartWaits:
+    """#73, live 2026-11-18: „Nuo" (the hours), „Mano vardas" — Smart Turn ended the turn,
+    the agent re-asked while the caller went on."""
+
+    def test_when_the_caller_goes_on_it_is_heard_with_the_rest(self, monkeypatch):
+        call = Call(monkeypatch, "Nuo.", "Nuo 12 iki 13 val.")
+        call.say(1.0)
+        call.say(1.0)  # the caller goes on before „Nuo." is even transcribed
+        assert call.hear(1.0) == []  # no transcript: the turn stays open
+        call.hear(1.0)
+        assert [f.text for f in call.frames] == ["Nuo 12 iki 13 val."]
+        assert call.asr.heard == [1.5, 2.5]  # the second time, both pieces
+        assert replaces(call.frames) == [0]
+
+    def test_when_the_caller_stays_silent_the_words_go_out(self, monkeypatch):
+        call = Call(monkeypatch, "Mano vardas.")
+        call.piece(1.0)
+        assert [f.text for f in call.frames] == ["Mano vardas."]
+
+
+@pytest.mark.parametrize(
+    "said, unfinished",
+    [
+        ("Nuo.", True),
+        ("Skambinu dėl…", True),
+        ("Mano vardas.", True),
+        ("Taip, mano vardas", True),
+        ("Mano vardas yra", True),
+        ("Giedrius mano vardas.", False),  # the name is in it
+        ("Nuo 12 iki 13 val.", False),
+        ("Taip.", False),
+        ("Neveikia internetas.", False),
+    ],
+)
+def test_a_sentence_cannot_end_on_a_preposition(said, unfinished):
+    from adapters.asr.lt_text import is_unfinished
+
+    assert is_unfinished(said) is unfinished

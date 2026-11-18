@@ -196,3 +196,34 @@ def test_the_dashboard_shows_the_move():
     assert 'case "dialogue"' in js
     for move in set(dialogue.MOVES) - {dialogue.NONE}:
         assert f"{move}:" in js
+
+
+class TestAfterTheNewsAQuestionAboutTheFault:
+    """Eval 2026-11-16 (#59): „O kada sutvarkysit?" after the network-fault news got a
+    knowledge-base troubleshooting step with it, and the agent asked „Ar internetas jau
+    atsirado?" — the news answers it, nothing else."""
+
+    def _told(self, monkeypatch, make_state, make_runtime, said):
+        from agent.speak import context_card as card_module
+
+        state, rt = make_state("+37060030306"), make_runtime(tracer=_Tracer())
+        state.identity.customer_id = "CUST306"
+        state.turn.side_topic_active = True
+        state.dialog.last_heard = said
+        monkeypatch.setattr(card_module, "_news_facts", lambda s, r: "Matau gedimą tinkle.")
+        monkeypatch.setattr(
+            card_module, "_kb_answer", lambda s, r: "[troubleshooting] paklausti, ar atsirado"
+        )
+        return " ".join(card_module._side_topic(state, rt))
+
+    def test_when_will_it_work_is_answered_from_the_news_only(
+        self, monkeypatch, make_state, make_runtime
+    ):
+        card = self._told(monkeypatch, make_state, make_runtime, "O kada sutvarkysit?")
+        assert "Matau gedimą tinkle." in card and "troubleshooting" not in card
+
+    def test_another_question_still_gets_the_knowledge_base(
+        self, monkeypatch, make_state, make_runtime
+    ):
+        card = self._told(monkeypatch, make_state, make_runtime, "Kaip pakeisti Wi-Fi slaptažodį?")
+        assert "troubleshooting" in card

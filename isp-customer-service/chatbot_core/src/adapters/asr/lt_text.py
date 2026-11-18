@@ -90,6 +90,53 @@ def is_asr_noise(text: str) -> bool:
     return not re.search(r"[^\W_]", stripped, re.UNICODE)
 
 
+# A sentence cannot end on these: the caller paused mid-sentence („Nuo…", „dėl…").
+_OPEN_TAIL = frozenset(
+    [
+        "nuo",
+        "iki",
+        "dėl",
+        "del",
+        "į",
+        "i",
+        "per",
+        "prie",
+        "su",
+        "po",
+        "apie",
+        "ir",
+        "bet",
+        "kad",
+        "nes",
+        "o",
+        "ar",
+        "arba",
+        "yra",
+    ]
+)
+_FILLERS = frozenset(["taip", "na", "tai", "jo", "nu", "gerai", "labas", "laba", "diena", "dieną"])
+
+
+def is_unfinished(text: str | None) -> bool:
+    """True when the caller stopped mid-sentence and is about to go on: the transcript
+    ends on a word a sentence cannot end on („Nuo.", „Skambinu dėl…"), on „…", or is
+    „Mano vardas" with no name yet. Live 2026-11-18 Smart Turn ended the turn after „Nuo"
+    (the hours) and after „Mano vardas", and the agent re-asked while the caller went on.
+    „Giedrius mano vardas." ends on „vardas" too — but it has the name, so it is finished."""
+    if not text:
+        return False
+    stripped = text.strip()
+    if stripped.endswith(("…", "...")):
+        return True
+    words = _words(stripped)
+    if not words:
+        return False
+    if words[-1] in _OPEN_TAIL:
+        return True
+    # „(Taip,) mano vardas" — nothing but fillers before it: the name is still to come.
+    return words[-2:] == ["mano", "vardas"] and all(w in _FILLERS for w in words[:-2])
+
+
 def _words(text: str) -> list[str]:
     return [t for t in re.split(r"\W+", (text or "").lower(), flags=re.UNICODE) if t]
 

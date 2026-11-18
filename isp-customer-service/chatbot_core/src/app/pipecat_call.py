@@ -208,6 +208,7 @@ class EngineSTT(SegmentedSTTService):
 
     MAX_TURN_SECS = 30.0  # longer, and the turn starts afresh (its text is then appended)
     HELD_WAIT_SECS = 0.5  # after the agent stops: does the caller go on?
+    UNFINISHED_WAIT_SECS = 1.5  # after „Nuo…": does the caller go on? (#73)
 
     def __init__(
         self,
@@ -234,13 +235,15 @@ class EngineSTT(SegmentedSTTService):
         self._whole_turn = whole_turn_enabled()
         # Each queued segment's (turn, said wholly over the agent), in queue order: the
         # segment is transcribed later, by when the next turn may have begun.
-        self._queued: collections.deque[tuple[int, bool]] = collections.deque()
+        self._queued: collections.deque[tuple[int, bool, int]] = collections.deque()
         self._turn = 0  # moves on when the turn ends or the agent speaks
         self._turn_of_pcm = -1
         self._turn_pcm = bytearray()
         self._turn_rate = 0
         self._turn_start = 0.0
         self._turn_sent = 0  # transcripts of this turn the aggregator holds
+        self._turn_kept = False  # an unfinished start is in `_turn_pcm`, not yet sent
+        self._vad_starts = 0  # how many times the caller began to speak
 
     def can_generate_metrics(self) -> bool:
         return True
@@ -253,6 +256,8 @@ class EngineSTT(SegmentedSTTService):
             self._turn += 1
         if isinstance(frame, BotStoppedSpeakingFrame):
             self._arm_held()
+        if isinstance(frame, VADUserStartedSpeakingFrame):
+            self._vad_starts += 1
         if self._gate is not None and isinstance(frame, VADUserStartedSpeakingFrame):
             self._started_over = self._gate.busy
             if self._held and not self._gate.busy:
@@ -262,8 +267,16 @@ class EngineSTT(SegmentedSTTService):
                 self._held, self._held_asked = [], False
         if isinstance(frame, VADUserStoppedSpeakingFrame):
             self._over_agent = self._gate is not None and self._started_over and self._gate.busy
-            self._queued.append((self._turn, self._over_agent))
+            self._queued.append((self._turn, self._over_agent, self._vad_starts))
         await super().process_frame(frame, direction)
+
+    async def _goes_on(self, starts_at_stop: int) -> bool:
+        """After an unfinished phrase: does the caller begin to speak again within
+        `UNFINISHED_WAIT_SECS`? (Counted from the segment's VAD stop: they may already have.)"""
+        deadline = time.monotonic() + self.UNFINISHED_WAIT_SECS
+        while self._vad_starts <= starts_at_stop and time.monotonic() < deadline:
+            await asyncio.sleep(0.05)
+        return self._vad_starts > starts_at_stop
 
     def _hold(self, text: str) -> str:
         """Words said wholly over the agent: "held" when kept, "ignored" when not."""
@@ -313,24 +326,35 @@ class EngineSTT(SegmentedSTTService):
         pad = int(rate * self._trailing_silence_secs) * 2
         speech = pcm[: len(pcm) - pad] if pad and len(pcm) > pad else pcm
         too_long = (len(self._turn_pcm) + len(speech)) / 2 / rate > self.MAX_TURN_SECS
-        # A turn whose earlier pieces were all noise starts over from this one.
-        if turn != self._turn_of_pcm or rate != self._turn_rate or too_long or not self._turn_sent:
+        # A turn whose earlier pieces were all noise starts over from this one; an unfinished
+        # start kept back (`_turn_kept`) stays.
+        started = self._turn_sent or self._turn_kept
+        if turn != self._turn_of_pcm or rate != self._turn_rate or too_long or not started:
             self._turn_of_pcm, self._turn_rate = turn, rate
             self._turn_pcm = bytearray()
             self._turn_start = start
             self._turn_sent = 0
+            self._turn_kept = False
         self._turn_pcm += speech
-        if self._turn_sent == 0:
+        if self._turn_sent == 0 and not self._turn_kept:
             return segment, start, 0
+        self._turn_kept = False
         audio = pcm_to_wav(bytes(self._turn_pcm) + bytes(pad), rate)
         return audio, self._turn_start, self._turn_sent
 
     async def run_stt(self, audio: bytes):
-        from adapters.asr.lt_text import is_asr_noise, is_prompt_echo, normalize_lt_numbers
+        from adapters.asr.lt_text import (
+            is_asr_noise,
+            is_prompt_echo,
+            is_unfinished,
+            normalize_lt_numbers,
+        )
 
         await self.start_processing_metrics()
-        turn, over_agent = (
-            self._queued.popleft() if self._queued else (self._turn, self._over_agent)
+        turn, over_agent, starts_at_stop = (
+            self._queued.popleft()
+            if self._queued
+            else (self._turn, self._over_agent, self._vad_starts)
         )
         self._recorder.caller(audio)
         segment_end = self._recorder.raw.t
@@ -381,6 +405,18 @@ class EngineSTT(SegmentedSTTService):
             echo=echo,
         )
         if dropped:
+            return
+        if (
+            self._whole_turn
+            and turn == self._turn_of_pcm
+            and is_unfinished(text)
+            and await self._goes_on(starts_at_stop)
+        ):
+            # „Nuo…" / „Mano vardas…" and the caller goes on: no transcript yet — Smart Turn
+            # waits for one, so the turn stays open, and the next piece is heard with this one
+            # (#73, live 2026-11-18). Silent instead: the words go out as they are.
+            self._turn_kept = True
+            self._session.tracer.emit("asr_unfinished", transcript=text, transport="pipecat")
             return
         if self._whole_turn and turn == self._turn_of_pcm:
             self._turn_sent = 1  # the aggregator now holds one transcript for the turn
