@@ -596,6 +596,11 @@ def detect_reach(text: str | None) -> str | None:
         return "yes"
     if detect_turn_intent(text) == INTENT_IN_PROGRESS:
         return None
+    # „Galo." — „galiu" through a phone line (live 2026-11-18, #75): the model read it as
+    # „no" and the agent asked when they could. Only a short answer: „iki galo" is not it.
+    words = [w.strip(".,!?…") for w in low.split()]
+    if 0 < len(words) <= 2 and any(w in vocab("reach_can_asr") for w in words):
+        return "yes"
     outcome = detect_yes_no(text)
     return outcome.value.lower() if outcome is not None else None
 

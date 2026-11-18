@@ -952,7 +952,8 @@ verdict:
     gloss: "routeris matomas linijoje, bet srautas nevaikšto — greičiausiai pakibęs"
     ticket_need: "routeris perkrautas, bet ryšys neatsistatė — tikėtinas routerio gedimas"
   healthy_to_router:
-    gloss: "tinklas iki routerio veikia — problema kliento pusėje"
+    # Said to the caller too (eval 2026-11-16 #70: „problema yra kliento pusėje" — our word, not theirs).
+    gloss: "tinklas iki routerio veikia — problema namų įrenginyje ar Wi-Fi"
   no_port_data:
     gloss: "nėra prievado duomenų"
   unclear_fault:

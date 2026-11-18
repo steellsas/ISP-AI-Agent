@@ -202,6 +202,9 @@ def test_the_power_answer_in_the_callers_words(said, label):
         ("Tuoj nueisiu", None),
         ("Galėtume kartu patikrinti", None),  # this one is confirmed
         ("Ne, negaliu", "no"),
+        ("Galo.", "yes"),  # live 2026-11-18 (#75): „galiu" through a phone line
+        ("Galiu.", "yes"),
+        ("Iki galo neveikia, nežinau", "no"),  # „galo" in a sentence is not „galiu"
     ],
 )
 def test_the_reach_answer_in_the_callers_words(said, label):
