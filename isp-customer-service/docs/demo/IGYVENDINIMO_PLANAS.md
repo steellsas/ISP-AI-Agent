@@ -14,8 +14,8 @@ susitikimo lapas: [SUSITIKIMO_PLANAS.md](SUSITIKIMO_PLANAS.md).
 | K2 | [Žinios (gedimai)](#k2-žinios-gedimai) | sutarta |
 | K3 | [Agento eiga](#k3-agento-eiga): pasisveikinimas, tonas, identifikacija, informacija, tiketai, pabaiga | sutarta |
 | K4 | [Identifikacija ir CRM duomenys](#k4-identifikacija-ir-crm-duomenys) | sutarta |
-| K5 | Tiketai | aptariama |
-| K6 | Tinklo diagnostika | — |
+| K5 | [Tiketai](#k5-tiketai) | sutarta |
+| K6 | Tinklo diagnostika | aptariama |
 | K7 | Telefonija (PBX) | — |
 | K8 | Architektūra, saugumas ir stebėsena | — |
 
@@ -334,3 +334,65 @@ skaitymo paskyros; DAP sprendimo dėl identifikatorių.
 
 **Susitikimai:** S1 (IT support: kaip identifikuoja, įrankiai) · S2 (DB administratorius: schemos,
 talpinimas, prieiga).
+
+---
+
+## K5. Tiketai
+
+### Demo dabar
+
+```mermaid
+flowchart TB
+    V["Variklis nusprendžia: registruoti (priežastis iš sąrašo)"] --> O{"Ar yra atviras kliento tiketas?"}
+    O -->|"taip"| P["Papildomas atviras tiketas"]
+    O -->|"ne"| N["Naujas tiketas: tipas → skyrius"]
+    N --> F["Turinys: faktai su citata, kas atlikta, ką tikrinti, kodėl registruota"]
+    P --> F
+    F --> K["Klientui pasakoma, kas bus toliau"]
+```
+
+- **Kada registruojama:** tik dėl priežasties iš `knowledge/registracija.yaml` (visi žingsniai
+  atlikti, bet gedimas liko; telefonu nepataisoma; gedimas neaiškus; tinklo gedimas; klientas
+  nenori tęsti…). Modelio žodis „užregistruosiu“ tiketo nesukuria.
+- **Tipai:** 16 tipų, 4 skyriai (techninis, tinklo, buhalterija, klientų aptarnavimas).
+- **Masinis gedimas:** vienas tinklo tiketas, ne po vieną kiekvienam klientui.
+- **Per skambutį** registruojamas vienas tiketas.
+
+### Procesas (kuratorius, IT support)
+
+1. Įmonės tiketų tipai ir skyriai; susiejimas su agento tipais.
+2. Prioritetai: kas skubu savaitgalį (verslo klientas, visas namas be ryšio…)?
+3. Masinių gedimų registras: kaip klientai susiejami su avarija?
+4. Ar agentas mato **uždarytus** kliento tiketus (pvz., 30 d.) ir kaip jie išspręsti? —
+   pasikartojantis gedimas → iškart meistras.
+5. Kaip dabar žymimi pakartotiniai skambučiai dėl to paties gedimo?
+6. Kas ir kada peržiūri savaitgalio tiketus?
+7. Ar klientui sakomas tiketo numeris; ar siunčiama SMS ar el. laiškas?
+8. Ar išspręstas skambutis be tiketo registruojamas CRM kaip kontaktas?
+9. Ar skubiems atvejams reikia pranešimo atsakingam žmogui (sutariama kūrimo metu)?
+10. Kaip atrodo geras tiketas (pavyzdžiai)?
+
+### Techninis lygis (IT / DB administratorius, K8)
+
+1. Tiketų sistema (CRM dalis ar atskira), API, privalomi laukai.
+2. Testinė aplinka tiketams kurti.
+3. Kas, jei sistema neatsako — siūloma: tiketas išsaugomas agento DB ir užregistruojamas vėliau.
+
+### Ką paruošiu
+
+Tipų ir skyrių susiejimo lentelę; tiketo turinio šabloną; tiketų adapterį ir eilę, kai sistema
+neatsako; testus testinėje aplinkoje; tiketų peržiūrą su kuratoriumi.
+
+### Ko reikia iš įmonės
+
+Tipų, skyrių ir prioritetų sąrašo; gerų tiketų pavyzdžių; žmogaus, kuris peržiūri savaitgalio
+tiketus; sistemos aprašo, API ir testinės aplinkos.
+
+### Sprendimai
+
+1. Tipų ir skyrių susiejimas, prioritetai.
+2. Ar agentas mato uždarytus tiketus ir per kiek laiko atgal?
+3. Ar klientui sakomas tiketo numeris ir siunčiamas pranešimas?
+4. Ar išspręsti skambučiai registruojami CRM?
+
+**Susitikimai:** S1 (procesas) · S2 (techninis lygis).
