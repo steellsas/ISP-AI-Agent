@@ -11,8 +11,8 @@ susitikimo lapas: [SUSITIKIMO_PLANAS.md](SUSITIKIMO_PLANAS.md).
 | # | Kryptis | Būsena |
 |---|---|---|
 | K1 | [Talpinimas ir modeliai](#k1-talpinimas-ir-modeliai) | sutarta |
-| K2 | Žinios (gedimai) | aptariama |
-| K3 | Agento eiga: pasisveikinimas, tonas, identifikacija, informacija, tiketai, pabaiga | — |
+| K2 | [Žinios (gedimai)](#k2-žinios-gedimai) | sutarta |
+| K3 | Agento eiga: pasisveikinimas, tonas, identifikacija, informacija, tiketai, pabaiga | aptariama |
 | K4 | Identifikacija ir CRM duomenys | — |
 | K5 | Tiketai | — |
 | K6 | Tinklo diagnostika | — |
@@ -105,3 +105,83 @@ prie sistemų.
 3. Ar rezervas reikalingas nuo piloto?
 
 **Susitikimas:** S5 (IT). Klausimus 1–2 galima užduoti jau S0 su direktoriumi.
+
+---
+
+## K2. Žinios (gedimai)
+
+### Kokių žinių reikia
+
+```mermaid
+flowchart TB
+    P["Paslauga: internetas · TV · telefonija"] --> S["Simptomas: neveikia · lėtai · nutrūkinėja · nėra kanalų…"]
+    S --> T["Technologija: Ethernet · GPON · DOCSIS; TV: IPTV · skaitmeninė · analoginė"]
+    T --> C["Priežastis = gedimo kortelė"]
+    C --> R["Ką tikrinti → ką paklausti → kaip spręsti → kaip įsitikinti → kada tiketas"]
+```
+
+| Žinių rūšis | Pavyzdžiai | Dabar agente |
+|---|---|---|
+| **Gedimai pagal paslaugą** | internetas neveikia / lėtai / nutrūkinėja; TV nerodo; telefonas neveikia | 7 kortelės, visos interneto „neveikia“ (Ethernet) |
+| **Nuo technologijos nepriklausantys** | skola, avarija, atviras tiketas, Wi-Fi, kliento įrenginiai | ✅ yra |
+| **Užklausos (ne gedimai)** | planas, kaina, sutartis, meistro vizitas → tiketas skyriui | dalinai |
+| **Įranga** | routerių, ONT, modemų, TV dėžučių modeliai: lemputės, perkrovimas, Wi-Fi nustatymai | 10 aprašų |
+| **Įmonės kalba** | terminai, planų pavadinimai, pasisveikinimas, kaip klientai vadina dalykus | demo žodynas |
+
+### Iš kur surenkama
+
+```mermaid
+flowchart TB
+    A["Pokalbių analizė: kokie skambučiai, kaip sprendžiama"] --> L["Gedimų sąrašas pagal dažnumą"]
+    H["Tiketų istorija ir esamos instrukcijos"] --> L
+    L --> D["IT support aprašo gedimus pagal šabloną"]
+    D --> N["Analizė: ar pakanka, ko trūksta → klausimai"]
+    N -->|"trūksta"| D
+    N --> K["Taisyklės ir medžiai → ✔ kuratorius tvirtina"]
+    K --> C["Kortelės ir testai → demo → ✔ kuratorius priima → įjungiama"]
+```
+
+**Šablonas** (IT support procedūra): Simptomas · Patikrinti · Išsiaiškinti · Spręsti · Įsitikinti ·
+Tiketas. Klausimai jame neprivalomi — aprašoma tai, kas žinoma. Šablonas bus atskiras dokumentas,
+parengtas vėliau.
+
+### Eilės tvarka
+
+1. Dažniausi ir paprasčiausi: skola, avarija, internetas neveikia pagal technologiją.
+2. Kliento įrenginiai: Wi-Fi, routeris, perkrovimas.
+3. Lėtas ir nutrūkinėjantis internetas (sudėtingesnis).
+4. TV, telefonija.
+5. Užklausos → tiketai skyriams.
+
+Tikslią tvarką nulems pokalbių analizė: kas dažniausia ir ką galima išspręsti telefonu.
+
+### Ką išsiaiškinti
+
+1. Kokios paslaugos ir technologijos, kiek klientų kiekvienoje?
+2. Dažniausios skambučių priežastys po darbo valandų.
+3. Kurias problemas IT support sprendžia telefonu, kurias perduoda meistrui, kurių neliečia?
+4. Ar yra rašytinių instrukcijų, gedimų aprašų, tiketų istorija?
+5. Kokia kliento įranga (modeliai) ir ar įmonė ją nuotoliniu būdu valdo?
+6. Paslaugų priklausomybės (pvz., IPTV veikia per internetą).
+7. Kas iš IT support aprašys gedimus ir kiek laiko tam skirs?
+
+### Ką paruošiu
+
+- gedimų aprašymo šabloną su užpildytais pavyzdžiais („pakibęs routeris“, skola, kitas MAC);
+- pokalbių analizės ataskaitą (gedimai pagal dažnumą, kaip sprendžiama);
+- analizę po kiekvieno aprašo: ko trūksta, klausimai;
+- taisykles ir medžius tvirtinimui, kortelės ir testai;
+- „Gedimų vadovą“ iš tų pačių aprašų.
+
+### Ko reikia iš įmonės
+
+Pokalbių įrašų, tiketų istorijos, esamų instrukcijų, IT support laiko aprašams ir kuratoriaus, kuris
+tvirtina.
+
+### Sprendimai
+
+1. Nuo kurių gedimų pradedama (po analizės)?
+2. Kas aprašo ir kas tvirtina?
+3. Kokia aprašymo forma: dokumentas, lentelė ar forma?
+
+**Susitikimas:** S1 (kuratorius + IT support).
