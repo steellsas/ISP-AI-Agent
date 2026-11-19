@@ -12,8 +12,8 @@ susitikimo lapas: [SUSITIKIMO_PLANAS.md](SUSITIKIMO_PLANAS.md).
 |---|---|---|
 | K1 | [Talpinimas ir modeliai](#k1-talpinimas-ir-modeliai) | sutarta |
 | K2 | [Žinios (gedimai)](#k2-žinios-gedimai) | sutarta |
-| K3 | Agento eiga: pasisveikinimas, tonas, identifikacija, informacija, tiketai, pabaiga | aptariama |
-| K4 | Identifikacija ir CRM duomenys | — |
+| K3 | [Agento eiga](#k3-agento-eiga): pasisveikinimas, tonas, identifikacija, informacija, tiketai, pabaiga | sutarta |
+| K4 | Identifikacija ir CRM duomenys | aptariama |
 | K5 | Tiketai | — |
 | K6 | Tinklo diagnostika | — |
 | K7 | Telefonija (PBX) | — |
@@ -185,3 +185,39 @@ tvirtina.
 3. Kokia aprašymo forma: dokumentas, lentelė ar forma?
 
 **Susitikimas:** S1 (kuratorius + IT support).
+
+---
+
+## K3. Agento eiga
+
+```mermaid
+flowchart TB
+    A["0. Skambutis patenka (PBX)"] --> B["1. Pasisveikinimas, DI ir įrašymo pranešimas"]
+    B --> C["2. Problemos išklausymas"]
+    C --> D["3. Identifikacija"]
+    D -->|"nepavyko"| U["Neidentifikuotas klientas"]
+    D --> E["4. Patikra sistemose ir sprendimas"]
+    E --> F["5. Tiketas"]
+    E --> G["6. Pabaiga"]
+    F --> G
+    U --> G
+    G --> H["7. Kas išsaugoma"]
+```
+
+Per visą skambutį galioja tonas, kalba ir politika, tylos ir pertraukimų taisyklės.
+
+| Etapas | Dabar agente | Sutarti |
+|---|---|---|
+| **0. Skambutis patenka** | demo per naršyklę | kada nukreipiama agentui (po darbo valandų, savaitgaliais, šventėmis, vėliau esant užimtumui); ar PBX iš anksto praneša apie DI; kas, jei klientas nenori kalbėti su DI (gyvo perdavimo nėra → perskambinimas darbo metu) |
+| **1. Pasisveikinimas** | „Labas! Čia {įmonė}. Esu dirbtinio intelekto asistentas — padedu dėl interneto ir televizijos gedimų. Kuo galiu padėti?“ | **privaloma:** DI pranešimas (ES DI aktas, 50 str., nuo 2026-08-02) ir įrašymo pranešimas (BDAR). Kas sako įrašymo pranešimą (PBX ar agentas); tekstas („Labas“ / „Laba diena“, vardas, balso generavimas); balsas (Reginutė / Ingutė); ką agentas sprendžia |
+| **2. Tonas, kalba, zona, politika** | „Jūs“, trumpi sakiniai, tik lietuviškai; miestas už zonos — pasakoma iškart | kitos kalbos (rusų, anglų): atsakyti ta kalba ar perskambinimas; aptarnaujamų vietovių sąrašas; ko nesakoma (kainos, nuolaidos, kompensacijos, meistro laikas); ką galima apie skolą; piktas ar keikiantis klientas |
+| **3. Problemos išklausymas** | pirma problema, tada identifikacija; ne įmonės klausimas pasakomas; kelios problemos po vieną, vienas tiketas skambučiui | kokias temas priima (gedimai, užklausos, skola, sutartis); kurias sprendžia, kurias tik registruoja |
+| **4. Identifikacija** | adresas pagal numerį → adresas → abonento kodas; adresas patvirtinamas, butą sako klientas; iki identifikacijos skola ir linija nematomos | ko pakanka; ar reikia papildomo klausimo (gimimo data, asmens ar įmonės kodas); ar gali skambinti ne savininkas; ką galima pasakyti neidentifikuotam (avarija adrese?). Duomenys — K4 |
+| **5. Neidentifikuotas** | mandagi pabaiga, priežastis įraše, tiketo nėra | ar tiketas perskambinimui su numeriu („customer_not_found“); kas peržiūri; ką sakyti potencialiam klientui |
+| **6. Tyla ir pertraukimai** | tyla → „ar dar ryšyje?“; užduoties metu laukiama ~35 s; po baigiamojo klausimo ~5 s → atsisveikinama; pertraukti galima; triukšmo filtrai | nutrūkęs ryšys → tiketas „skambutis nebaigtas“?; tylos laikai pagal realius pokalbius |
+| **7. Patikra ir sprendimas** | pirma sistemos (skola, avarija, atviras tiketas, linija), tada klausimai; veiksmus atlieka tik variklis; be nepagrįstų pažadų | leidžiami nuotoliniai veiksmai ir nuo kada; avarijos atstatymo laikas ir jo šaltinis; skola: per kiek laiko po apmokėjimo įjungiama, ką sakyti savaitgalį |
+| **8. Tiketai** | 16 tipų, 4 skyriai (techninis, tinklo, buhalterija, klientų aptarnavimas); atviras tiketas papildomas | tipų ir skyrių susiejimas su įmonės sistema; prioritetai savaitgalį; **ar matomi uždaryti tiketai** (pvz., 30 d.) pasikartojančiam gedimui; ar išspręstas skambutis registruojamas CRM kaip kontaktas. Sistema — K5 |
+| **9. Pabaiga ir saugojimas** | apibendrinimas → „Ar dar kuo galiu padėti?“ → atsisveikinimas; kiekvienas skambutis išsaugomas agento DB (baigtis, priežastis, įrašas, nuorašas, „kodėl taip“) | tik agento DB ar ir CRM; įrašų ir nuorašų terminai (BDAR); kas mato stebėsenos puslapį |
+
+**Susitikimas:** S1 (kuratorius + IT support). Teisės klausimai (DI pranešimas, įrašai, terminai) —
+su duomenų apsaugos pareigūnu.
