@@ -15,8 +15,8 @@ susitikimo lapas: [SUSITIKIMO_PLANAS.md](SUSITIKIMO_PLANAS.md).
 | K3 | [Agento eiga](#k3-agento-eiga): pasisveikinimas, tonas, identifikacija, informacija, tiketai, pabaiga | sutarta |
 | K4 | [Identifikacija ir CRM duomenys](#k4-identifikacija-ir-crm-duomenys) | sutarta |
 | K5 | [Tiketai](#k5-tiketai) | sutarta |
-| K6 | Tinklo diagnostika | aptariama |
-| K7 | Telefonija (PBX) | — |
+| K6 | [Tinklo diagnostika](#k6-tinklo-diagnostika) | sutarta |
+| K7 | Telefonija (PBX) | aptariama |
 | K8 | Architektūra, saugumas ir stebėsena | — |
 
 Kiekviena kryptis: **ką išsiaiškinti · ko reikia iš įmonės · ką paruošiu · su kuo susitikti ·
@@ -396,3 +396,66 @@ tiketus; sistemos aprašo, API ir testinės aplinkos.
 4. Ar išspręsti skambučiai registruojami CRM?
 
 **Susitikimai:** S1 (procesas) · S2 (techninis lygis).
+
+---
+
+## K6. Tinklo diagnostika
+
+Tinklas yra teisėjas: ar linija gyva, ar matomas įrenginys, ar perkrovimas tikrai padėjo. Be
+telemetrijos agentas tik klausinėja; su ja — pats mato ir patikrina.
+
+### Demo dabar (Ethernet)
+
+| Ką mato agentas | Pavyzdžiai |
+|---|---|
+| **Portas ir komutatorius** | porto būsena ir istorija, kaimyniniai portai (vienas klientas ar visas mazgas) |
+| **Įrenginys** | MAC porte, IP gavimas (DHCP) |
+| **Kokybė** | srautas, paketų praradimas, signalo kokybė, ping |
+| **Avarijos** | aktyvios avarijos rajone, ar klientas paliestas, istorija |
+| **Nuotoliniai veiksmai** | porto perkrovimas, MAC pririšimas, routerio perkrovimas |
+
+Dabar duomenis teikia demo tinklo servisas iš demo DB; produkcijoje tie patys įrankiai jungiami prie
+įmonės sistemų.
+
+```mermaid
+flowchart TB
+    T{"Kliento technologija (iš CRM)"} -->|"Ethernet"| E["Komutatorius: portas, MAC, DHCP, klaidos ✅ demo"]
+    T -->|"GPON"| G["OLT: ONT būsena, optinis signalas ❌"]
+    T -->|"DOCSIS"| D["CMTS: modemo registracija, signalas ❌"]
+    T -->|"TV"| V["IPTV / skaitmeninė / analoginė ❌"]
+```
+
+### Procesas (IT support, tinklo administratorius)
+
+1. Ką IT support tikrina tinkle, kai klientas skambina? Kokia tvarka?
+2. Kokios ribos reiškia gedimą (optinio signalo lygis, klaidų skaičius…)?
+3. Kaip atpažįstama: gedimas tinkle ar pas klientą?
+4. Avarijos: kas registruoja, ar nurodomas atstatymo laikas, kaip greitai atsiranda registre?
+5. Kokius nuotolinius veiksmus IT support atlieka dabar; kuriuos leisti agentui ir nuo kada?
+6. Dažniausi tinklo gedimai pagal technologiją.
+
+### Techninis lygis (tinklo administratorius, K8)
+
+1. Stebėsenos įrankiai (Zabbix, LibreNMS, gamintojo NMS, RADIUS, DHCP žurnalai…) ir jų API.
+2. Kliento ID → portas / ONT / modemas: kur saugomas ryšys?
+3. Užklausos atsako laikas (pagal jį agentas sako „tikrinu liniją“).
+4. Nuotolinių veiksmų sąsaja, leidimai, registravimas.
+5. Testinė aplinka arba tik skaitymo prieiga.
+
+### Ką paruošiu
+
+Faktų žemėlapį pagal technologiją; ribų lentelę tvirtinti; adapterius tinklo įrankiams; GPON,
+DOCSIS ir TV korteles (su K2).
+
+### Ko reikia iš įmonės
+
+Tinklo administratoriaus laiko; stebėsenos įrankių sąrašo ir prieigos; ribų ir interpretacijos
+taisyklių; avarijų registro; sprendimo dėl nuotolinių veiksmų.
+
+### Sprendimai
+
+1. Nuo kurios technologijos pradedama?
+2. Kokie nuotoliniai veiksmai leidžiami ir kada?
+3. Iš kur imamas avarijos atstatymo laikas?
+
+**Susitikimai:** S3 (tinklo administratorius) · S1 (ką IT support tikrina dabar).
