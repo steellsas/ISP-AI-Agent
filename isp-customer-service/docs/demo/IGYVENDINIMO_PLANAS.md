@@ -16,8 +16,8 @@ susitikimo lapas: [SUSITIKIMO_PLANAS.md](SUSITIKIMO_PLANAS.md).
 | K4 | [Identifikacija ir CRM duomenys](#k4-identifikacija-ir-crm-duomenys) | sutarta |
 | K5 | [Tiketai](#k5-tiketai) | sutarta |
 | K6 | [Tinklo diagnostika](#k6-tinklo-diagnostika) | sutarta |
-| K7 | Telefonija (PBX) | aptariama |
-| K8 | Architektūra, saugumas ir stebėsena | — |
+| K7 | [Telefonija (PBX)](#k7-telefonija-pbx) | sutarta |
+| K8 | Architektūra, saugumas ir stebėsena | aptariama |
 
 Kiekviena kryptis: **ką išsiaiškinti · ko reikia iš įmonės · ką paruošiu · su kuo susitikti ·
 ką nuspręsti**.
@@ -459,3 +459,61 @@ taisyklių; avarijų registro; sprendimo dėl nuotolinių veiksmų.
 3. Iš kur imamas avarijos atstatymo laikas?
 
 **Susitikimai:** S3 (tinklo administratorius) · S1 (ką IT support tikrina dabar).
+
+---
+
+## K7. Telefonija (PBX)
+
+```mermaid
+flowchart TB
+    K["Klientas skambina"] --> PBX["Įmonės PBX: darbo laiko grafikas, IVR"]
+    PBX -->|"darbo metu"| IT["IT support (kaip dabar)"]
+    PBX -->|"po darbo valandų, savaitgalį, šventėmis"| AG["Agentas (SIP)"]
+    PBX -->|"agentas neveikia arba užimtas"| FB["Atsarginis kelias: kaip dabar (praleistas → perskambinama)"]
+    AG --> END["Pokalbis baigiamas agente; žmonėms — tik tiketais"]
+```
+
+Demo veikia per naršyklę (WebRTC); produkcijai reikia SIP jungties iš PBX į agento serverį. Gyvo
+perdavimo nėra.
+
+### Procesas (kuratorius, PBX administratorius)
+
+1. Kada skambutis eina agentui: darbo laiko grafikas, savaitgaliai, šventės; vėliau ir esant
+   užimtumui (visi užimti arba laukimas ilgesnis nei N s).
+2. IVR: ar meniu lieka; ar pasirinkimas perduodamas agentui kaip tema.
+3. Įrašymo ir DI pranešimai: sako PBX ar agentas (K3).
+4. Atsarginis kelias: kai agentas neveikia ar užimtas; kaip dabar registruojami praleisti
+   skambučiai ir kas perskambina.
+5. Pokalbių įrašai analizei (0 etapas): ar įrašomi, formatas, atskiri kanalai, kiek galima gauti,
+   kaip perduoti.
+6. Statistika: kiek skambučių po darbo valandų, kiek praleidžiama, kiek vienu metu piko metu (K1).
+
+### Techninis lygis (PBX administratorius, K8)
+
+1. PBX tipas ir versija, kas administruoja.
+2. Jungimas: SIP vidinis numeris ar trunk; registracija ar IP pagrindu.
+3. Kodekai: G.711 (8 kHz).
+4. Caller ID; paslėptas numeris.
+5. Kiek skambučių vienu metu agentui; kas su pertekliumi.
+6. Tinklas: LAN ar VPN, ugniasienė (SIP, RTP), delsa.
+7. Pokalbio pabaiga: kaip agentas padeda ragelį ir kaip PBX tai mato.
+8. Testinis numeris bandymams.
+
+### Ką paruošiu
+
+SIP jungtį agento pusėje ir aprašą PBX administratoriui; bandymus per testinį numerį (garsas,
+delsa, pertraukimai, pabaiga); atsarginio kelio patikrą; įrašų apdorojimą pokalbių analizei.
+
+### Ko reikia iš įmonės
+
+PBX administratoriaus laiko; testinio numerio; įrašų ir statistikos; darbo laiko grafiko ir švenčių;
+tinklo prieigos tarp PBX ir agento serverio.
+
+### Sprendimai
+
+1. Kada skambučiai eina agentui (po darbo valandų; vėliau esant užimtumui)?
+2. Ar IVR meniu lieka?
+3. Kas sako įrašymo ir DI pranešimus?
+4. Kiek skambučių vienu metu ir kas daroma su pertekliumi?
+
+**Susitikimai:** S4 (PBX administratorius); įrašai analizei — kuo anksčiau (0 etapas).
