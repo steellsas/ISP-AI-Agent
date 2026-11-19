@@ -13,8 +13,8 @@ susitikimo lapas: [SUSITIKIMO_PLANAS.md](SUSITIKIMO_PLANAS.md).
 | K1 | [Talpinimas ir modeliai](#k1-talpinimas-ir-modeliai) | sutarta |
 | K2 | [Žinios (gedimai)](#k2-žinios-gedimai) | sutarta |
 | K3 | [Agento eiga](#k3-agento-eiga): pasisveikinimas, tonas, identifikacija, informacija, tiketai, pabaiga | sutarta |
-| K4 | Identifikacija ir CRM duomenys | aptariama |
-| K5 | Tiketai | — |
+| K4 | [Identifikacija ir CRM duomenys](#k4-identifikacija-ir-crm-duomenys) | sutarta |
+| K5 | Tiketai | aptariama |
 | K6 | Tinklo diagnostika | — |
 | K7 | Telefonija (PBX) | — |
 | K8 | Architektūra, saugumas ir stebėsena | — |
@@ -221,3 +221,116 @@ Per visą skambutį galioja tonas, kalba ir politika, tylos ir pertraukimų tais
 
 **Susitikimas:** S1 (kuratorius + IT support). Teisės klausimai (DI pranešimas, įrašai, terminai) —
 su duomenų apsaugos pareigūnu.
+
+---
+
+## K4. Identifikacija ir CRM duomenys
+
+Iki identifikacijos agentas nemato nei skolos, nei linijos. Nuo duomenų ir jų ryšių priklauso, kiek
+klausimų užduos agentas ir ar ras tinkamą liniją, kai klientas turi kelis adresus.
+
+### Demo dabar
+
+```mermaid
+flowchart TB
+    C["Klientas: vardas, pavardė, 1 telefonas, el. paštas, abonento kodas, būsena"] --> A["Adresai (keli): miestas, gatvė, namas, butas, pagrindinis"]
+    A --> S["Paslaugos ir planas"]
+    A --> E["Įranga: modelis, MAC"]
+    C --> I["Sąskaitos → skola"]
+    C --> T["Tiketai, kliento istorija"]
+    R["Gatvių registras"] -.-> A
+```
+
+Demo ribos: vienas telefonas klientui, nėra sutarties lygio, nėra asmens ar įmonės kodo, viena CRM.
+
+Agento identifikacija: adresas pagal numerį → adresas → abonento kodas. Adresas visada
+patvirtinamas, butą sako klientas. Nustatymai — `knowledge/identification.yaml`.
+
+### IT support įrankiai ir jų pasiekiamumas
+
+Kiekvienam įrankiui, kurį IT support naudoja skambučio metu:
+
+| Įrankis | Kam naudoja | Kur stovi (serveris / debesis) | Kaip pasiekiamas (API, DB, tik naršyklės sąsaja) | Atsako laikas | Kas administruoja |
+|---|---|---|---|---|---|
+| CRM | … | … | … | … | … |
+| sąskaitos | … | … | … | … | … |
+| telemetrija / stebėsena | … | … | … | … | … |
+| tiketai | … | … | … | … | … |
+| kiti | … | … | … | … | … |
+
+Paprašyti: **DB schemų** (ar sistemų duomenų aprašų) ir **talpinimo vietų** (tinklo schemos: kur
+stovi kiekviena sistema). Pagal tai parenkamas greičiausias ir saugiausias kelias:
+
+| Kelias | Kada |
+|---|---|
+| esamas API | jei yra ir greitai atsako |
+| DB vaizdas / tik skaitymo kopija | jei API nėra arba lėtas |
+| sinchronizuota kopija agento DB | jei sistema toli ar lėta; tik duomenims, kurie keičiasi retai (adresai, įranga) |
+| tik naršyklės sąsaja | netinka — reikia API arba DB vaizdo |
+
+### Kaip identifikuoja dabar (IT support)
+
+1. Ko klausia pirmiausia: telefono, adreso, vardo, sutarties numerio, abonento kodo?
+2. Kaip patikrina, kad skambina tikras klientas? Ar užduoda papildomą klausimą?
+3. Ką daro, kai skambina ne sutarties savininkas (šeimos narys, nuomininkas, įmonės darbuotojas)?
+4. Ką daro, kai klientas turi kelis adresus ar sutartis?
+5. Kokiais įrankiais naudojasi ir kas atidaroma pirmiausia?
+6. Kur dažniausiai būna sunkumų, kiek laiko užtrunka identifikacija?
+
+### Telefono numeris
+
+| Klausimas | Kodėl svarbu |
+|---|---|
+| Ar klientas gali turėti **kelis numerius**? | daugiau numerių → dažniau atpažįstama iš karto |
+| Ar **tas pats numeris gali būti keliems klientams** (šeima, įmonė, buvęs savininkas)? | tada agentas siūlo kelis adresus arba klausia adreso |
+| Ar numeris imamas **tik iš kliento kortelės**, ar ir **iš skambučių istorijos**? | istorija padeda, kai skambinama iš kito numerio; reikia BDAR pagrindo |
+| Numerių formatas (+370 / 8…), ar tvarkingi? | paieškos tikslumas |
+| Ar PBX perduoda numerį? Kas, jei paslėptas? | paslėptas → identifikacija pagal adresą |
+
+### Papildomi identifikatoriai
+
+| Identifikatorius | Klausimas | Pastaba |
+|---|---|---|
+| **Adresas** | atskiri laukai ar vienas tekstas? ar yra adresų registras? | pagrindinis būdas, jau veikia |
+| **Abonento / sutarties kodas** | ar spausdinamas sąskaitoje? formatas? | jau veikia demo |
+| **Įmonės kodas** | ar saugomas juridiniams klientams? | verslo klientams patogiausias |
+| **Gimimo data** | ar saugoma? | papildomam patikrinimui; asmens duomenys |
+| **Asmens kodas** | ar saugomas? | **jautrus**: per telefoną geriau nenaudoti arba tik dalį; reikia DAP nuomonės |
+| **Vardas, pavardė** | — | tik patvirtinimui, ne paieškai |
+
+Kiek duomenų pakanka pagal riziką: **avarijos informacija** — adresas; **skola, linija, tiketas** —
+adresas ir patvirtinimas; **sutarties pakeitimai** — agentas nedaro, tik registruoja.
+
+### CRM struktūra (DB administratorius)
+
+1. **Kiek sistemų**: viena CRM ar duomenys keliose (klientai, sąskaitos, įranga)? Kas iš kur imama?
+2. **Ryšiai**: klientas → sutartys → paslaugų adresai → paslaugos → įranga (MAC, modelis) →
+   technologija.
+3. **Unikalūs identifikatoriai**: kliento ID, sutarties nr., abonento kodas, paslaugos taško ID.
+4. **Technologija**: ar CRM nurodo technologiją adresu, ar ją reikia atpažinti iš plano pavadinimo?
+5. **Skola**: kur saugoma; balansas, terminas, sustabdymo būsena.
+6. **Prieiga**: API, DB vaizdas ar kita; testinė aplinka ir tik skaitymo paskyra.
+7. **BDAR**: kokius laukus agentui matyti draudžiama?
+
+### Ką paruošiu
+
+- duomenų žemėlapį: kokių laukų agentui reikia, iš kurios sistemos, kokiu raktu ir keliu;
+- identifikacijos taisykles pagal sutartą duomenų kiekį;
+- adapterius kiekvienai sistemai (K8);
+- testus su testinės aplinkos duomenimis.
+
+### Ko reikia iš įmonės
+
+IT support paaiškinimo ir įrankių parodymo; DB schemų ir talpinimo vietų; testinės aplinkos ir tik
+skaitymo paskyros; DAP sprendimo dėl identifikatorių.
+
+### Sprendimai
+
+1. Kokie identifikatoriai naudojami ir kokia tvarka?
+2. Ko pakanka kiekvienam veiksmui?
+3. Ar galima naudoti skambučių istoriją numeriui atpažinti?
+4. Ar gali skambinti ne sutarties savininkas?
+5. Koks kelias į kiekvieną sistemą (API, DB vaizdas, kopija)?
+
+**Susitikimai:** S1 (IT support: kaip identifikuoja, įrankiai) · S2 (DB administratorius: schemos,
+talpinimas, prieiga).
