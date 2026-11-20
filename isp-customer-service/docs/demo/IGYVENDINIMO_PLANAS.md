@@ -17,7 +17,7 @@ susitikimo lapas: [SUSITIKIMO_PLANAS.md](SUSITIKIMO_PLANAS.md).
 | K5 | [Tiketai](#k5-tiketai) | sutarta |
 | K6 | [Tinklo diagnostika](#k6-tinklo-diagnostika) | sutarta |
 | K7 | [Telefonija (PBX)](#k7-telefonija-pbx) | sutarta |
-| K8 | Architektūra, saugumas ir stebėsena | aptariama |
+| K8 | [Architektūra, saugumas ir stebėsena](#k8-architektūra-saugumas-ir-stebėsena) | sutarta |
 
 Kiekviena kryptis: **ką išsiaiškinti · ko reikia iš įmonės · ką paruošiu · su kuo susitikti ·
 ką nuspręsti**.
@@ -517,3 +517,102 @@ tinklo prieigos tarp PBX ir agento serverio.
 4. Kiek skambučių vienu metu ir kas daroma su pertekliumi?
 
 **Susitikimai:** S4 (PBX administratorius); įrašai analizei — kuo anksčiau (0 etapas).
+
+---
+
+## K8. Architektūra, saugumas ir stebėsena
+
+### Kaip agentas pasiekia sistemas
+
+Kiekvienas įrankis turi aprašą (manifestą): ką grąžina, kada leidžiamas, laiko riba, ką daryti, jei
+sistema neatsako. Apraše nurodytas **adapteris**, kuris atlieka užklausą (`tooling/adapters.py`).
+
+```mermaid
+flowchart TB
+    AG["Agentas: variklis"] --> GW["Įrankių vartai: aprašas, laiko riba, leidimai, žurnalas"]
+    GW --> A1["adapteris: CRM"]
+    GW --> A2["adapteris: tinklas"]
+    GW --> A3["adapteris: tiketai"]
+    GW --> A4["adapteris: avarijos"]
+    A1 --> S1["CRM API / DB vaizdas"]
+    A2 --> S2["stebėsenos įrankiai"]
+    A3 --> S3["tiketų sistema"]
+    A4 --> S4["avarijų registras"]
+```
+
+| | Dabar (demo) | Produkcijoje |
+|---|---|---|
+| **Adapteriai** | `demo_db`: tiesiogiai demo SQLite | `mcp:<servisas>` arba `http:<servisas>`: atskiras servisas kiekvienai sistemai, su laiko riba |
+| **Apsauga** | nurodytas, bet neužregistruotas adapteris sustabdo paleidimą | tas pats: į demo DB netyčia negrįžtama |
+
+Atskiri servisai: kiekvienas turi tik savo sistemos prieigą; keičiami nepaliečiant agento; vienos
+sistemos sutrikimas agento nesugriauna.
+
+### Kur saugomi duomenys
+
+| Duomenys | Dabar | Produkcijoje (siūloma) |
+|---|---|---|
+| Kliento duomenys (CRM, skola, įranga) | demo SQLite | **lieka įmonės sistemose**; skaitoma skambučio metu, nekopijuojama |
+| Pokalbio būsena (sesija) | SQLite | PostgreSQL |
+| Skambučių įrašai: baigtis, nuorašas, „kodėl taip“, garsas | failai / SQLite | PostgreSQL + failų saugykla garsui; saugojimo terminai |
+| Žinios (kortelės, moduliai, įranga) | YAML failai | YAML failai su versijomis (git) |
+| Žinių paieška (RAG) | Qdrant + vietiniai embeddings | tas pats, serveryje |
+| Talpykla (cache) | — | tik jei reikės: retai besikeičiantys duomenys (adresų registras, įrangos modeliai), trumpas galiojimas |
+| Tiketai, kai sistema neatsako | — | eilė agento DB → registruojama vėliau |
+
+### Saugumas
+
+1. **Prieigos:** tik skaitymo paskyros CRM ir telemetrijai; rašymas — tik tiketams; nuotoliniai
+   veiksmai — atskirai ir vėliau.
+2. **Slaptažodžiai ir raktai:** slaptų duomenų saugykloje arba aplinkos kintamuosiuose, ne kode.
+3. **Tinklas:** agento serveris atskirame segmente (VLAN); atviri tik reikalingi prievadai (SIP, RTP,
+   sistemų API); kūrėjui — VPN.
+4. **Asmens duomenys žurnaluose:** telefonai maskuojami; ataskaitose vardai ir adresai paslepiami.
+5. **Modelio apsauga:** veiksmus atlieka tik variklis; modelis savo žodžiu nesukuria tiketo ir
+   neatlieka veiksmo.
+6. **BDAR:** įrašų ir nuorašų terminai; kas turi prieigą; duomenų tvarkymo aprašas su DAP.
+
+### Stebėsena
+
+| Ką stebėti | Kaip |
+|---|---|
+| Kiekvieno skambučio baigtis, priežastis, „kodėl taip“ | ✅ stebėsenos puslapis jau yra |
+| Servisų būsena: modeliai, CRM, tinklo, tiketų adapteriai | sveikatos patikros |
+| Delsa, klaidos, laiko ribų viršijimai | metrikos ir įspėjimai |
+| Neįprasti dalykai: daug neidentifikuotų, daug tiketų, kartojasi klaida | įspėjimas atsakingam žmogui |
+| GPU apkrova, laisva vieta diske | serverio stebėsena (įmonės IT įrankiais) |
+
+### Diegimas ir atkūrimas
+
+- **Diegimas:** Docker (agentas, modeliai, Qdrant, PostgreSQL); versijos pažymėtos.
+- **Kopijos:** DB ir konfigūracija; atkūrimas patikrinamas.
+- **Atnaujinimai:** pirma testinėje aplinkoje, tada produkcijoje; galima grįžti į ankstesnę versiją.
+- **Agentas neveikia:** PBX grįžta į dabartinį kelią (K7).
+
+### Ką išsiaiškinti (IT)
+
+1. IT saugumo politika: VPN, segmentai, slaptažodžių saugykla, žurnalų reikalavimai.
+2. Kokius stebėsenos įrankius naudoja IT; ar jungti agento įspėjimus prie jų?
+3. Ar įmonė naudoja PostgreSQL ar kitą DB, kurią galėtų prižiūrėti?
+4. Kas gauna įspėjimus, kai agentas ar sistema sutrinka?
+5. Kopijų ir atkūrimo politika.
+
+### Ką paruošiu
+
+Architektūros schemą su prievadais ir srautais; adapterius (MCP / HTTP); perėjimą SQLite →
+PostgreSQL; saugumo aprašą; stebėsenos ir įspėjimų rinkinį; diegimo, kopijų ir atkūrimo instrukciją
+perdavimui.
+
+### Ko reikia iš įmonės
+
+IT saugumo reikalavimų; paskyrų ir prieigų; stebėsenos įrankių; DAP konsultacijos; žmogaus, kuris
+gauna įspėjimus.
+
+### Sprendimai
+
+1. Kelias į kiekvieną sistemą: API, DB vaizdas ar kopija (K4)?
+2. Kur saugomi skambučių įrašai ir kiek laiko?
+3. Ar agento stebėsena jungiama prie įmonės įrankių?
+4. Kas atsakingas už įspėjimus?
+
+**Susitikimai:** S5 (IT), kartu su S2 (sistemų prieiga).
