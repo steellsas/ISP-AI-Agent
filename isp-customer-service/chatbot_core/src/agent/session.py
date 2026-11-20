@@ -400,6 +400,7 @@ class AgentSession:
         from .contract.locale import phrase
 
         text = phrase("identification.silence_goodbye")
+        self._closed_before_silence = self._state.closing.case_closed
 
         def write(state, rt) -> None:
             close_call(state, rt, "keep", complete=True)
@@ -409,6 +410,19 @@ class AgentSession:
 
         self._write_between_turns(write)
         return text
+
+    def reopen_after_silence_goodbye(self) -> None:
+        """The caller spoke while the silence goodbye was still going out (#82, live 2026-11-20:
+        „Ką reikia daryti?" over „Geros dienos!" — and the line went down). The goodbye was the
+        engine's guess that they were gone; their words prove it wrong, so the call goes on."""
+        from .closing import reopen_after_silence
+
+        closed = bool(getattr(self, "_closed_before_silence", False))
+
+        def write(state, rt) -> None:
+            reopen_after_silence(state, rt, closed)
+
+        self._write_between_turns(write)
 
     def rewind_cut_turn(self) -> str | None:
         """Undo the last turn — it was cut before the caller heard a word of it, and they are

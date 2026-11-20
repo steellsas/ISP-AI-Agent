@@ -17,7 +17,7 @@ problem_llm_commit_confidence: 0.8  # an LLM problem guess at or above this is t
 problem_llm_confirm_confidence: 0.5 # at or above this the guess gets a confirm question
 ident_max_empty_turns: {value: 4, env: IDENT_MAX_TURNS}  # empty address turns before closing
 ident_warn_min_empty_turns: 2       # the "I need the address" warning comes at max(this, max - 2)
-address_unrecognized_turns_max: 2   # unrecognised address turns before the account code is offered
+address_unrecognized_turns_max: 3   # unrecognised street turns before the account code (#76: where, the street again, then the code)
 address_resolve_failures_max: 3     # failed street/house lookups before the account-code rung
 account_code_grace_turns: 2         # non-code turns before code mode quietly switches off
 reopen_confirm_max_asks: 2          # unclear answers to the address-change confirm before dropping it
@@ -134,3 +134,4 @@ barge_echo_overlap: 0.9            # stricter than echo_overlap_threshold: an an
 
 # --- Contact record (D-14) ---------------------------------------------------------------
 audio_retention_days_unidentified: {value: 30, env: AUDIO_RETENTION_DAYS_UNIDENTIFIED}  # privacy: days an unidentified caller's audio is kept
+hidden_number_asks_max: 2          # #80: a hidden caller ID — the number is asked this many times, then the ticket says "nenurodytas"

@@ -110,6 +110,7 @@ class TestWantsTechnician:
         from agent.decide.rules import case_rule
 
         state, rt, _ = fixing
+        state.case.did += ["check_lights", "check_power"]  # #79: the card's must-do is behind
         _wants_technician(state, rt, _signal("wants_technician"))
         case_rule.plan(state, rt)
         state.dialog.turn_count += 1
@@ -139,6 +140,7 @@ class TestAnExplicitRequestMidFix:
         from agent.decide.rules import case_rule
 
         state, rt, tracer = fixing
+        state.case.did += ["check_lights", "check_power"]  # #79: the card's must-do is behind
         state.dialog.turn_count += 1
         state.dialog.last_heard = "Užregistruokit meistrą, nenoriu daugiau"
         case_rule.plan(state, rt)  # the conclusion turn
@@ -162,6 +164,7 @@ def test_the_reason_survives_the_conclusion_turn(fixing):
     from agent.decide.rules.case_rule import _escalate
 
     state, rt, _ = fixing
+    state.case.did += ["check_lights", "check_power"]  # #79: the card's must-do is behind
     state.case.worked = ["check_lights"]  # something was done — so there is a conclusion turn
     _escalate(state, rt, state.case.fault, why="nesusikalbame")  # the conclusion
     assert state.ticket.stage is None

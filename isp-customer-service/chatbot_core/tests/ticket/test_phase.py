@@ -53,7 +53,7 @@ def test_another_number_is_read_back(at_contacts):
 def test_a_billing_request_is_written_for_the_responsible_person(call):
     """Sąskaitos klausimas → tiketas atsakingam žmogui"""
     c = call("+37060020112")
-    for text in ("Skambinu dėl sąskaitos", "Taip", "Paulius", "Taip", "Bet kada"):
+    for text in ("Skambinu dėl sąskaitos", "Taip", "Paulius", "Taip", "Taip", "Bet kada"):
         c.say(text)
     ticket = c.state.ticket.ticket_id
     assert ticket and _row(ticket)[1] == "billing_request"

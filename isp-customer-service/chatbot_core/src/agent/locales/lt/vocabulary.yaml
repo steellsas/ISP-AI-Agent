@@ -442,6 +442,9 @@ power_cable_in: ["įkišt", "ikist", "prijungt", "įjungtas į", "ijungtas i", "
 step_wont: ["nenoriu", "nebandysiu", "nebandysim", "nenorėčiau", "nenoreciau", "nedarysiu", "nedarysim", "nesakysiu", "atsisakau", "nebenoriu", "nebe noriu", "nežiūrėsiu", "neziuresiu", "netikrinsiu"]
 step_cant: ["negaliu", "nepasiekiu", "neturiu kaip", "nėra kaip", "nera kaip", "neįmanoma", "neimanoma", "nepavyks man", "neišeina pasiekti", "neiseina pasiekti"]
 # „Gal pabandome?" (darbas telefonu prieš meistrą) — sutikimas pabandyti.
+# #79: „meistrą ar pabandome kartu?" — which of the two the caller chose.
+technician_choice_tech: ["meistr", "registruok", "atvažiuok", "atvaziuok", "atsiųsk", "atsiusk", "technik"]
+technician_choice_try: ["pabandom", "pabandykim", "bandom", "bandykim", "kartu", "galiu priei", "galiu ate", "prieisiu", "esu prie", "darom", "darykim"]
 phone_work_try: ["pabandom", "pabandykim", "bandom", "bandykim", "gerai", "galim", "darom", "darykim"]
 # „Ar galite prieiti?" — „galiu" as a phone line's ASR writes it (#75), short answers only.
 reach_can_asr: ["galiu", "galo", "galu", "galiū", "galim", "galime"]
@@ -1261,6 +1264,11 @@ account_code_words: ["kod"]
 surname_words: ["pavard"]
 # A question echoing a concrete address: a digit plus one of these.
 street_mark_words: ["gatv", " g."]
+# #76: a street named by its kind — then the turn is not a place-only answer.
+street_kind_words: ["gatv", " g.", "prospekt", "alėj", "aikšt", "plent", "skersgatv"]
+# #76: the district the agent asks about, and its city.
+district_words: ["rajon", " r."]
+district_city: ["Šiauliai"]
 # The last question asked for the street / address name.
 street_asked_words: ["gatv", "adres", "pavadinim"]
 # "Koks mano adresas?" / "Dėl kokio adreso kalbam?"
@@ -1596,7 +1604,7 @@ service_mentions_internet: ["internet", "wifi", "wi-fi"]
 # --- agent/decide/rules/head.py ------------------------------------------------------------
 
 # The caller will not say their name (it is recorded as "nenurodyta", never re-asked).
-caller_name_refused: ["nesvarbu", "nesakysiu", "nenoriu sakyt", "nenoriu pasakyt", "nebūtina", "nebutina", "koks skirtumas", "kam jums vardas"]
+caller_name_refused: ["nesvarbu", "nesakysiu", "nesakys", "nezakys", "nezakyso", "nepasakysiu", "nenoriu sakyt", "nenoriu pasakyt", "nebūtina", "nebutina", "koks skirtumas", "kam jums vardas"]
 
 # Patvirtinimas, kad klientas darys / daro tai, ko paprašėme („gerai", „ok", „bandau") —
 # NE atsakymas ir ne „padariau". Variklis tada pasako, kad palauks, ir instrukcijos

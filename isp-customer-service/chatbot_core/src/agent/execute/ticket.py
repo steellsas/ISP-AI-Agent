@@ -62,6 +62,16 @@ def request_ticket(state: Any, rt: Any, why: str, *, request_type: str | None = 
     _begin_ticket_dialogue(state, rt)
 
 
+# #80: the ticket's contact when the caller ID is hidden and no number was said.
+NO_NUMBER = "nenurodytas"
+
+
+def caller_id(state: Any) -> str | None:
+    """The number the caller rings from — None when the line hides it ("unknown", empty)."""
+    phone = (state.identity.caller_phone or "").strip()
+    return phone if len(re.sub(r"\D", "", phone)) >= 6 else None
+
+
 def fmt_phone(nr: str | None) -> str:
     """Group a dialable number for TTS ("+370 600 12353"); free text passes through."""
     raw = (nr or "").strip()
@@ -108,7 +118,8 @@ def finish_ticket_dialogue(state: Any, rt: Any) -> str:
 
     s = state
     if not s.ticket.contact_phone:
-        s.ticket.contact_phone = s.identity.caller_phone  # default: the number they call from
+        # default: the number they call from — and when it is hidden, said so (#80)
+        s.ticket.contact_phone = caller_id(state) or NO_NUMBER
     if not s.ticket.contact_hours:
         s.ticket.contact_hours = phrase("ticket.default_hours")
     ctx = state.ticket.context
@@ -125,7 +136,9 @@ def finish_ticket_dialogue(state: Any, rt: Any) -> str:
     val = s.ticket.contact_hours.rstrip(".")  # the template ends the sentence itself
     val = val[:1].lower() + val[1:]  # mid-sentence: "skambinti galima bet kada"
     done = (
-        "identification.ticket_done_request"
+        "identification.ticket_done_no_number"
+        if s.ticket.contact_phone == NO_NUMBER
+        else "identification.ticket_done_request"
         if s.ticket.request_type
         else "identification.ticket_done"
     )

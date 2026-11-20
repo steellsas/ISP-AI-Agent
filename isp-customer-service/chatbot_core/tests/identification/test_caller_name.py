@@ -162,7 +162,12 @@ class TestNameConfirm:
         agent.state.identity.result_pending = True
         caller_intro(agent.state, agent.runtime, "Darius.")
         said = scripted_words(agent.state, agent.runtime, "Darius.")
-        assert said and "ar teisingai išgirdau" in said.lower() and "Darius" in said
+        assert (
+            said
+            and "išgirdau" in said.lower()
+            and "ar teisingai" in said.lower()
+            and "Darius" in said
+        )
         assert agent.state.identity.name_confirm_asked is True
         return agent
 

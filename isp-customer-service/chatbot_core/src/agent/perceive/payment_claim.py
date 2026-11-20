@@ -85,5 +85,15 @@ def bare_amount(text: str | None) -> str | None:
     return f"{numbers[0].replace('.', ',')} €"
 
 
+def first_amount(text: str | None) -> str | None:
+    """The first number said — „Ne, 50. 5 0." corrects to 50 (#81). Only for a correction."""
+    if not text:
+        return None
+    numbers = re.findall(r"\d+(?:[.,]\d{1,2})?", lang().normalize_numbers(text))
+    if not numbers or not 0 < float(numbers[0].replace(",", ".")) < 10000:
+        return None
+    return f"{numbers[0].replace('.', ',')} €"
+
+
 def missing_parts(claim: dict[str, str]) -> list[str]:
     return [p for p in ASK_ORDER if not claim.get(p)]

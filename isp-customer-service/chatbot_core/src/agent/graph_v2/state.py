@@ -75,6 +75,8 @@ class IdentityState(BaseModel):
     # Address rung counters / one-shot warnings.
     address_empty_turns: int = 0
     address_unrecognized_turns: int = 0
+    # #76: "in the city or in the district?" is asked once per address.
+    locality_asked: bool = False
     address_warned: bool = False
     address_encouraged: bool = False
     address_resolve_failures: int = 0
@@ -112,6 +114,7 @@ class IdentityState(BaseModel):
     name_confirm_asked: bool = False
     # The caller just introduced themselves — accept warmly, once.
     caller_name_heard: bool = False
+    caller_name_heard_turn: int = -1  # #78: the welcome belongs to this turn only
     # The name answer was unreadable once and asked again (A4, 2026-10-12): the second
     # unreadable answer is „nenurodyta", never a garbled word used as a name.
     caller_name_reasked: bool = False
@@ -247,6 +250,7 @@ class TicketContext(BaseModel):
     hours_asked: bool = False
     # One unclear answer earns one retry per stage.
     phone_retry: bool = False
+    phone_retries: int = 0  # #80: a hidden number is asked for more than once
     hours_retry: bool = False
     # The next scripted reply is a retry for this stage ("phone" | "hours").
     ask_retry: str | None = None

@@ -14,6 +14,7 @@ import os
 from typing import Any
 
 from .contract.locale import phrase_or
+from .execute.ticket import NO_NUMBER, caller_id
 from .trace import tools_called_this_session, trace_note
 
 logger = logging.getLogger(__name__)
@@ -83,7 +84,7 @@ def register_ticket_from_state(state: Any, rt: Any) -> None:
             "ticket.details.contact",
             who=kas,
             relation=_relation(s),
-            phone=s.ticket.contact_phone or s.identity.caller_phone,
+            phone=s.ticket.contact_phone or caller_id(s) or NO_NUMBER,
         )
         if s.ticket.contact_hours:
             details += phrase(
@@ -354,7 +355,7 @@ def _register_request(state: Any, rt: Any) -> None:
             "ticket.details.contact",
             who=s.identity.caller_name or phrase("ticket.details.default_contact"),
             relation=_relation(s),
-            phone=s.ticket.contact_phone or s.identity.caller_phone,
+            phone=s.ticket.contact_phone or caller_id(s) or NO_NUMBER,
         )
         if s.ticket.contact_hours:
             details += phrase(

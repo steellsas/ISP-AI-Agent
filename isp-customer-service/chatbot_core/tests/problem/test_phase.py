@@ -76,7 +76,8 @@ def test_a_billing_question_is_registered_not_diagnosed(call):
     c = call("+37060020112")
     c.say("Skambinu dėl sąskaitos")
     c.say("Taip")
-    reply = c.say("Paulius")
+    c.say("Paulius")
+    reply = c.say("Taip")  # #78: the name is said back first
     assert c.state.intake.problem_type == "billing"
     assert c.rule == "ticket.phone_intro" and "užregistruosiu" in reply
     assert "diagnose_connection" not in c.tools

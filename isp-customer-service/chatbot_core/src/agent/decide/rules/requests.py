@@ -172,9 +172,9 @@ def debt_offer_turn(state: Any, rt: Any, user_input: str | None) -> str | None:
     if not _debt_news_open(state):
         return None
     if c.debt_offer == "facts":
-        _settle_amount(state, user_input)
+        corrected = _settle_amount(state, user_input)
         _note(state, user_input)
-        if _amount_to_check(state, user_input):
+        if _amount_to_check(state, user_input, corrected):
             register(state, rt, "inform", "debt_amount_check")
             rt.tracer.emit(
                 "decision", intent="debt_offer", action="confirm_amount", amount=c.debt_amount_check
@@ -232,32 +232,40 @@ def debt_offer_turn(state: Any, rt: Any, user_input: str | None) -> str | None:
 AMOUNT_CHECKS_MAX = 2  # „Ar teisingai — 39 €?" asked at most twice; then the sum stays unsaid
 
 
-def _settle_amount(state: Any, user_input: str | None) -> None:
+def _settle_amount(state: Any, user_input: str | None) -> bool:
     """The answer to „Ar teisingai supratau — 39 €?": „taip" makes it the caller's sum;
-    anything else leaves the sum unsaid (a new number in the answer is read again)."""
+    anything else leaves the sum unsaid (a new number in the answer is read again). True when
+    it was a „ne" — the number in it is the caller's correction."""
     from ...perceive.detectors import detect_yes_no
     from ...resolution import Outcome
 
     c = state.closing
     guessed, c.debt_amount_check = c.debt_amount_check, None
-    if guessed and detect_yes_no(user_input) == Outcome.YES:
+    answer = detect_yes_no(user_input)
+    if guessed and answer == Outcome.YES:
         c.debt_claim = {**c.debt_claim, "amount": guessed}
+    return bool(guessed) and answer == Outcome.NO
 
 
-def _amount_to_check(state: Any, user_input: str | None) -> bool:
+def _amount_to_check(state: Any, user_input: str | None, corrected: bool = False) -> bool:
     """A bare number after the sum was asked („39 sol." — the phone line lost „eurų") is
     the sum the agent heard — asked back, never taken on a guess (Andrius: patikslinti,
-    ne spėti; live 2026-11-16 the sum was lost and the ticket went without it)."""
-    from ...perceive.payment_claim import bare_amount, missing_parts
+    ne spėti; live 2026-11-16 the sum was lost and the ticket went without it).
+
+    #81 (live 2026-11-20: „Ne, 50." after two checks — the sum was dropped): a correction is
+    not a guess. „Ne, X" is asked back once more even at the limit, and its number is the
+    first one said („Ne, 50. 5 0." repeats it digit by digit)."""
+    from ...perceive.payment_claim import bare_amount, first_amount, missing_parts
 
     c = state.closing
+    limit = AMOUNT_CHECKS_MAX + (1 if corrected else 0)
     if (
         c.debt_claim_asks == 0
         or "amount" not in missing_parts(c.debt_claim)
-        or c.debt_amount_checks >= AMOUNT_CHECKS_MAX
+        or c.debt_amount_checks >= limit
     ):
         return False
-    guess = bare_amount(user_input)
+    guess = bare_amount(user_input) or (first_amount(user_input) if corrected else None)
     if guess:
         c.debt_amount_check = guess
         c.debt_amount_checks += 1

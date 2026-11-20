@@ -33,6 +33,7 @@ class TestTheResultOpensWithTheWelcome:
         state = make_state()
         state.identity.caller_name = "Tomas"
         state.identity.caller_name_heard = True
+        state.identity.caller_name_heard_turn = state.dialog.turn_count
         assert _thanks(state) == "Malonu, Tomai!"
         # Said once, here: no later reply welcomes again.
         assert state.identity.caller_name_heard is False
