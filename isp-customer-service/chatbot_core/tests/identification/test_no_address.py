@@ -38,8 +38,9 @@ def test_unrecognized_address_offers_code(db_connection):
     agent.state.intake.problem_type = "internet_down"
     agent.state.intake.anamnesis_asked = True
     scripted_words(agent.state, agent.runtime, "Kosmonautų alėja 7")
+    scripted_words(agent.state, agent.runtime, "Kosmonautų alėja septyni")
     r = scripted_words(agent.state, agent.runtime, "Sakau — Kosmonautų alėja septyni")
-    assert r and "abonento kodą" in r
+    assert r and "abonento kodą" in r  # #76: where, the street again, then the code
     assert agent.state.identity.account_code_mode is True
 
 
@@ -49,6 +50,7 @@ def test_explicit_no_code_closes(db_connection):
     agent = _agent()
     agent.state.intake.problem_type = "internet_down"
     agent.state.identity.account_code_mode = True
+    agent.state.identity.address_warned = True  # #77: only after the address was asked for
     r = scripted_words(agent.state, agent.runtime, "Neturiu jokio kodo")
     assert agent.state.closing.case_closed and r and "abonentams" in r
 

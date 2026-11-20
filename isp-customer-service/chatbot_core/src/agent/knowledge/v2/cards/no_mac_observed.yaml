@@ -124,5 +124,9 @@ solution:
 escalate:
   need: "pack.no_mac_observed.ticket_need"
   note: "linijoje nematomas kliento įrenginys"
+  # #79 (gyva 2026-11-20): „atvažiuokite" pačioje pradžioje — ir meistras be jokio patikrinimo.
+  # Ištrauktas maitinimo laidas sprendžiamas telefonu per minutę; meistras dėl jo — tuščia
+  # kelionė. Negalintis prieiti klientas nespaudžiamas (`_phone_work_left`).
+  only_after: [check_lights, check_power]
 
 knowledge: troubleshooting/internet_mires_routeris_tiltas

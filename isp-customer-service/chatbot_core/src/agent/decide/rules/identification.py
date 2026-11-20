@@ -64,6 +64,7 @@ def reopen_identification(state: Any, rt: Any, user_input: str) -> None:
     state.identity.account_code_grace_turns = 0
     state.identity.address_empty_turns = 0
     state.identity.address_unrecognized_turns = 0
+    state.identity.locality_asked = False
     state.identity.address_resolve_failures = 0
     state.identity.suggested_city = None
     state.diagnosis.evidence_ask_counts.clear()
@@ -502,6 +503,19 @@ def _account_code_rung(state: Any, rt: Any, s: Any, user_input: str | None):
     if state.identity.account_code_mode:
         low = user_input.lower()
         explicit_no = any(m in low for m in vocab("no_account_code"))
+        p = s.identity.profile
+        if explicit_no and (
+            p.street.value
+            or p.city.value
+            or _has_address_content(user_input)
+            or not (state.identity.address_warned or state.identity.city_not_served_said)
+        ):
+            # #77 (live 2026-11-20: „Vilniaus gatvė, Šiauliai. Neturiu abonento kodo." closed the
+            # call with the street just found): no code is no reason to stop while the address
+            # is still being built — the engine asks for its next part.
+            state.identity.account_code_mode = False
+            rt.tracer.emit("decision", intent="account_code", action="no_code_continue")
+            return True, _no_code_next(state, rt, s)
         if explicit_no:
             close_call(state, rt, "declined", complete=True)
             rt.tracer.emit("decision", intent="account_code", action="not_client_close")
@@ -597,6 +611,12 @@ def _account_code_rung(state: Any, rt: Any, s: Any, user_input: str | None):
     # empty attempt and the warning fired too early).
     if not s.intake.anamnesis_asked:
         return False, None
+    # #76 (live 2026-11-20: „Šiauliai" counted as an unrecognised address, the next garbled
+    # street went straight to the account code): a city, a district or a village is a STEP of
+    # the address, never a miss — the engine asks for the next part.
+    place = _place_only(state, rt, s, user_input)
+    if place is not None:
+        return True, _after_place(state, rt, s, place)
     limit = limits.get("ident_max_empty_turns")
     # R4 (live 2026-09-10: "Tilžiukos." counted as an EMPTY turn and the call
     # CLOSED on a cooperating caller): when the last question asked for the
@@ -641,6 +661,9 @@ def _account_code_rung(state: Any, rt: Any, s: Any, user_input: str | None):
                     "decision", intent="account_code", action="ask", reason="unrecognized"
                 )
                 return True, phrase("identification.account_code_ask")
+            # #76: before the code, the address is narrowed — first where (the city or the
+            # district), then the street once more.
+            return True, _street_again(state, rt, s)
         else:
             state.identity.address_unrecognized_turns = 0
         return False, None
@@ -670,6 +693,85 @@ def _account_code_rung(state: Any, rt: Any, s: Any, user_input: str | None):
         rt.tracer.emit("decision", intent="account_code", action="no_location_close")
         return True, phrase("identification.no_location_goodbye")
     return False, None
+
+
+def _place_only(state: Any, rt: Any, s: Any, text: str | None) -> dict | None:
+    """The turn names only WHERE — a served city, a district, a village of the registry — and
+    no street or number: {"locality": registry name or None, "district": bool}. None otherwise."""
+    from ...evidence import _fold
+
+    low = _fold(text or "")
+    if not low or any(ch.isdigit() for ch in low):
+        return None
+    reading = state.turn.address_reading or {}
+    if reading.get("street") or any(_fold(w) in low for w in vocab("street_kind_words")):
+        return None
+    district = any(m in low for m in vocab("district_words"))
+    try:
+        localities = rt.tools.address_registry().localities
+    except Exception:  # pragma: no cover - a registry that did not load reads no place
+        localities = []
+    city = vocab("district_city")[0]
+    found = [n for n in localities if _fold(n)[: max(4, len(_fold(n)) - 3)] in low]
+    # A village wins over the district's city („Šiaulių rajonas, Ginkūnai").
+    locality = next((n for n in found if n != city), found[0] if found else None)
+    if locality is None and not district:
+        return None
+    return {"locality": locality, "district": district}
+
+
+def _after_place(state: Any, rt: Any, s: Any, place: dict) -> str:
+    """The next part of the address after a place: the village in the district, else the
+    street and the house."""
+    from ...contract.locale import phrase
+    from ...decide.question import register as _q_register
+    from ...slots import SlotStatus
+
+    city = vocab("district_city")[0]
+    locality = place["locality"]
+    if place["district"] and (locality is None or locality == city):
+        state.identity.locality_asked = True
+        _q_register(state, rt, "ident", "village_ask")
+        rt.tracer.emit("decision", intent="address_ladder", action="village_ask")
+        return phrase("identification.village_ask")
+    s.identity.profile.city.propose(locality, 0.9, SlotStatus.HEARD)
+    _q_register(state, rt, "ident", "address_ask")
+    rt.tracer.emit("decision", intent="address_ladder", action="street_ask", value=locality)
+    return phrase("identification.street_house_ask", place=locality)
+
+
+def _street_again(state: Any, rt: Any, s: Any) -> str:
+    """An unrecognised street: where it is, when that is not known yet; else the street once
+    more."""
+    from ...contract.locale import phrase
+    from ...decide.question import register as _q_register
+
+    if not s.identity.profile.city.value and not state.identity.locality_asked:
+        state.identity.locality_asked = True
+        _q_register(state, rt, "ident", "locality_ask")
+        rt.tracer.emit("decision", intent="address_ladder", action="locality_ask")
+        return phrase("identification.locality_ask")
+    _q_register(state, rt, "ident", "address_ask")
+    rt.tracer.emit("decision", intent="address_ladder", action="street_again")
+    return phrase("identification.street_again")
+
+
+def _no_code_next(state: Any, rt: Any, s: Any) -> str:
+    """„Neturiu kodo" — fine, the address then: its next missing part."""
+    from ...contract.locale import phrase
+    from ...decide.question import register as _q_register
+
+    p = s.identity.profile
+    _q_register(state, rt, "ident", "address_ask")
+    if p.street.value and not p.house.value:
+        ask = phrase("identification.house_ask", street=p.street.value)
+    elif p.street.value and p.house.value:
+        ask = phrase("identification.apartment_ask")
+    elif p.city.value:
+        ask = phrase("identification.street_house_ask", place=p.city.value)
+    else:
+        ask = phrase("identification.full_address_ask")
+    return f"{phrase('identification.no_code_fine')} {ask}"
 
 
 def _address_need_warning(s) -> str:

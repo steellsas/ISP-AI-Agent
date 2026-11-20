@@ -10,6 +10,7 @@
         "Prieš valandą dingo, po nieko ypatingo",
         "Taip",
         "Jonas, taip, aš sutartį sudaręs",
+        "Taip",
         "Taip, keičiau routerį, senasis sugedo",
         "Gerai, laukiu",
         "Taip, atsirado internetas",
@@ -32,6 +33,7 @@
         "Laba diena, televizorius nerodo nė vieno kanalo",
         "Taip",
         "Kęstutis, taip, mano sutartis",
+        "Taip",
         "Taip, tinka šis numeris",
         "Po pietų, nuo keturioliktos valandos",
         "Ačiū, viso gero"
@@ -97,6 +99,7 @@
         "Vakar vakare dar veikė",
         "Taip",
         "Petras, nuomininkas",
+        "Taip",
         "Aišku, ačiū"
       ],
       "expect": {
@@ -115,6 +118,7 @@
         "Laba diena, norėjau paklausti, kodėl man tokia didelė sąskaita šį mėnesį",
         "Taip",
         "Aldona, taip, mano sutartis",
+        "Taip",
         "Taip, tinka šis numeris",
         "Po pietų",
         "Ačiū, viso gero"
@@ -141,6 +145,7 @@
         "Laba diena, kodėl tokia didelė sąskaita?",
         "Taip",
         "Velma",
+        "Taip",
         "Žinoma, tiks",
         "Ačiū, viso gero",
         "Taip, registruokite",
@@ -166,6 +171,7 @@
         "Labas, dingo internetas nuo ryto",
         "Taip",
         "Paulius, taip, mano sutartis",
+        "Taip",
         "Visuose įrenginiuose",
         "Gerai, ištraukiau iš routerio ir įkišau atgal",
         "Mirksi, puslapis atsidaro — veikia",
@@ -193,6 +199,7 @@
         "Vakar vakare pastebėjau",
         "Taip",
         "Ona, aš žmona sutartį sudariusio",
+        "Taip",
         "Tik viename",
         "Telefone",
         "Patikrinau, WiFi įjungtas",
@@ -222,6 +229,7 @@
         "Vakar vakare pastebėjau",
         "Taip",
         "Ona, aš žmona sutartį sudariusio",
+        "Taip",
         "Kompiuteryje veikia, telefone ne",
         "Telefone",
         "Taip, galiu",
@@ -249,6 +257,7 @@
         "Labą dieną, nevyk internetas.",
         "Taip dėl šią adresą skambinu.",
         "Aldona.",
+        "Taip",
         "Telefone mas mane neveikia, aš naudojasi telefonu.",
         "Tai palaukit.",
         "Nustatymai.",
@@ -281,6 +290,7 @@
         "Šįryt dingo, po audros",
         "Taip",
         "Giedrius, taip, mano sutartis",
+        "Taip",
         "Galėtume kartu patikrinti",
         "Taip, jau stoviu prie routerio",
         "Ne, nešviečia jokia lemputė",
@@ -312,6 +322,7 @@
         "Šįryt dingo, po audros",
         "Taip",
         "Giedrius, taip, mano sutartis",
+        "Taip",
         "Galėtume kartu patikrinti",
         "Taip, jau stoviu prie routerio",
         "Ne, nešviečia jokia lemputė",
@@ -345,6 +356,7 @@
         "Šįryt dingo, po audros",
         "Taip",
         "Giedrius, taip, mano sutartis",
+        "Taip",
         "Galėtume kartu patikrinti",
         "Aš dabar nesu namuose, esu darbe",
         "Grįšiu vakare",
@@ -372,6 +384,7 @@
         "Šįryt dingo, po audros",
         "Taip",
         "Giedrius, taip, mano sutartis",
+        "Taip",
         "Galėtume kartu patikrinti",
         "Taip, jau stoviu prie routerio",
         "Ne, nešviečia jokia lemputė",
@@ -407,6 +420,7 @@
         "Šįryt dingo, po audros",
         "Taip",
         "Giedrius, taip, mano sutartis",
+        "Taip",
         "Taip, jau stoviu prie routerio",
         "Nenoriu tikrinti lempučių",
         "Ne, nesakysiu",
@@ -436,6 +450,7 @@
         "Labą dieną, neveikia internetas, kaip galit padėt?",
         "Taip",
         "Giedrius",
+        "Taip",
         "Taip, jau prie routerio",
         "Nė viena lemputė nedega",
         "Tuoje palaukite, tvirtai įkištas",
@@ -473,6 +488,7 @@
         "Vakar vakare dingo, po nieko ypatingo",
         "Taip",
         "Egidijus, mano sutartis",
+        "Taip",
         "Aišku, ačiū, viso gero"
       ],
       "expect": {
@@ -495,6 +511,7 @@
         "Prieš valandą dingo, po nieko ypatingo",
         "Taip",
         "Jonas, taip, aš sutartį sudaręs",
+        "Taip",
         "O sakykite, ar šitas skambutis man kainuos?",
         "Taip, keičiau routerį, senasis sugedo",
         "Gerai, laukiu",
@@ -542,6 +559,7 @@
         "Vakar pastebėjau",
         "Taip",
         "Petras, nuomininkas",
+        "Taip",
         "Aišku, ačiū"
       ],
       "expect": {
@@ -565,6 +583,7 @@
         "Vakar pastebėjau",
         "Taip",
         "Petras, nuomininkas",
+        "Taip",
         "O ho, kiek ne mokėjau?",
         "Aišku, ačiū, viso gero"
       ],
@@ -589,6 +608,7 @@
         "Vakar pastebėjau",
         "Taip",
         "Petras, nuomininkas",
+        "Taip",
         "Kaip tai skola, aš sumokėjau praeitą mėnesį",
         "Taip, užregistruokite",
         "Taip, tinka šis numeris",
@@ -614,6 +634,7 @@
         "Vakar vakare, po audros",
         "Taip, dėl šito adreso",
         "Andrius",
+        "Taip",
         "Ačiū, viso gero",
         "Taip, baigiam"
       ],
@@ -665,6 +686,7 @@
         "Mano abonento kodas AB-10104",
         "Taip",
         "Vilma",
+        "Taip",
         "Ačiū, viso gero"
       ],
       "expect": {
@@ -714,7 +736,7 @@
         "identified": true,
         "disposition": "any",
         "reply_any": [
-          "teisingai išgirdau",
+          "išgirdau —",
           "kitu vardu"
         ],
         "reply_none": [
@@ -731,6 +753,7 @@
         "Šįryt dingo, po audros",
         "Taip",
         "Gedrus",
+        "Taip",
         "Taip, jau stoviu prie routerio",
         "Ne, ačiū, tiek žinot"
       ],
@@ -738,8 +761,10 @@
         "identified": true,
         "disposition": "any",
         "reply_none": [
-          "kitu vardu",
-          "teisingai išgirdau"
+          "kitu vardu"
+        ],
+        "reply_any": [
+          "Išgirdau — Giedrius"
         ]
       }
     },
@@ -760,7 +785,7 @@
         "identified": true,
         "disposition": "any",
         "reply_any": [
-          "teisingai išgirdau"
+          "išgirdau —"
         ],
         "reply_none": [
           "kitu vardu"
@@ -796,6 +821,7 @@
         "Labas, neveikia internetas",
         "Taip",
         "Vilma, taip, mano sutartis",
+        "Taip",
         "Taip, galiu prieiti",
         "Dega",
         "Nedega",
@@ -825,6 +851,7 @@
         "Labas, neveikia internetas",
         "Taip",
         "Marius, taip, mano sutartis",
+        "Taip",
         "Taip, galiu prieiti",
         "Perkišau, nepadėjo, laidas buvo kiek užlenktas",
         "Ne, neveikia",
@@ -855,6 +882,7 @@
         "Labas, neveikia internetas",
         "Taip",
         "Lina, taip, mano sutartis",
+        "Taip",
         "O kada sutvarkysit?",
         "Aišku, ačiū, viso gero"
       ],
@@ -878,6 +906,7 @@
         "Labas, neveikia internetas",
         "Taip",
         "Rasa",
+        "Taip",
         "Aišku, ačiū, lauksiu"
       ],
       "expect": {
@@ -919,6 +948,7 @@
         "Neveikia internetas",
         "Taip",
         "Egidijus",
+        "Taip",
         "O kada sutvarkysit?",
         "Aišku, ačiū, viso gero"
       ],
@@ -942,6 +972,7 @@
         "Neveikia internetas visuose įrenginiuose",
         "Taip",
         "Paulius",
+        "Taip",
         "Visuose",
         "Taip, galiu prieiti",
         "Perkroviau, internetas atsirado",
@@ -968,6 +999,7 @@
         "Neveikia internetas visuose įrenginiuose",
         "Taip",
         "Paulius",
+        "Taip",
         "Visuose",
         "Taip, galiu prieiti",
         "Perkroviau, ką tik padariau",
@@ -991,6 +1023,7 @@
         "Neveikia internetas visuose įrenginiuose",
         "Taip",
         "Paulius",
+        "Taip",
         "Visuose",
         "Taip, galiu prieiti",
         "Perkroviau, internetas atsirado",
@@ -1015,6 +1048,7 @@
         "Neveikia internetas visuose įrenginiuose",
         "Taip",
         "Paulius",
+        "Taip",
         "Visuose",
         "Užregistruokit meistrą, nenoriu pats krapštytis",
         "Ne, tiesiog registruokit",
@@ -1048,6 +1082,7 @@
         "Neveikia internetas visuose įrenginiuose",
         "Taip",
         "Paulius",
+        "Taip",
         "Visuose",
         "Užregistruokit meistrą, nenoriu pats krapštytis",
         "Gerai, pabandom",
@@ -1077,6 +1112,7 @@
         "Labas, neveikia internetas",
         "Taip",
         "Greta, taip, mano sutartis",
+        "Taip",
         "Turiu kompiuterį, prijungtą prie routerio laidu",
         "Gerai, pabandykime kartu",
         "Prijungiau",
@@ -1116,6 +1152,7 @@
         "Neveikia internetas visuose įrenginiuose, lemputės dega",
         "Taip",
         "Paulius",
+        "Taip",
         "Jau sakiau — visuose įrenginiuose",
         "Kiek galima klausinėti to paties? Aš jau atsakiau",
         "Gerai, perkroviau — atsirado",
@@ -1137,6 +1174,7 @@
         "Laba diena, televizorius nerodo nė vieno kanalo",
         "Taip",
         "Giedrius",
+        "Taip",
         "Aišku, ačiū, viso gero"
       ],
       "expect": {
@@ -1157,6 +1195,7 @@
         "Laba diena, neveikia televizija",
         "Taip",
         "Paulius",
+        "Taip",
         "Visuose",
         "Taip, galiu prieiti",
         "Perkroviau",
@@ -1184,6 +1223,7 @@
         "Labas, neveikia internetas",
         "Taip",
         "Paulius",
+        "Taip",
         "Esu prie routerio",
         "Lemputės dega",
         "Perkroviau",
@@ -1212,6 +1252,7 @@
         "Laba diena, neveikia internetas",
         "Taip",
         "Aldona",
+        "Taip",
         "Esu namuose",
         "Nežinau, aš nesu technikė",
         "Telefone neveikia",
@@ -1237,6 +1278,7 @@
         "Prieš valandą dingo, po nieko ypatingo",
         "Taip",
         "Jonas, taip, aš sutartį sudaręs",
+        "Taip",
         "O sakykite, kaip pakeisti wifi slaptažodį?",
         "Taip, keičiau routerį, senasis sugedėjo",
         "Gerai, laukiu",
@@ -1266,6 +1308,7 @@
         "Laba diena, vis dar neveikia internetas, niekas neatvažiavo",
         "Taip",
         "Petras",
+        "Taip",
         "Aišku, ačiū, viso gero"
       ],
       "expect": {

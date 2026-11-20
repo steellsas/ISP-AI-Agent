@@ -13,6 +13,7 @@ from typing import Any
 from ...closing import close_call
 from ...contract import limits
 from ...contract.locale import phrase_or, vocab, vocab_map
+from ...execute.ticket import NO_NUMBER, caller_id
 from ..plan import Action, Say, TurnPlan
 
 STAGE = "ticket"
@@ -127,6 +128,22 @@ def ticket_capture(state, rt, user_input: str) -> None:
         # Anything else resumes the registration — the stage re-asks.
         rt.tracer.emit("decision", intent="ticket_dialogue", action="cancel_confirm_resumed")
         return
+    # #79 (live 2026-11-20): the caller chose the technician, then — while we asked for the
+    # number — „Aš prie routerio, darom". Their own choice, so their own change of mind: back
+    # to the fix (the Case keeps its place).
+    if (
+        state.ticket.reason == "klientas_praso"
+        and state.case.fault
+        and state.case.in_progress
+        and not state.ticket.ticket_id
+    ):
+        from .case_rule import technician_choice
+
+        if technician_choice(user_input) == "try":
+            abort_ticket_to_solving(state, rt)
+            state.case.summarised = False
+            state.case.facts.pop("_escalate_why", None)
+            return
     # Understanding pass first (2026-08-10, Andrius): caller phrasing
     # cannot be predicted — "Bet kada galima per pietus iš ryto" IS an
     # P5 (closing wave, live 2026-09-07: "Gerai, aš paskambinsiu vėliau"
@@ -178,10 +195,10 @@ def ticket_capture(state, rt, user_input: str) -> None:
                 if state.ticket.stage == "phone":
                     from ...barge_in import token_overlap
 
-                    if token_overlap(user_input, s.dialog.last_question or "") >= limits.get(
-                        "echo_overlap_threshold"
-                    ):
-                        s.ticket.contact_phone = s.identity.caller_phone
+                    if caller_id(state) and token_overlap(
+                        user_input, s.dialog.last_question or ""
+                    ) >= limits.get("echo_overlap_threshold"):
+                        s.ticket.contact_phone = caller_id(state)
                         state.ticket.stage = "hours"
                         rt.tracer.emit(
                             "decision", intent="ticket_dialogue", action="phone_echo_consent"
@@ -217,8 +234,8 @@ def ticket_capture(state, rt, user_input: str) -> None:
             if value:
                 if state.ticket.stage == "phone":
                     digits = re.sub(r"\D", "", value)
-                    if value == "same_number":
-                        s.ticket.contact_phone = s.identity.caller_phone
+                    if value == "same_number" and caller_id(state):
+                        s.ticket.contact_phone = caller_id(state)
                     elif len(digits) >= 6:
                         s.ticket.contact_phone = re.sub(r"[^\d+]", "", value)[:20]
                     else:
@@ -289,20 +306,26 @@ def ticket_capture(state, rt, user_input: str) -> None:
         from ...perceive.detectors import is_backchannel
 
         digits = re.sub(r"[^\d+]", "", user_input)
+        own = caller_id(state)
         if len(re.sub(r"\D", "", digits)) >= 6:
             s.ticket.contact_phone = digits[:20]
-        elif detect_ticket_consent(user_input) == "yes" or is_backchannel(user_input):
+        elif own and (detect_ticket_consent(user_input) == "yes" or is_backchannel(user_input)):
             # "tiks šis" / a garbled yes ("T." — STT of "Taip", observed
             # live as tel. on the ticket) — the number they call from.
-            s.ticket.contact_phone = s.identity.caller_phone
-        elif ctx.phone_retry:
+            s.ticket.contact_phone = own
+        elif own and ctx.phone_retry:
             # Second unclear answer — default to the caller-ID and move on.
-            s.ticket.contact_phone = s.identity.caller_phone
+            s.ticket.contact_phone = own
+        elif not own and ctx.phone_retries >= limits.get("hidden_number_asks_max"):
+            # #80: a hidden number and none said — registered all the same, and the ticket
+            # says there is no number to call (never "unknown").
+            s.ticket.contact_phone = NO_NUMBER
         else:
             # Not a number, not a yes — the agent SAYS what it needs and
             # re-asks ONCE ("understand the answer, re-ask when it is not
             # one" — 2026-08-05); garbage never lands on the ticket.
             ctx.phone_retry = True
+            ctx.phone_retries += 1
             ctx.ask_retry = "phone"
             rt.tracer.emit("decision", intent="ticket_dialogue", action="phone_retry")
             return
@@ -573,6 +596,8 @@ def ticket_stage_reply(state: Any, rt: Any) -> str:
     if retry == "phone":
         ctx.last_kind = "retry_phone"
         _q_register(state, rt, "ticket", "ticket_phone")
+        if not caller_id(state):
+            return phrase("identification.ticket_phone_hidden_retry")
         return phrase("identification.ticket_phone_retry")
     if retry == "hours":
         ctx.last_kind = "retry_hours"
@@ -594,8 +619,9 @@ def ticket_stage_reply(state: Any, rt: Any) -> str:
             parts.append(phrase("identification.ticket_intro_request"))
         elif state.ticket.reason == "visi_veiksmai":
             parts.append(phrase("identification.ticket_intro_all_done"))
-        elif state.ticket.reason == "klientas_praso" and _guided_card(state):
-            # They asked for a technician mid-fix: no „neišspręsime" — it was their choice.
+        elif state.ticket.reason == "klientas_praso":
+            # They asked for a technician: no „neišspręsime" — it was their choice (#79: said
+            # on a dead-router call before a single check).
             parts.append(phrase("identification.ticket_intro_asked"))
         elif state.ticket.reason == "kliento_pagalba":
             # The caller agreed to PAID help with their own device: no „neišspręsime", no fault.
@@ -610,15 +636,14 @@ def ticket_stage_reply(state: Any, rt: Any) -> str:
         ctx.last_kind = "phone"
     ctx.phone_asked = True
     _q_register(state, rt, "ticket", "ticket_phone")
-    parts.append(phrase("identification.ticket_phone"))
+    # #80 (live 2026-11-20): a hidden number got „Ar tiks numeris, iš kurio skambinate?" and
+    # „tiks" put "unknown" on the ticket — without a caller ID the number is asked for.
+    parts.append(
+        phrase("identification.ticket_phone")
+        if caller_id(state)
+        else phrase("identification.ticket_phone_hidden")
+    )
     return " ".join(parts)
-
-
-def _guided_card(state: Any) -> bool:
-    from ...contract import cards as catalog
-
-    card = catalog.card(state.case.fault) if state.case.fault else None
-    return card is not None and card.pace == "guided"
 
 
 def _callback_only(state: Any) -> bool:

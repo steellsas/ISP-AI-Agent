@@ -142,9 +142,22 @@ class TestDebtDispute:
         requests.debt_offer_turn(state, rt, "39 sol.")
         assert requests.debt_offer_turn(state, rt, "Ne, 49.") == "confirm_amount"
         assert state.closing.debt_amount_check == "49 €"
-        # Asked back twice at most: then the offer goes on without the sum.
-        assert requests.debt_offer_turn(state, rt, "Ne, 59.") == "offer"
+        # Asked back twice for a guess; a „ne" with a new number is a correction — asked back
+        # once more (#81, live: „Ne, 50." was dropped); then the offer goes on without it.
+        assert requests.debt_offer_turn(state, rt, "Ne, 59.") == "confirm_amount"
+        assert state.closing.debt_amount_check == "59 €"
+        assert requests.debt_offer_turn(state, rt, "Ne, 69.") == "offer"
         assert "amount" not in state.closing.debt_claim
+
+    def test_the_correction_said_twice_is_read_by_its_first_number(self, make_state, make_runtime):
+        """Call 0005: „Ne, 50. 5 0." — the digits repeated after the number."""
+        state, rt = self._sum_asked(make_state, make_runtime)
+        requests.debt_offer_turn(state, rt, "Sveikias 10!")
+        requests.debt_offer_turn(state, rt, "Ne, penkis 10.")
+        assert requests.debt_offer_turn(state, rt, "Ne, 50. 5 0.") == "confirm_amount"
+        assert state.closing.debt_amount_check == "50 €"
+        assert requests.debt_offer_turn(state, rt, "Taip.") == "offer"
+        assert state.closing.debt_claim["amount"] == "50 €"
 
     def test_a_sum_with_its_currency_needs_no_asking_back(self, make_state, make_runtime):
         state, rt = self._sum_asked(make_state, make_runtime)

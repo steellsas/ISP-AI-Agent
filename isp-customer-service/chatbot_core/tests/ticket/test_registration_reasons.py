@@ -56,9 +56,24 @@ PATHS = [
     ),
     pytest.param(
         "no_mac_observed",
-        ["Gerai", F, F, "Registruokite meistrą"],
+        [
+            "Gerai",
+            F,
+            F,
+            "Nedega nė viena",
+            "Maitinimo laidas įkištas tvirtai.",
+            "Registruokite meistrą",
+            "Taip",
+        ],
         "klientas_praso",
         id="registruokite meistrą → klientas prašo",
+    ),
+    pytest.param(
+        # #79: before the lights and the power, a demand gets one honest offer first.
+        "no_mac_observed",
+        ["Gerai", F, F, "Registruokite meistrą", "Ne, registruokite", "Taip"],
+        "klientas_nenori",
+        id="meistrą prieš patikrą → pasiūlymas, atsisakė",
     ),
     pytest.param(
         "router_hung",
@@ -115,7 +130,7 @@ def _phoned(*turns):
 
 def test_a_request_from_the_start_is_not_ours_to_answer(db_connection):
     """Sąskaitos klausimas → atsakingam žmogui"""
-    c = _phoned("Skambinu dėl sąskaitos", "Taip", "Paulius")
+    c = _phoned("Skambinu dėl sąskaitos", "Taip", "Paulius", "Taip")
     assert (
         c.state.ticket.reason == "ne_musu_klausimas"
         and c.state.ticket.request_type == "billing_request"
@@ -345,6 +360,7 @@ class TestT3AWordNeverStartsARegistration:
         state, rt, _ = dead_router
         state.case.summarised = True
         state.case.step = len(case_rule._solution_steps(state))  # nothing left but the ticket
+        state.case.did = ["reach", "check_lights", "check_power"]  # the card's must-do (#79)
 
         case_rule.plan(state, rt)
 

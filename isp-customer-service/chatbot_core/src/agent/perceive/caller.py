@@ -44,6 +44,11 @@ def holder_spelling(state, caller_name: str) -> str | None:
             h = _fold(raw)
             if len(h) < 3:
                 continue
+            # #78 (live 2026-11-20: „Roma" → „Tomas", „Darasa" → „Rasa"): only the same name
+            # garbled — the same first letter, close in length — takes the holder's spelling;
+            # anything else is another name, said back as heard.
+            if c[0] != h[0] or abs(len(c) - len(h)) > 2:
+                continue
             if c[:4] == h[:4] or (min(len(c), len(h)) >= 4 and _distance(c, h) <= 2):
                 return raw.capitalize()
     return None

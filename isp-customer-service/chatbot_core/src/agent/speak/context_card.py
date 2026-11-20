@@ -466,7 +466,7 @@ def _side_topic(state, rt) -> list[str]:
 
 def _ticket_dialogue(state, rt) -> list[str]:
     """The caller asked something instead of answering the contact question."""
-    from ..execute.ticket import fmt_phone
+    from ..execute.ticket import caller_id, fmt_phone
 
     out: list[str] = []
     if state.ticket.stage in ("phone", "hours"):
@@ -480,7 +480,7 @@ def _ticket_dialogue(state, rt) -> list[str]:
         out.append(
             "TICKET DIALOGUE: we are registering the fault (reason: "
             f"{ticket_need(state, rt)}). The caller's number: "
-            f"{fmt_phone(state.identity.caller_phone) or 'unknown'}. The ticket is NOT "
+            f"{fmt_phone(caller_id(state)) or 'hidden — ask for it'}. The ticket is NOT "
             "registered yet — never say „užregistravau“. Answer the caller's question in "
             f"ONE sentence and then repeat the question: „{pending}“"
         )
@@ -1452,7 +1452,10 @@ def _goal_resync(state, rt) -> list[str]:
 
 def _goal_caller_intro(state, rt) -> list[str]:
     """The caller just introduced themselves — accept warmly, once."""
-    if not state.identity.caller_name_heard:
+    from ..decide.rules.head import name_welcome_due
+
+    if not name_welcome_due(state):
+        state.identity.caller_name_heard = False
         return []
     state.identity.caller_name_heard = False
     name = state.identity.caller_name

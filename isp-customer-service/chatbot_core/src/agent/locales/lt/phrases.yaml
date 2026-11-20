@@ -85,6 +85,10 @@ identification:
   ticket_done_request: "Užregistravau jūsų klausimą. Atsakingas žmogus paskambins {phone}, {hours}. Ar dar kuo padėti?"
   ticket_phone: "Ar tiks numeris, iš kurio skambinate?"
   ticket_phone_retry: "Nesupratau numerio. Pasakykite skaitmenimis arba „tiks šis“."
+  # #80: paslėptas numeris — jo klausiama, „tiks šis“ nėra ką tikti.
+  ticket_phone_hidden: "Jūsų numeris man nerodomas — kokiu numeriu jums paskambinti? Pasakykite skaitmenimis."
+  ticket_phone_hidden_retry: "Nesupratau numerio. Pasakykite jį skaitmenimis, po vieną ar poromis."
+  ticket_done_no_number: "Užregistravau. Kadangi numerio neturime, kolegos jums paskambinti negalės — paskambinkite mums patys ir pasakykite, kad gedimas užregistruotas. Ar dar kuo padėti?"
   ticket_hours: "Gerai. O kada patogiausia jums skambinti?"
   ticket_hours_retry: "Nesupratau. Pavyzdžiui — „bet kada“ arba „po 17 valandos“?"
   ticket_done: "Užregistravau. Skambinsime {phone}, {hours}. Ar dar kuo padėti?"
@@ -135,6 +139,17 @@ identification:
   # galiausiai esamas mandagus uždarymas („paskambinkite, kai galėsite
   # pasakyti adresą ar kodą").
   street_not_exists: "Girdžiu aiškiai, bet tokios gatvės aptarnaujamose vietovėse nerandu. Paslaugas teikiame Šiaulių mieste ir rajone — gal jūsų adresas kitame mieste?"
+  # Adreso laiptai (#76, Andrius 2026-11-20): miestas → (rajonas → kaimas) → gatvė → namas.
+  # Vieta niekada nėra nesėkmė; neatpažinta gatvė pirma tikslinama, kodas — paskutinis.
+  locality_ask: "Tokios gatvės neradau. Ar adresas Šiaulių mieste, ar Šiaulių rajone?"
+  village_ask: "Kuris kaimas ar miestelis Šiaulių rajone?"
+  street_house_ask: "Supratau — {place}. Kokia gatvė ir namo numeris?"
+  street_again: "Gatvės pavadinimo neatpažinau. Pasakykite jį dar kartą, prašau — lėtai ir aiškiai."
+  # #77: „neturiu kodo" — ne pabaiga, kol adresas renkamas.
+  no_code_fine: "Nieko tokio — rasime pagal adresą."
+  house_ask: "Gatvę {street} turiu — koks namo numeris?"
+  apartment_ask: "Koks buto numeris?"
+  full_address_ask: "Pasakykite adresą — miestą, gatvę ir namo numerį."
   account_code_ask: "Pabandykime kitaip — be adreso ar abonento kodo negalėsiu rasti jūsų linijos. Ar galite pasakyti abonento kodą? Jį rasite sąskaitoje, prasideda raidėmis A B ir skaičiais."
   account_code_retry: "Kodas atrodo taip: A B brūkšnys ir penki skaitmenys, pavyzdžiui sąskaitos viršuje. Ar pavyksta jį rasti?"
   not_client_goodbye: "Deja, jūsų duomenų mūsų sistemoje rasti nepavyko — pagalba teikiama tik mūsų abonentams. Jei esate abonentas, paskambinkite turėdami sutarties adresą ar abonento kodą. Geros dienos!"
@@ -177,7 +192,8 @@ identification:
   # Savininko vardo patikra (taisyklė №4): DB vardo NIEKADA negarsiname.
   holder_mismatch_clarify: "Sistemoje sutartis šiuo adresu registruota kitu vardu — gal ji sudaryta šeimos nario ar kito asmens vardu?"
   # Andrius (2026-10-14): vardas tikrinamas kaip adresas — pirma, ar gerai išgirdom.
-  name_confirm: "Atsiprašau, noriu įsitikinti — ar teisingai išgirdau, jūsų vardas {name}?"
+  # #78: kiekvienas išgirstas vardas pakartojamas — klientas jį čia pataiso.
+  name_confirm: "Išgirdau — {name}. Ar teisingai?"
   repeat_ack: "Atsiprašau, kad kartojuosi — noriu būti visiškai tikras. "
   escalate_clarify: "Norėjau patikslinti — ar bandome išspręsti kartu dabar, ar registruoju meistrą?"
   ticket_cancel_confirm: "Tik patikslinsiu — telefonu šio gedimo išspręsti nepavyks, todėl siūliau registruoti meistrą. Registruoti, ar tikrai nereikia?"
@@ -892,6 +908,8 @@ case:
   # kliento žodžių, agentas pasako, ką suprato, ir paklausia, ar teisingai.
   # v3 D: analitikas išgirdo, kad klientas mieliau norėtų meistro — variklis paklausia.
   technician_offer: "Supratau. Ar norite, kad užregistruočiau meistrą, ar dar pabandome kartu?"
+  # #79: „taip" į „A ar B?" neatsako nė į vieną — patikslinama vieną kartą.
+  technician_offer_clarify: "Kad tiksliai suprasčiau — registruoti meistrą, ar pabandome kartu dabar?"
   # Andrius (2026-10-14): vienintelis motyvas — išspręsti dabar telefonu; vieną kartą per
   # skambutį, be spaudimo ir be kainos (kainą, jei reikia, praneša meistrai).
   phone_work_offer: "Dažniausiai tai išsprendžia {work} — padarytume kartu per minutę, ir internetas veiktų jau dabar. Gal pabandome?"

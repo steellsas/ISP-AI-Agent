@@ -213,6 +213,11 @@ def _wants_technician(state: Any, rt: Any, signal: Signal) -> None:
         return
     if state.case.facts.get("_phone_work_offer"):
         return  # the engine already asked and heard the answer
+    if not state.case.did:
+        # #79 (live 2026-11-20): „atvažiuokite" in the opening line offered the technician on
+        # the first unclear answer, before a single check. The wish waits for one done step
+        # (the analyst repeats it); an explicit demand is the engine's own, and is not this.
+        return
     if state.case.technician_offer is None:
         state.case.technician_offer = "due"
         rt.tracer.emit("analyst_applied", signal="wants_technician", quote=signal.quote)

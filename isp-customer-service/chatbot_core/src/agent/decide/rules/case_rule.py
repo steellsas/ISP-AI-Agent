@@ -3007,7 +3007,7 @@ def _technician_wanted(state: Any, rt: Any) -> TurnPlan | None:
         return None
     if s.case.summarised:
         return None  # the registration is already on its way
-    from ...perceive.detectors import detect_refuse_or_ticket, detect_ticket_consent
+    from ...perceive.detectors import detect_refuse_or_ticket
 
     heard = s.dialog.last_heard
     out = _current(state)
@@ -3031,13 +3031,28 @@ def _technician_wanted(state: Any, rt: Any) -> TurnPlan | None:
                 ledger.record_client(state, rt, read[0], read[1])
         rt.tracer.emit("case", move="technician_demanded", fault=s.case.fault)
         return _escalate(state, rt, s.case.fault, why="klientas_praso")
-    if s.case.technician_offer == "asked":
+    if s.case.technician_offer in ("asked", "clarify"):
+        # „Meistrą ar pabandome kartu?" is a choice, not a yes/no (#79, live 2026-11-20: „Taip,
+        # galvojau." registered, and „Galiu prieiti, pabandome kartu" could not undo it).
+        choice = technician_choice(heard)
+        if choice is None and s.case.technician_offer == "asked":
+            s.case.technician_offer = "clarify"
+            rt.tracer.emit("case", move="technician_offer_clarify", fault=s.case.fault)
+            from ...contract.locale import phrase
+
+            return TurnPlan(
+                owner="procedure",
+                rule="case.technician_offer",
+                say=Say(
+                    kind="phrase", text=phrase("case.technician_offer_clarify"), stage="diagnosis"
+                ),
+            )
         s.case.technician_offer = "answered"
-        if detect_ticket_consent(heard) == "yes":
+        if choice == "technician":
             rt.tracer.emit("case", move="technician_agreed", fault=s.case.fault)
             return _escalate(state, rt, s.case.fault, why="klientas_praso")
         rt.tracer.emit("case", move="technician_not_wanted", fault=s.case.fault)
-        return None  # „ne, bandom toliau" — the fix goes on
+        return None  # „pabandom kartu" (or still no choice) — the fix goes on
     if s.case.technician_offer == "due":
         s.case.technician_offer = "asked"
         rt.tracer.emit("case", move="technician_offer", fault=s.case.fault)
@@ -3049,6 +3064,43 @@ def _technician_wanted(state: Any, rt: Any) -> TurnPlan | None:
             say=Say(kind="phrase", text=phrase("case.technician_offer"), stage="diagnosis"),
         )
     return None
+
+
+def technician_choice(heard: str | None) -> str | None:
+    """The answer to „meistrą ar pabandome kartu?": "technician", "try" or None (no choice in
+    it — a bare „taip" answers neither). When both are said, the later one counts — the caller
+    talks their way to it."""
+    from ...evidence import _fold
+    from ...perceive.detectors import detect_refuse_or_ticket
+
+    low = _fold(heard or "")
+    if not low:
+        return None
+    negation = tuple(_fold(n) for n in vocab("negation_prefixes"))
+
+    def last(marks: list[str]) -> int:
+        at = -1
+        words = low.split()
+        bare = [w.strip(".,!?…") for w in words]
+        pos = 0
+        for i, word in enumerate(words):
+            pos = low.find(word, pos)
+            # „nereikia meistro" negates the next word; a bare „Ne," answers, it does not.
+            negated = bare[i].startswith(negation) or (
+                i and bare[i - 1].startswith(negation) and bare[i - 1] != "ne"
+            )
+            if not negated and any(_fold(m) in word for m in marks):
+                at = pos
+            pos += len(word)
+        return at
+
+    tech = last(vocab("technician_choice_tech"))
+    if detect_refuse_or_ticket(heard) == "demand":
+        tech = max(tech, 0)
+    tries = max(last(vocab("technician_choice_try")), low.rfind("prie router"))
+    if tech < 0 and tries < 0:
+        return None
+    return "technician" if tech > tries else "try"
 
 
 def _answer_to_the_phone_work_offer(
@@ -3295,8 +3347,21 @@ def _phone_work_left(state: Any, fault: str | None) -> str | None:
     if state.case.facts.get("_phone_work_declined"):
         return None  # offered and declined — the ticket says so (2026-10-14)
     for name in card.escalate.only_after:
-        if name not in state.case.did:
-            return name
+        spec = catalog.module(name)
+        if (
+            spec is not None
+            and spec.detector
+            and (facts.get(spec.detector) or spec.detector in ledger.unavailable(state))
+        ):
+            # Its answer is known (said ahead of the question counts, #79) — or it was asked
+            # until we gave up: asked is attempted, never asked again in a loop.
+            continue
+        if name in state.case.did:
+            # Walked without an answer — the repeat guard gave up on it. Insisting on the
+            # card's next must-do would walk the same branch again (a loop); the ticket says
+            # what could not be done.
+            return None
+        return name
     return None
 
 

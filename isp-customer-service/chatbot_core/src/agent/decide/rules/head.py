@@ -16,7 +16,6 @@ from ...contract import limits
 from ...contract.locale import vocab, vocab_set
 from ...dialog_utils import last_agent_question
 from ...execute.ticket import request_ticket
-from ...perceive.caller import holder_name_matches
 from ...perceive.detectors import detect_farewell, detect_ticket_consent
 from ...perceive.slots import (
     mentions_other_street,
@@ -269,29 +268,49 @@ def name_confirm_answer(state: Any, rt: Any, user_input: str) -> bool:
         # „Žmonos vardu sutartis" — the name stands, and the contract question is answered
         # before it was asked.
         s.identity.caller_relation = relation
+        mark_name_heard(state)
         rt.tracer.emit("decision", intent="caller_name", action="confirmed", relation=relation)
         return True
     from ...perceive.detectors import is_real_question
 
+    low = user_input.lower()
+    if any(m in low for m in vocab("caller_name_refused")):
+        # #78 (live 2026-11-20: „Ne, aš tiesiog nesakysiu" became the name „Nezakysiu"): the
+        # caller will not say it — taken as that, the call goes on.
+        s.identity.caller_name = "nenurodyta"
+        s.identity.caller_relation = "unknown"
+        rt.tracer.emit("decision", intent="caller_name", action="refused")
+        return True
     asking = is_real_question(user_input)
-    corrected = None if asking else extract_caller_name(user_input)
     answer = detect_yes_no(user_input)
+    names_self = any(m in low for m in vocab("caller_own_name_markers"))
+    tokens = [t.strip(".,!?") for t in low.split() if t.strip(".,!?")]
+    # A correction is a name given AS one: after „ne", with „mano vardas", or the reply is the
+    # name alone. „Taip. Visingai žiūrėtum." confirms — its stray word is no new name (#78).
+    correcting = not asking and (
+        answer is Outcome.NO or names_self or (answer is not Outcome.YES and len(tokens) <= 2)
+    )
+    corrected = extract_caller_name(user_input) if correcting else None
     if corrected and corrected.lower() != (s.identity.caller_name or "").lower():
         s.identity.caller_name = holder_spelling(state, corrected) or corrected
-        s.identity.caller_name_heard = True
-    elif answer is Outcome.NO and not asking:
+        mark_name_heard(state)
+        rt.tracer.emit("decision", intent="caller_name", action="corrected", value=corrected)
+        _clarify_if_not_holder(state, rt)
+        return True
+    if answer is Outcome.NO and not asking:
         # „Ne" and no name in it — ask the name again (the ladder does).
         s.identity.caller_name = None
         s.identity.caller_name_reasked = True
         rt.tracer.emit("decision", intent="caller_name", action="confirm_denied")
         return True
-    elif answer is not Outcome.YES:
+    if answer is not Outcome.YES:
         # Not an answer to it („O ar šitas skambutis kainuos?", eval S1v): nobody objected to
         # the name — it stands, and the turn goes on to what they did say.
         state.turn.ident_answer = False
         rt.tracer.emit("decision", intent="caller_name", action="confirm_passed")
         _clarify_if_not_holder(state, rt)
         return False
+    mark_name_heard(state)
     rt.tracer.emit(
         "decision", intent="caller_name", action="confirmed", value=s.identity.caller_name
     )
@@ -299,10 +318,29 @@ def name_confirm_answer(state: Any, rt: Any, user_input: str) -> bool:
     return True
 
 
+def mark_name_heard(state: Any) -> None:
+    """The caller's name is settled THIS turn: this turn's reply opens with „Malonu, X!" — and
+    only this one (#78: a welcome left unspoken came out turns later, at the ticket)."""
+    state.identity.caller_name_heard = True
+    state.identity.caller_name_heard_turn = state.dialog.turn_count
+
+
+def name_welcome_due(state: Any) -> bool:
+    """The welcome belongs to the turn the name was settled in."""
+    return bool(
+        state.identity.caller_name_heard
+        and state.identity.caller_name_heard_turn == state.dialog.turn_count
+    )
+
+
 def _clarify_if_not_holder(state: Any, rt: Any) -> None:
     """The name stands and is not the contract's — whose name it is in, as its own turn."""
     from ...perceive.caller import holder_name_matches
 
+    if state.identity.caller_relation not in ("holder", "unknown"):
+        return  # they already said whose the contract is (family, tenant, helper)
+    if state.identity.caller_name in (None, "nenurodyta"):
+        return
     if holder_name_matches(state, rt, state.identity.caller_name):
         return
     state.identity.holder_clarify_open = True
@@ -375,8 +413,8 @@ def caller_intro(state: Any, rt: Any, user_input: str) -> bool:
                 s.identity.caller_relation = detect_caller_relation(user_input)
                 # Phrasebook (reference dialogue, 2026-09-03): the caller JUST introduced
                 # themselves — the next reply opens with a warm acceptance
-                # („Malonu, Tomai") instead of a dry „Supratau — X". One-shot.
-                state.identity.caller_name_heard = bool(name)
+                # („Malonu, Tomai") instead of a dry „Supratau — X". One-shot — said once the
+                # name is confirmed (#78: every heard name is said back first).
             rt.tracer.emit(
                 "caller_intro", name=s.identity.caller_name, relation=s.identity.caller_relation
             )
@@ -392,38 +430,21 @@ def caller_intro(state: Any, rt: Any, user_input: str) -> bool:
             # klientas NESAKO, kad sutartis jo. Vardas nesutampa su sutarties vardu — to
             # užtenka vienam mandagiam patikslinimui; jo nereikia tik tada, kai klientas jau
             # pats pasakė, kas jis (šeimos narys, nuomininkas, pagalbininkas, „ne aš").
-            if s.identity.caller_relation in (
-                "holder",
-                "unknown",
-            ) and s.identity.caller_name not in (
-                None,
-                "nenurodyta",
-            ):
-                from ...perceive.caller import holder_spelling
+            if s.identity.caller_name not in (None, "nenurodyta"):
+                if s.identity.caller_relation in ("holder", "unknown"):
+                    from ...perceive.caller import holder_spelling
 
-                spelled = holder_spelling(state, s.identity.caller_name)
-                if spelled and spelled != s.identity.caller_name:
-                    # „Gedrus" was „Giedrius" — the caller said it, speech garbled it.
-                    rt.tracer.emit("caller_intro", name=spelled, heard=s.identity.caller_name)
-                    s.identity.caller_name = spelled
-                if not holder_name_matches(state, rt, s.identity.caller_name):
-                    # First as a mishearing — „Ar teisingai išgirdau — jūsų vardas X?" —
-                    # and only then whose name the contract is in (2026-10-14).
-                    state.identity.name_confirm_open = True
-                    state.identity.name_confirm_asked = False
-                    rt.tracer.emit("decision", intent="caller_name", action="confirm_ask")
-                    return True
-                    state.identity.holder_clarify_open = True
-                    state.identity.holder_clarify_asked = False
-                    # Pasakė, kad sutartis jo → patikslinimas yra atsakymas (scenarijus).
-                    # Nieko nesakė → klausimas tik prisideda prie šio ėjimo atsakymo.
-                    state.identity.holder_clarify_soft = False  # its own turn (2026-10-14)
-                    rt.tracer.emit(
-                        "decision",
-                        intent="holder_name",
-                        action="mismatch_clarify",
-                        soft=state.identity.holder_clarify_soft,
-                    )
+                    spelled = holder_spelling(state, s.identity.caller_name)
+                    if spelled and spelled != s.identity.caller_name:
+                        # „Gedrus" was „Giedrius" — the caller said it, speech garbled it.
+                        rt.tracer.emit("caller_intro", name=spelled, heard=s.identity.caller_name)
+                        s.identity.caller_name = spelled
+                # #78 (Andrius, live 2026-11-20: „Roma" became the holder's „Tomas" unasked):
+                # the heard name is ALWAYS said back — „Išgirdau — Roma. Ar teisingai?" — and the
+                # caller corrects it there. Whose name the contract is in comes after (2026-10-14).
+                state.identity.name_confirm_open = True
+                state.identity.name_confirm_asked = False
+                rt.tracer.emit("decision", intent="caller_name", action="confirm_ask")
         return True
     return False
 

@@ -215,9 +215,12 @@ def test_t1_the_name_is_asked_and_kept(call):
     c = call("+37060020112")
     c.say("Laba diena, neveikia internetas")
     c.say("Taip")
-    c.say("Paulius")
+    said = c.say("Paulius")
     assert c.identity.caller_name == "Paulius"
-    assert c.rule == "identification.result_to_procedure"  # the finding comes next
+    # #78: the heard name is said back first, then the finding opens with the welcome.
+    assert c.rule == "identification.name_confirm" and "Paulius" in said
+    c.say("Taip")
+    assert c.rule == "identification.result_to_procedure"
 
 
 def test_t11_a_city_we_do_not_serve_is_said_at_once(call):
@@ -235,7 +238,7 @@ def test_t12_the_holders_name_is_never_said(call):
     c.say("Neveikia internetas")
     c.say("Taip")
     reply = c.say("Petras, aš sutarties savininkas")
-    assert "ar teisingai išgirdau" in reply.lower() and "Petras" in reply
+    assert "išgirdau" in reply.lower() and "ar teisingai" in reply.lower() and "Petras" in reply
     c.say("Taip, žmonos vardu")
     assert c.identity.caller_relation == "family"
     heard = c.heard_everything()

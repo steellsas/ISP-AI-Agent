@@ -48,6 +48,15 @@ def reopen_call(state: Any, rt: Any, why: str) -> None:
     rt.tracer.emit("decision", intent=why, action="reopen_at_closing")
 
 
+def reopen_after_silence(state: Any, rt: Any, was_closed: bool) -> None:
+    """The silence goodbye was a guess — the caller spoke over it (#82): the call goes on, the
+    case as it was before the goodbye."""
+    s = state
+    s.closing.is_complete = False
+    s.closing.case_closed = was_closed
+    rt.tracer.emit("decision", intent="closing_silence", action="reopened")
+
+
 def hang_up(state: Any, rt: Any) -> None:
     """End the CALL on an already closed case (the transport hangs up)."""
     close_call(state, rt, "keep", complete=True)

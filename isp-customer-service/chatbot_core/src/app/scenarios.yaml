@@ -14,7 +14,7 @@ scenarios:
     phone: "+37060020101"
     client: Tomas
     address: Šiauliai, Tilžės g. 60-3
-    say: ["Neveikia internetas", "Taip", "Tomas", "O kiek tiksliai skolingas?", "Aišku, ačiū, viso gero"]
+    say: ["Neveikia internetas", "Taip", "Tomas", "Taip", "O kiek tiksliai skolingas?", "Aišku, ačiū, viso gero"]
     actions: ["Agentas pasako skolos sumą ir mėnesius; detalės — iš faktų, ne išgalvotos."]
     expect: {verdict: billing_suspended, outcome: informed_debt}
 
@@ -23,7 +23,7 @@ scenarios:
     phone: "+37060020102"
     client: Rasa
     address: Šiauliai, Dainų g. 5-5
-    say: ["Neveikia internetas", "Taip", "Rasa", "Aišku, ačiū, lauksiu"]
+    say: ["Neveikia internetas", "Taip", "Rasa", "Taip", "Aišku, ačiū, lauksiu"]
     actions: ["Apie avariją — tik PO adreso patvirtinimo, su atstatymo laiku. Be tiketo."]
     expect: {verdict: active_outage, outcome: informed_outage}
 
@@ -32,7 +32,7 @@ scenarios:
     phone: "+37060030306"
     client: Lina
     address: Šiauliai, Vilties g. 17-2
-    say: ["Neveikia internetas", "Taip", "Lina", "O kada sutvarkysit?", "Aišku, ačiū, viso gero"]
+    say: ["Neveikia internetas", "Taip", "Lina", "Taip", "O kada sutvarkysit?", "Aišku, ačiū, viso gero"]
     actions: ["Tikslaus laiko agentas nežada. Tinklo tiketas (network_fault) sukuriamas automatiškai, klientas informuotas."]
     expect: {verdict: node_fault_unregistered, outcome: informed}
 
@@ -41,7 +41,7 @@ scenarios:
     phone: "+37060020103"
     client: Egidijus
     address: Šiauliai, Žemaitės g. 14-2
-    say: ["Neveikia internetas", "Taip", "Egidijus", "O kada sutvarkysit?", "Aišku, ačiū, viso gero"]
+    say: ["Neveikia internetas", "Taip", "Egidijus", "Taip", "O kada sutvarkysit?", "Aišku, ačiū, viso gero"]
     actions: ["Kaip mazgo gedimas: gedimas mūsų tinkle, tinklo tiketas automatiškai, klientas informuotas."]
     expect: {verdict: switch_unreachable, outcome: informed}
 
@@ -50,7 +50,7 @@ scenarios:
     phone: "+37060020104"
     client: Vilma
     address: Šiauliai, S. Dariaus ir S. Girėno g. 25-45
-    say: ["Neveikia internetas", "Taip", "Vilma", "Taip, galiu prieiti", "Dega", "Nedega", "Perkišau", "Ne, neveikia", "Taip, tinka", "Bet kada", "Ačiū, viso gero"]
+    say: ["Neveikia internetas", "Taip", "Vilma", "Taip", "Taip, galiu prieiti", "Dega", "Nedega", "Perkišau", "Ne, neveikia", "Taip, tinka", "Bet kada", "Ačiū, viso gero"]
     actions: ["Šaka: į „ar galite prieiti?“ atsakyk „Negaliu, ne namie“ → namų darbas be tiketo."]
     expect: {verdict: link_down_local, outcome: ticket}
 
@@ -59,7 +59,7 @@ scenarios:
     phone: "+37060030305"
     client: Marius
     address: Šiauliai, Tilžės g. 62
-    say: ["Neveikia internetas", "Taip", "Marius", "Taip, galiu prieiti", "Perkišau, nepadėjo, laidas buvo kiek užlenktas", "Ne, neveikia", "Taip, tinka", "Bet kada", "Ačiū, viso gero"]
+    say: ["Neveikia internetas", "Taip", "Marius", "Taip", "Taip, galiu prieiti", "Perkišau, nepadėjo, laidas buvo kiek užlenktas", "Ne, neveikia", "Taip, tinka", "Bet kada", "Ačiū, viso gero"]
     actions: ["Laidą perkišti tik routeryje; klaidos lieka → meistras vis tiek."]
     expect: {verdict: crc_errors, outcome: ticket}
 
@@ -68,7 +68,7 @@ scenarios:
     phone: "+37060012353"
     client: Giedrius
     address: Šiauliai, Vilniaus g. 29
-    say: ["Neveikia internetas", "Taip", "Giedrius", "Taip, galiu prieiti", "Jokia lemputė nedega", "Kitoje rozetėje irgi nedega", "Įkišau laidą į kompiuterį", "Taip, tinka", "Bet kada", "Ačiū, viso gero"]
+    say: ["Neveikia internetas", "Taip", "Giedrius", "Taip", "Taip, galiu prieiti", "Jokia lemputė nedega", "Kitoje rozetėje irgi nedega", "Įkišau laidą į kompiuterį", "Taip, tinka", "Bet kada", "Ačiū, viso gero"]
     actions: ["Kai agentas prašo įkišti laidą į kompiuterį — spausk 🔌 Kabelis.", "Šaka: „Negaliu dabar prieiti“ → namų darbas + perskambinimas."]
     expect: {verdict: no_mac_observed, outcome: ticket}
 
@@ -77,7 +77,7 @@ scenarios:
     phone: "+37060020112"
     client: Paulius
     address: Šiauliai, Vilniaus g. 33-2
-    say: ["Neveikia internetas visuose įrenginiuose", "Taip", "Paulius", "Taip, galiu prieiti", "Perkroviau, internetas atsirado", "Ne, ačiū, viso gero"]
+    say: ["Neveikia internetas visuose įrenginiuose", "Taip", "Paulius", "Taip", "Taip, galiu prieiti", "Perkroviau, internetas atsirado", "Ne, ačiū, viso gero"]
     actions: ["Kai agentas prašo perkrauti — spausk 🔄 Routeris, tada sakyk „Perkroviau“."]
     expect: {verdict: router_hung, outcome: resolved}
 
@@ -86,7 +86,7 @@ scenarios:
     phone: "+37060020109"
     client: Aldona
     address: Ginkūnai, Žeimių g. 12-6
-    say: ["Neveikia internetas telefone", "Taip", "Aldona", "Taip, galiu", "Nežinau, kur žiūrėti", "Samsung", "Pilkas, parašyta disable", "Įjungiau", "Taip, veikia!", "Ne, ačiū, viso gero"]
+    say: ["Neveikia internetas telefone", "Taip", "Aldona", "Taip", "Taip, galiu", "Nežinau, kur žiūrėti", "Samsung", "Pilkas, parašyta disable", "Įjungiau", "Taip, veikia!", "Ne, ačiū, viso gero"]
     actions: ["Prieš skambutį telefone IŠJUNK Wi-Fi; kai agentas pasako, kur spausti — įjunk.", "Agentas pirma pasako, ką mato: internetas iki routerio ateina.", "Prieš vesdamas agentas pakartoja, ką suprato, ir klausia „ar galite dabar pasižiūrėti?“ — tada veda po žingsnį, neskuba.", "Demo be pertraukimų (BARGE_IN=0): agentas visada pasako sakinį iki galo.", "Šaka: telefono kopėčios nepadeda → „ar turite kitų įrenginių?“ → veikia: palyginami Wi-Fi tinklai (kitas → prisijungti; tas pats → mokama pagalba, „Ne“ → be tiketo).", "Šaka: „Kito įrenginio neturiu“ → routerio perkrovimas → „atlikome visus veiksmus“ → meistras."]
     expect: {verdict: healthy_to_router, outcome: resolved}
 
@@ -95,7 +95,7 @@ scenarios:
     phone: "+37060030307"
     client: Tomas
     address: Šiauliai, Vilties g. 17-5
-    say: ["Laba diena, vis dar neveikia internetas, niekas neatvažiavo", "Taip", "Tomas", "Aišku, ačiū, viso gero"]
+    say: ["Laba diena, vis dar neveikia internetas, niekas neatvažiavo", "Taip", "Tomas", "Taip", "Aišku, ačiū, viso gero"]
     actions: ["Jokio naujo tiketo: pastaba prie seno ir jo būsena."]
     expect: {verdict: open_ticket_exists, outcome: ticket_appended}
 
@@ -104,7 +104,7 @@ scenarios:
     phone: "+37060020109"
     client: Aldona
     address: Ginkūnai, Žeimių g. 12-6
-    say: ["Laba diena, kodėl tokia didelė sąskaita?", "Taip", "Aldona", "Taip, tinka", "Po pietų", "Ačiū, viso gero"]
+    say: ["Laba diena, kodėl tokia didelė sąskaita?", "Taip", "Aldona", "Taip", "Taip, tinka", "Po pietų", "Ačiū, viso gero"]
     actions: ["Agentas nesigilina — registruoja klausimą atsakingam žmogui."]
     expect: {verdict: "", outcome: ticket}
 
@@ -113,7 +113,7 @@ scenarios:
     phone: "+37060020101"
     client: Petras (nuomininkas)
     address: Šiauliai, Tilžės g. 60-3
-    say: ["Neveikia internetas", "Taip", "Petras, nuomininkas", "Kaip tai skola, aš sumokėjau", "Taip, užregistruokite", "Taip, tinka", "Bet kada", "Ačiū, viso gero"]
+    say: ["Neveikia internetas", "Taip", "Petras, nuomininkas", "Taip", "Kaip tai skola, aš sumokėjau", "Taip, užregistruokite", "Taip, tinka", "Bet kada", "Ačiū, viso gero"]
     actions: ["Po skolos žinios nesutik — agentas pasiūlo registruoti klausimą."]
     expect: {verdict: billing_suspended, outcome: ticket}
 
@@ -122,7 +122,7 @@ scenarios:
     phone: "+37060012353"
     client: Giedrius
     address: Šiauliai, Vilniaus g. 29
-    say: ["Laba diena, televizorius nerodo nė vieno kanalo", "Taip", "Giedrius", "Aišku, ačiū, viso gero"]
+    say: ["Laba diena, televizorius nerodo nė vieno kanalo", "Taip", "Giedrius", "Taip", "Aišku, ačiū, viso gero"]
     actions: ["Sutartyje TV nėra — agentas taip ir pasako, be patikros ir tiketo."]
     expect: {verdict: service_not_subscribed, outcome: informed}
 
@@ -131,7 +131,7 @@ scenarios:
     phone: "+37060020112"
     client: Paulius
     address: Šiauliai, Vilniaus g. 33-2
-    say: ["Laba diena, neveikia televizija", "Taip", "Paulius", "Visuose", "Taip, galiu prieiti", "Perkroviau", "Taip, lemputė mirksi, puslapiai atsidaro", "Taip, televizija rodo", "Ne, ačiū, viso gero"]
+    say: ["Laba diena, neveikia televizija", "Taip", "Paulius", "Taip", "Visuose", "Taip, galiu prieiti", "Perkroviau", "Taip, lemputė mirksi, puslapiai atsidaro", "Taip, televizija rodo", "Ne, ačiū, viso gero"]
     actions: ["Pirma taisomas internetas; pabaigoje agentas paklausia, ar TV rodo. Perkraunant — 🔄 Routeris."]
     expect: {verdict: router_hung, outcome: resolved}
 
@@ -141,7 +141,7 @@ scenarios:
     phone: "+37060020106"
     client: Greta
     address: Šiauliai, Vilniaus g. 31-2
-    say: ["Neveikia internetas", "Taip", "Greta", "Taip, esu prie routerio", "Lemputės dega", "Taip, tinka", "Bet kada", "Ačiū, viso gero"]
+    say: ["Neveikia internetas", "Taip", "Greta", "Taip", "Taip, esu prie routerio", "Lemputės dega", "Taip, tinka", "Bet kada", "Ačiū, viso gero"]
     actions: ["Agentas pasako, KĄ mato, žmogaus kalba: „routeris linijoje matomas, bet adreso iš mūsų neprašo“ — be „DHCP“ ir be „gamyklinių nustatymų“.", "Telefonu čia nėra ko daryti → meistras. Pažadas „užregistruosiu meistrą“ turi nuskambėti VIENĄ kartą, ne kiekviename atsakyme."]
     expect: {verdict: dhcp_silent, outcome: ticket}
 
@@ -150,7 +150,7 @@ scenarios:
     phone: "+37060020110"
     client: Kęstutis
     address: Šiaulių r., Bubių k., Aušros g. 8
-    say: ["Laba diena, televizorius nerodo nė vieno kanalo", "Taip", "Kęstutis", "Taip, tinka šis numeris", "Po pietų, nuo keturioliktos", "Ačiū, viso gero"]
+    say: ["Laba diena, televizorius nerodo nė vieno kanalo", "Taip", "Kęstutis", "Taip", "Taip, tinka šis numeris", "Po pietų, nuo keturioliktos", "Ačiū, viso gero"]
     actions: ["Kita „IPTV per sugedusį internetą“ pusė: linija sveika, tad televizija — savas gedimas.", "Agentas NEVEDA per routerį ar WiFi (tai interneto kelias) — sąžiningai registruoja, ko telefonu nenustatė."]
     expect: {verdict: unclear_fault, outcome: ticket}
 
@@ -159,7 +159,7 @@ scenarios:
     phone: "+37060020112"
     client: Paulius
     address: Šiauliai, Vilniaus g. 33-2
-    say: ["Neveikia internetas", "Taip", "Paulius", "Esu prie routerio", "Lemputės dega", "Perkroviau", "Taip, veikia", "Ne, ačiū, viso gero"]
+    say: ["Neveikia internetas", "Taip", "Paulius", "Taip", "Esu prie routerio", "Lemputės dega", "Perkroviau", "Taip, veikia", "Ne, ačiū, viso gero"]
     actions: ["Srauto iki routerio nėra — perkrovimas yra pirmas žingsnis, tad „visuose ar tik viename?“ agentas NETURI klausti.", "„Esu prie routerio“ reiškia, kad ir „ar galite prieiti?“ nebeklausiama.", "Kai paprašo perkrauti — spausk 🔄 Routeris, tada sakyk „Perkroviau“."]
     expect: {verdict: router_hung, outcome: resolved}
 
@@ -168,7 +168,7 @@ scenarios:
     phone: "+37060020109"
     client: Aldona
     address: Šiaulių r., Ginkūnų k., Žeimių g. 12-6
-    say: ["Neveikia internetas", "Taip", "Aldona", "Esu namuose", "Nežinau, aš nesu technikė", "Telefone neveikia", "Taip, įjungtas", "Jau veikia!", "Ne, ačiū, viso gero"]
+    say: ["Neveikia internetas", "Taip", "Aldona", "Taip", "Esu namuose", "Nežinau, aš nesu technikė", "Telefone neveikia", "Taip, įjungtas", "Jau veikia!", "Ne, ačiū, viso gero"]
     actions: ["Į „visuose ar tik viename?“ NEATSAKYK — kalbėk apie ką kita.", "Antras klausimas turi būti KITAIS žodžiais; trečio nėra — agentas pasako prielaidą („trūksta galutiniame įrenginyje“) ir eina toliau.", "Jokio meistro: kelias iki įrenginio dar neišnaudotas."]
     expect: {verdict: healthy_to_router, outcome: resolved}
 

@@ -80,7 +80,9 @@ def finalize(state: GraphState, rt: AgentRuntime, transport_end: str | None = No
         )
         _record_hang_up(state, rt)
         if not s.ticket.contact_phone:
-            s.ticket.contact_phone = s.identity.caller_phone
+            from ..execute.ticket import NO_NUMBER, caller_id
+
+            s.ticket.contact_phone = caller_id(state) or NO_NUMBER  # #80: never "unknown"
         if not s.ticket.contact_hours:
             s.ticket.contact_hours = phrase("ticket.default_hours")
         from ..contract.registration import mark

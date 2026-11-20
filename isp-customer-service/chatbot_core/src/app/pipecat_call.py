@@ -852,6 +852,8 @@ class EngineProcessor(FrameProcessor):
         self._stop = threading.Event()
         self._checkin_task = None
         self._hangup_task = None
+        # The goodbye going out is the silence one — the engine's guess, not the caller's (#82).
+        self._silence_goodbye = False
         self._checked_in = False
         # The running reply was cut before the caller heard a word of it: their next words
         # are the rest of the same utterance (`AgentSession.rewind_cut_turn`).
@@ -867,6 +869,8 @@ class EngineProcessor(FrameProcessor):
             await self._disarm_checkin()
         if isinstance(frame, LLMContextFrame):
             text = _last_user_text(frame.context)
+            if text:
+                await self._reopen_if_still_here(text)
             if text and not self._session.is_complete:  # after the goodbye: no more turns
                 self._task = self.create_task(self._reply(text, self._task))
         elif isinstance(frame, HeldWordsFrame):
@@ -874,6 +878,8 @@ class EngineProcessor(FrameProcessor):
             from agent.barge_in import held_words_count
 
             taken = held_words_count(frame.text, frame.asked)
+            if not taken and await self._reopen_if_still_here(frame.text):
+                taken = True  # over the silence goodbye: any real words are a turn (#82)
             self._session.tracer.emit(
                 "held_words",
                 transcript=frame.text,
@@ -941,6 +947,7 @@ class EngineProcessor(FrameProcessor):
             if self._session.is_complete or not self._session.awaiting_closing_answer():
                 return
             self._checked_in = True
+            self._silence_goodbye = True
             text = await asyncio.to_thread(self._session.close_on_silence)
             await self.push_frame(LLMFullResponseStartFrame())
             await self.push_frame(LLMTextFrame(text))
@@ -979,6 +986,24 @@ class EngineProcessor(FrameProcessor):
         await self.push_frame(LLMFullResponseStartFrame())
         await self.push_frame(LLMTextFrame(text))
         await self.push_frame(LLMFullResponseEndFrame())
+
+    async def _reopen_if_still_here(self, text: str) -> bool:
+        """Words while the SILENCE goodbye plays or waits to hang up: the caller is still there —
+        the line stays up and the call goes on (#82). Not after a real ending (their own
+        goodbye, a registered ticket): those are the caller's, and the line goes down."""
+        from agent.barge_in import held_words_count
+        from agent.perceive.detectors import detect_farewell
+
+        pending = self._hangup_task is not None and not self._hangup_task.done()
+        if not (self._silence_goodbye and pending and self._session.is_complete):
+            return False
+        if not held_words_count(text, True) or detect_farewell(text):
+            return False  # „mhm", „ačiū, viso gero" — the goodbye stands
+        await self.cancel_task(self._hangup_task)
+        self._hangup_task = None
+        self._silence_goodbye = False
+        await asyncio.to_thread(self._session.reopen_after_silence_goodbye)
+        return True
 
     async def _hang_up(self) -> None:
         """The goodbye plays out, a short pause, then the line goes down — the call does not

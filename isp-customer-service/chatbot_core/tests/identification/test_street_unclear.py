@@ -40,6 +40,7 @@ class TestSpellingRung:
         agent.state.intake.problem_type = "internet_down"
         agent.state.intake.anamnesis_asked = True
         scripted_words(agent.state, agent.runtime, "Kosmonautų alėja 7")
+        scripted_words(agent.state, agent.runtime, "Kosmonautų alėja septyni")
         r = scripted_words(agent.state, agent.runtime, "Sakau — Kosmonautų alėja septyni")
         assert r and "abonento kodą" in r
 

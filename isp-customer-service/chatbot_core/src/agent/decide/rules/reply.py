@@ -539,9 +539,10 @@ def _thanks(state: Any) -> str:
     have just said it, „Ačiū!" otherwise. The welcome is said here, with the name, or not at
     all — left to a later reply, the model said „Malonu, Tomai!" after the news (#58, #30)."""
     from ...contract.locale import lang, phrase
+    from .head import name_welcome_due
 
     name = state.identity.caller_name
-    heard = state.identity.caller_name_heard
+    heard = name_welcome_due(state)
     state.identity.caller_name_heard = False
     if heard and name and name != "nenurodyta":
         return phrase("identification.welcome_name", name=lang().vocative(name))
