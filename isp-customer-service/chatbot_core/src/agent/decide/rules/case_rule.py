@@ -47,6 +47,10 @@ def plan(state: Any, rt: Any) -> TurnPlan | None:
     facts = ledger.facts_of(state)
     if _hear_cannot_now(state, rt):
         facts = ledger.facts_of(state)
+    if facts.get("reachable") == "no":
+        demanded = _away_and_wants_technician(state, rt)
+        if demanded is not None:
+            return demanded
     later = _not_now_plan(state, rt, facts)
     if later is not None:
         return later
@@ -202,6 +206,8 @@ def _not_now_plan(state: Any, rt: Any, facts: dict[str, str]) -> TurnPlan | None
     """
     if facts.get("reachable") != "no":
         return None
+    if state.case.summarised and state.case.technician_offer == "answered":
+        return None  # #86: the technician they asked for is on its way — no „kada galėsite?"
     agreed = facts.get("later_agreed")
     if agreed is None and state.case.awaiting == "later_agreed":
         agreed = _read_homework_answer(state, rt)
@@ -321,6 +327,78 @@ def _hear_cannot_now(state: Any, rt: Any) -> bool:
     if changed:
         rt.tracer.emit("case", move="cannot_now", fault=state.case.fault, when=when)
     return changed
+
+
+def _away_and_wants_technician(state: Any, rt: Any) -> TurnPlan | None:
+    """„Negaliu, nesu namie. Atvažiuokit, sutvarkykit" — the caller cannot do the phone work
+    now AND asks for the technician (#86, live 2026-11-23: they heard „Kada galėsite prieiti —
+    šiandien ar vėliau?" and then „Ar tikrai norite baigti pokalbį?").
+
+    Andrius (2026-11-23): while the cause is not clear, a technician is not registered at the
+    first word — the caller hears what it costs them (a call back, a wait) and that a few steps
+    usually do it, when they are back. Once; their answer decides."""
+    from ...perceive.detectors import detect_refuse_or_ticket
+
+    s = state
+    if s.ticket.stage or s.ticket.ticket_id or s.case.summarised or not s.case.in_progress:
+        return None
+    offered = s.case.facts.get("_away_offer")
+    if offered and offered not in ("callback", "register"):
+        return _answer_to_the_away_offer(state, rt, offered)
+    if offered or detect_refuse_or_ticket(s.dialog.last_heard) != "demand":
+        return None
+    pending = _phone_work_left(state, s.case.fault)
+    if pending is None:
+        card = catalog.card(s.case.fault) if s.case.fault else None
+        must = list(card.escalate.only_after or []) if card and card.escalate else []
+        pending = must[0] if must else "reach"
+    s.case.technician_offer = "answered"
+    s.case.facts["_away_offer"] = pending
+    rt.tracer.emit("case", move="away_offer", fault=s.case.fault, module=pending)
+    return _phrase_plan("case.away_offer", "case.away_offer")
+
+
+def _phrase_plan(rule: str, key: str) -> TurnPlan:
+    from ...contract.locale import phrase
+
+    return TurnPlan(
+        owner="procedure", rule=rule, say=Say(kind="phrase", text=phrase(key), stage="diagnosis")
+    )
+
+
+def _answer_to_the_away_offer(state: Any, rt: Any, module: str) -> TurnPlan | None:
+    """„Ar vis tiek registruoti meistrą?" — „paskambinsiu, kai grįšiu" / „ne": the call back
+    (the instruction for later, then goodbye); „taip" / „registruokit": registered, and the
+    ticket says the checks could not be done. Unclear: asked once more, then registered —
+    the technician is what they asked for."""
+    from ...perceive.detectors import detect_refuse_or_ticket, detect_yes_no
+    from ...resolution import Outcome
+
+    s = state
+    heard = s.dialog.last_heard or ""
+    answer = detect_yes_no(heard)
+    if detect_refuse_or_ticket(heard) == "demand":
+        answer = Outcome.YES
+    elif _heard_any(heard, vocab("away_callback_words")):
+        answer = Outcome.NO
+    elif _heard_any(heard, vocab("shrug")):
+        answer = None  # „nežinau" is no „ne" — asked once more, not guessed
+    if answer is Outcome.NO:
+        s.case.facts["_away_offer"] = "callback"
+        rt.tracer.emit("case", move="away_callback", fault=s.case.fault)
+        ledger.record_client(state, rt, "later_agreed", "yes")
+        return _not_now_plan(state, rt, ledger.facts_of(state))
+    if answer is not Outcome.YES and not s.case.facts.get("_away_offer_clarified"):
+        s.case.facts["_away_offer_clarified"] = "yes"
+        rt.tracer.emit("case", move="away_offer_clarify", fault=s.case.fault)
+        return _phrase_plan("case.away_offer", "case.away_offer_clarify")
+    s.case.facts["_away_offer"] = "register"
+    s.case.facts["_phone_work_offer"] = "declined"
+    s.case.facts["_phone_work_declined"] = module
+    # Said as „nepatikrinta: routerio lemputės (negalėjote)" — not „nenorėjote".
+    s.case.declined.append({"module": module, "how": "cant"})
+    rt.tracer.emit("case", move="away_register", fault=s.case.fault, module=module)
+    return _escalate(state, rt, s.case.fault, why="klientas_negali")
 
 
 def _when_from(text: str) -> str | None:

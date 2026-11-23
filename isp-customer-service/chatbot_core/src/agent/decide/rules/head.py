@@ -215,6 +215,21 @@ def farewell_mid_process(state: Any, rt: Any, user_input: str) -> bool:
         # (live 2026-10-13).
         rt.tracer.emit("decision", intent="farewell_mid_process", action="result_first")
         return False
+    away = s.case.facts.get("_away_offer")
+    if mid_process and away not in (None, "callback", "register"):
+        # #86: „Ar vis tiek registruoti meistrą?" — „Gerai, paskambinsiu, viso gero" answers it
+        # (the call back); the Case reads it.
+        return False
+    offered = s.case.facts.get("_phone_work_offer")
+    if (
+        mid_process
+        and offered not in (None, "accepted", "declined")
+        and not detect_farewell(user_input)
+    ):
+        # #86 (live 2026-11-23): „Meistrą užregistruosiu — bet gal pirma patikrinkime lemputes?"
+        # answered „Nenoriu nieko spręsti" is the answer to THAT offer (the Case registers),
+        # not a wish to end the call („Ar tikrai norite baigti pokalbį?").
+        return False
     if mid_process and (detect_farewell(user_input) or refuses_to_continue(user_input)):
         # F1 (live 2026-09-09: "Gerai, sutariam, viso gero" answering the
         # HOMEWORK consent got "Ar tikrai norite baigti?" twice): on the Case's
@@ -285,6 +300,10 @@ def name_confirm_answer(state: Any, rt: Any, user_input: str) -> bool:
     answer = detect_yes_no(user_input)
     names_self = any(m in low for m in vocab("caller_own_name_markers"))
     tokens = [t.strip(".,!?") for t in low.split() if t.strip(".,!?")]
+    if answer is None and tokens and len(tokens) <= 2 and not asking:
+        yes_like = vocab("name_check_yes_like")
+        if all(any(t.startswith(y) for y in yes_like) for t in tokens):
+            answer = Outcome.YES  # „Teiks." is speech's „tiks" — a yes, not a new name (#85)
     # A correction is a name given AS one: after „ne", with „mano vardas", or the reply is the
     # name alone. „Taip. Visingai žiūrėtum." confirms — its stray word is no new name (#78).
     correcting = not asking and (

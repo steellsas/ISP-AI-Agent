@@ -77,14 +77,7 @@ def reply_plan(state: Any, rt: Any, user_input: str | None) -> TurnPlan | None:
     # keeps until a turn that is not about something else.
     _turn_type = str((getattr(state.turn, "understanding", None) or {}).get("type") or "")
     if state.identity.name_confirm_open and not state.identity.name_confirm_asked:
-        state.identity.name_confirm_asked = True
-        from ..question import register as _q_register
-
-        _q_register(state, rt, "ident", "name_confirm")
-        return _words(
-            "identification.name_confirm",
-            phrase("identification.name_confirm", name=s.identity.caller_name or ""),
-        )
+        return _name_confirm_plan(state, rt)
     if (
         state.identity.holder_clarify_open
         and not state.identity.holder_clarify_asked
@@ -109,6 +102,27 @@ def reply_plan(state: Any, rt: Any, user_input: str | None) -> TurnPlan | None:
         and any(k in user_input.lower() for k in vocab("which_words"))
         and is_real_question(user_input)
     ):
+        if (
+            s.identity.customer_id
+            and state.identity.just_identified
+            and state.identity.result_pending
+            and not s.identity.caller_name
+        ):
+            # #85 (live 2026-11-23): „Taip, dėl šio adreso, iš kur žinot?" confirmed the address
+            # AND asked how we knew. The answer took the turn, the name question was never
+            # asked, and the next sentence („Taip, dėl V. 29 Šiauliai") became the name.
+            # The answer and the name question go out together.
+            state.identity.just_identified = False
+            from ..question import register as _q_register
+
+            _q_register(state, rt, "ident", "caller_name")
+            rt.tracer.emit("decision", intent="address_info", action="from_number")
+            parts = [
+                phrase("identification.address_from_number"),
+                phrase("identification.checking_note") if not s.ticket.request_type else "",
+                caller_question(),
+            ]
+            return _words("identification.caller_name", " ".join(p for p in parts if p))
         if s.identity.customer_id and s.identity.customer_address:
             state.identity.reopen_reask_due = False  # the info answer replaces the re-ask
             rt.tracer.emit("decision", intent="address_info", action="disclose")
@@ -457,7 +471,21 @@ def reply_plan(state: Any, rt: Any, user_input: str | None) -> TurnPlan | None:
     if not state.identity.result_pending:
         return None
     if not s.identity.caller_name and _name_given_unasked(state, rt):
-        pass  # the caller said it before we asked (A3) — the result goes out below
+        # The caller said it before we asked (A3). It is said back first, like an answered
+        # name question (#84, live 2026-11-23: „čia Aldonas…" skipped „Išgirdau — Aldona. Ar
+        # teisingai?", no result was ready, and the model asked about router lights of its own).
+        if state.identity.name_confirm_open and not state.identity.name_confirm_asked:
+            parts = []
+            if state.identity.just_identified and s.identity.customer_address:
+                parts.append(
+                    phrase("identification.echo_address", address=s.identity.customer_address)
+                )
+                if not s.ticket.request_type:
+                    parts.append(phrase("identification.checking_note"))
+            state.identity.just_identified = False
+            confirm = _name_confirm_plan(state, rt)
+            confirm.say.text = " ".join([*parts, confirm.say.text or ""]).strip()
+            return confirm
     if not s.identity.caller_name:
         # The caller-intro question turn (with the address echo on a fresh
         # commit) + the CHECKING cue — the engine resolves/diagnoses silently
@@ -651,6 +679,19 @@ def _name_given_unasked(state: Any, rt: Any) -> bool:
                 state.identity.caller_relation = detect_caller_relation(said)
             return bool(state.identity.caller_name)
     return False
+
+
+def _name_confirm_plan(state: Any, rt: Any) -> TurnPlan:
+    """„Išgirdau — Aldona. Ar teisingai?" — the heard name said back (#78)."""
+    from ...contract.locale import phrase
+    from ..question import register as _q_register
+
+    state.identity.name_confirm_asked = True
+    _q_register(state, rt, "ident", "name_confirm")
+    return _words(
+        "identification.name_confirm",
+        phrase("identification.name_confirm", name=state.identity.caller_name or ""),
+    )
 
 
 def _words(rule: str, words: str | None) -> TurnPlan:

@@ -201,7 +201,8 @@ class TestPhoneWorkFirstOfferedOnce:
         plan = self._demand(hung)
 
         assert plan.rule == "case.phone_work_offer"
-        assert "per minutę" in plan.say.text and "perkrovimas" in plan.say.text
+        # Andrius (2026-11-23): what the registration costs them, and the few steps now.
+        assert "jis dar paskambins" in plan.say.text and "pabandome kartu dabar" in plan.say.text
         assert "kain" not in plan.say.text and "mokam" not in plan.say.text
 
     def test_declined_registers_and_says_what_was_not_done(self, hung):

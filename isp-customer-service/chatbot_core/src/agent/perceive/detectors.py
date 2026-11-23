@@ -460,7 +460,8 @@ def detect_refuse_or_ticket(text: str | None) -> str | None:
     if not text:
         return None
     low = text.lower()
-    words = [token.strip(".,!?…") for token in low.split()]
+    raw = low.split()
+    words = [token.strip(".,!?…") for token in raw]
     negation = vocab("negation_prefixes")
     # An intent word counts only when it is not itself negated: „nenoriu", „nereikia" carry
     # „noriu" / „reik" but mean the opposite (2026-10-14: „Nereikia registruoti" was a demand —
@@ -471,8 +472,15 @@ def detect_refuse_or_ticket(text: str | None) -> str | None:
     for i, word in enumerate(words):
         if word.startswith(negation):
             continue
-        if i and words[i - 1].startswith(negation) and words[i - 1] not in ("ne",):
-            continue  # „nereikia registruoti", „nenoriu registruoti"
+        if (
+            i
+            and words[i - 1].startswith(negation)
+            and words[i - 1] not in ("ne",)
+            and not raw[i - 1].endswith((".", "!", "?", "…"))
+        ):
+            # „nereikia registruoti", „nenoriu registruoti" — but not across a sentence end:
+            # „Negaliu, nenamos. Atvažiuokit…" is a demand (#86).
+            continue
         if any(m in word for m in vocab("ticket_demand")):
             return "demand"
         if any(m in word for m in vocab("ticket_demand_inf")) and intent:
