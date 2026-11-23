@@ -17,13 +17,13 @@
 Pristatymo pabaigoje prašoma vieno dalyko: **pradėti nuo pasiruošimo etapo** (kontaktinis
 žmogus, sistemų sąrašas, dažniausi gedimai). Daugiau žr. §8.
 
-## 1. Eiga (~30 min.)
+## 1. Eiga (~35 min.)
 
 | Min. | Dalis | Esmė |
 |---|---|---|
 | 3 | Jūsų situacija ir nauda | savaitgalio pamaina, po 20 val. niekas neatsiliepia |
 | 5 | Kuo agentas kitoks | sprendžia variklis, ne LLM (§3) |
-| 10 | **Demo**: 3 skambučiai + tiketas + stebėsena | kiekvienas skambutis parodo vieną naudą (§5) |
+| 15 | **Demo**: 4 skambučiai + tiketai + stebėsena | kiekvienas skambutis parodo vieną naudą (§5) |
 | 4 | Kaip agentas mokomas | gedimo kortelė (§4) |
 | 3 | Modeliai jūsų serveryje | saugumas ir patikimumas (§6) |
 | 4 | Kaip atrodys integracija ir nuo ko pradėti | §7–§8 |
@@ -171,14 +171,17 @@ Detali eiga, numeriai, ką spausti — [DEMO_PRISTATYMAS.md](DEMO_PRISTATYMAS.md
 
 | # | Skambutis | Nauda, kurią pasakai |
 |---|---|---|
-| ① | **Skola** (`+37060020101`) | paprasti skambučiai nebepasiekia žmogaus |
+| ① | **Skola su ginču** (`+37060020101`) | dažniausias skambutis nebepasiekia žmogaus; ginčas ateina buhalterijai jau su faktais |
+| ② | **Mazgo gedimas** (`+37060030306`) — **skambina jūs** pagal kortelę | per avariją atsiliepiama kiekvienam iš karto, gedimas registruojamas nuo pirmo skambučio |
 | ③ | **Pakibęs routeris** (`+37060020112`) | **meistras nevažiuoja perkrauti routerio**; pats patikrina liniją |
-| ④ | **Telefone išjungtas Wi-Fi** (`+37060020109`) | problema pas klientą išsprendžiama telefonu, pagal telefono modelį |
-| + | **Tiketas** archyve (pvz. `dead_router`) | pirmadienį darbas paruoštas |
+| ④ | **Miręs routeris** (`+37060012353`) | internetas dar šįvakar (laikinai per kompiuterį); meistras važiuoja vieną kartą ir žino, ką vežtis |
+| + | **Tiketai** archyve (① ir ④) | pirmadienį darbas paruoštas |
 | + | **„Kodėl taip“** vienam ėjimui | ne juoda dėžė, matosi, kuri taisyklė nusprendė |
 | + | **Stebėsena** | skaičius matysite patys |
 
-Atsargai: ② avarija / mazgas (`+37060030306`), jei direktorius klaus apie masinius gedimus.
+Pasakojimas: *„Šeštadienis, 19:30. Šiuos skambučius dabar priimtų savaitgalio darbuotojas.“*
+Atsargai: ⑤ telefone išjungtas Wi-Fi (`+37060020109`) — problema pas klientą išsprendžiama
+telefonu, pagal telefono modelį (jei liks laiko).
 
 Demo veikia su **imituotu** tinklu ir CRM. Tai pasakyti iš anksto: *„sistemos — demo, logika ta
 pati, kuri dirbs su jūsų sistemomis“*.

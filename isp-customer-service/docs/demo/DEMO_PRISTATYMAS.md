@@ -1,17 +1,20 @@
 # Demo pristatymas — eiga, ką sakyti ir ką rodyti ekrane
 
-Pristatymas užsakovui: **~25 minutės, keturi gyvi skambučiai**, po vieną gedimo lygį. Esmė —
+Pristatymas užsakovui: **~30 minučių, keturi gyvi skambučiai + vienas atsarginis**, po vieną
+gedimo lygį. Esmė —
 ne tobulas pokalbis, o **matomas mechanizmas**: iš kur agentas ima žinias, kodėl pasirinko
 tą sprendimą, ir kaip jį plėsti naujais gedimais. Šis failas yra scenarijus TAU, ne agentui.
 
-Eiga sutarta 2026-11-05 (ankstesnė — 7 skambučiai, 2026-09-28).
+Skambučių rinkinys sutartas 2026-11-18 (ankstesnis — 2026-11-05, dar ankstesnis — 7 skambučiai,
+2026-09-28). Pasakojimas direktoriui: **„Šeštadienis, 19:30. Šiuos skambučius dabar priimtų
+savaitgalio darbuotojas."**
 
 | Failas | Kam |
 |---|---|
 | **šis** | pristatymo EIGA: kas po ko, ką sakai, ką rodai ekrane, kiek trunka |
 | [DEMO_SITUACIJOS.md](DEMO_SITUACIJOS.md) | situacijų KORTELĖS skambinančiajam (tau arba užsakovui) |
 | [DEMO_SCENARIJAI.md](DEMO_SCENARIJAI.md) | visų skambučių KATALOGAS: numeriai, klientai, verdiktai, baigtys |
-| [KLIENTO_PUSES_MEDIS.md](KLIENTO_PUSES_MEDIS.md) | 4 skambučio medis: įrenginys → kiti įrenginiai → routeris → tiketas |
+| [KLIENTO_PUSES_MEDIS.md](KLIENTO_PUSES_MEDIS.md) | 5 (atsarginio) skambučio medis: įrenginys → kiti įrenginiai → routeris → tiketas |
 
 ---
 
@@ -30,10 +33,10 @@ Naršyklėje **http://localhost:8080** → skirtukas „Testavimas".
 - [ ] **Ctrl+F5** po serverio paleidimo.
 - [ ] Mikrofonas: vienas sakinys, „POKALBIO LINIJA" turi rodyti kalbėjimą.
 - [ ] Antras langas su **Archyvu** — mechanizmą rodysi ten, po kiekvieno skambučio.
-- [ ] Telefone, kuriuo rodysi 4 skambutį, **išjunk Wi-Fi**.
+- [ ] Jei rodysi atsarginį ⑤ — telefone **išjunk Wi-Fi**.
 - [ ] Atsidaryk redaktoriuje kortelę `chatbot_core/src/agent/knowledge/v2/cards/router_hung.yaml`
       (5 dalis).
-- [ ] Jei skambins užsakovas — atspausdink [DEMO_SITUACIJOS.md](DEMO_SITUACIJOS.md).
+- [ ] Atspausdink [DEMO_SITUACIJOS.md](DEMO_SITUACIJOS.md) — ② skambina direktorius.
 
 Demo be pertraukimų (`BARGE_IN=0`, numatyta): agentas visada pasako sakinį iki galo.
 
@@ -47,13 +50,13 @@ skambutį:
 ```
  LYGIS                SIMPTOMAS (iš kur žino)            SPRENDIMAS                  BAIGTIS
  ──────────────────────────────────────────────────────────────────────────────────────────────
- 0 Sąskaita           billing: skola, atjungta           pasako sumą, kaip įjungti   informuota      ◀ 1
+ 0 Sąskaita           billing: skola, atjungta           suma; ginčas — žmogui       tiketas         ◀ 1
  1 Tinklas            avarija / mazgas, kaimynai down    pasako, tinklo tiketas      informuota      ◀ 2
  2 Linija             portas down, CRC klaidos           laidas, kita rozetė         tiketas
  3 Routeris           matomas, bet srauto nėra           perkrovimas kartu           išspręsta       ◀ 3
-                      nesimato (MAC nėra)                lemputės → laikinas būdas   tiketas
+                      nesimato (MAC nėra)                lemputės → laikinas būdas   tiketas         ◀ 4
                       kitas MAC                          naujo routerio pririšimas   išspręsta
- 4 Kliento įrenginys  iki routerio viskas gerai          Wi-Fi, tinklas, kiti įr.    išspręsta       ◀ 4
+ 4 Kliento įrenginys  iki routerio viskas gerai          Wi-Fi, tinklas, kiti įr.    išspręsta      (◀ 5)
                                                                                      arba tiketas
 ```
 
@@ -87,53 +90,67 @@ taisykles ir duomenis — todėl kiekvieną sprendimą galima atsekti.
 
 ---
 
-## 4. Keturi skambučiai
+## 4. Keturi skambučiai (+ atsarginis)
 
-Bendra visiems: pasisveikina → sakai problemą → patvirtini adresą („Taip") → pasakai vardą.
-Numerį paimk iš **„Scenarijai" ▶** arba įrašyk ranka. Po kiekvieno skambučio — 1–2 min
-**Archyve**, „Kodėl taip" ant nurodyto ėjimo.
+```
+ ① Skola + ginčas ──── dažniausias skambutis ─────── tiketas buhalterijai su visais faktais
+ ② Mazgo gedimas ───── avarija: skambina visi ─────── ~1 min, atsiliepia visiems iš karto
+ ③ Pakibęs routeris ── išsprendžia pats ───────────── be meistro, agentas patikrina liniją
+ ④ Miręs routeris ──── internetas jau šįvakar ─────── laikinai per kompiuterį + meistras su aprašu
+(⑤ Telefone Wi-Fi ─── kantrybė ne IT žmogui ──────── atsarginis, jei liks laiko)
+        ↓
+ Archyvas: tiketų tekstai (①, ④), „Kodėl taip", stebėsena
+```
 
-### ① Skola — lygis 0: informacija, ne diagnostika · 3 min
-**`+37060020101`** · Tomas, Tilžės g. 60-3 · kortelė `billing_suspended`
+Bendra visiems: pasisveikina → sakai problemą → patvirtini adresą („Taip") → pasakai vardą →
+agentas jį pakartoja („Išgirdau — Tomas. Ar teisingai?") → „Taip" (arba pataisai). Numerį paimk
+iš **„Scenarijai" ▶** arba įrašyk ranka. Po kiekvieno skambučio — 1–2 min **Archyve**,
+„Kodėl taip" ant nurodyto ėjimo.
 
-| Klientas | Agentas turi |
-|---|---|
-| „Neveikia internetas" | pasiūlyti adresą |
-| „Taip" → „Tomas" | paslauga sustabdyta: **suma, mėnesiai, paskutinis mokėjimas** |
-| „O kiek tiksliai skolingas?" | pakartoti iš TŲ PAČIŲ faktų |
-
-**Archyve parodyk:** identifikacijos ėjimus (numeris → adresas → vardas); billing įrankį ir jo
-faktus; verdiktą `billing_suspended`. Agentas **nieko netaisė** — nėra ko taisyti; tiketo nėra.
-
-**Žinia įmonei:** paprasčiausi, dažniausi skambučiai nebepasiekia žmogaus.
-
-*Jei klausia „o jei nesutinka su skola?"* — `debt_dispute` (`+37060020101`, „Petras,
-nuomininkas"): ginčo argumentai užregistruojami buhalterijai.
-
-### ② Gedimas tinkle — lygis 1: agentas žino anksčiau nei klientas · 3 min
-**`+37060030306`** · Lina, Vilties g. 17-2 · kortelė `node_fault_unregistered`
+### ① Skola su ginču — lygis 0: informacija ir faktai žmogui · 4 min
+**`+37060020101`** · Tomas, Tilžės g. 60-3 · kortelė `billing_suspended` · skambini tu
 
 | Klientas | Agentas turi |
 |---|---|
-| „Neveikia internetas" → „Taip" → „Lina" | gedimas tinkle, ne pas klientą; jums nieko daryti nereikia |
+| „Neveikia internetas" → „Taip" → „Tomas" → „Taip" | paslauga sustabdyta: **suma, mėnesiai, paskutinis mokėjimas** |
+| „Bet aš mokėjau — liepą, Perlo terminale, 39 eurus" | ginčas: pakartoti, ką mato, ir paklausti, ar užregistruoti klausimą |
+| „O kodėl jūs nematote mano mokėjimo?" | paaiškinti iš faktų (mato tik sąskaitos būseną; mokėjimas gali būti neįskaitytas), vėl „ar registruoti?" |
+| „Taip, registruokite" → „Tiks" → laikas | tiketas buhalterijai, pasako, kas ir kada atsakys |
+
+**Archyve parodyk:** identifikacijos ėjimus (numeris → adresas → vardas su patvirtinimu);
+billing faktus; verdiktą `billing_suspended`; **tiketo tekstą** — kliento argumentai (kada,
+kaip, kiek), jo klausimas. Agentas sumos neginčija ir nežada — perduoda žmogui su faktais.
+
+**Žinia įmonei:** dažniausi skambučiai nebepasiekia žmogaus, o ginčas ateina jau surinktas.
+
+*Jei klausia „o jei klientas tik nori sužinoti skolą?"* — tas pats numeris, be ginčo: suma,
+mėnesiai, tiketo nėra (`debt`).
+
+### ② Gedimas tinkle — lygis 1: agentas žino anksčiau nei klientas · 2 min
+**`+37060030306`** · Lina, Vilties g. 17-2 · kortelė `node_fault_unregistered` ·
+**skambina direktorius** pagal kortelę
+
+| Klientas | Agentas turi |
+|---|---|
+| „Neveikia internetas" → „Taip" → „Lina" → „Taip" | gedimas tinkle, ne pas klientą; jums nieko daryti nereikia |
 | „O kada sutvarkysit?" | **tikslaus laiko nežadėti** — jo nėra duomenyse |
 
 **Archyve parodyk:** telemetrijos faktus `line_link=down`, `neighbours=all_down` → kortelės
 sąlyga `when` → verdiktas. Tinklo tiketas (`network_fault`) sukurtas **automatiškai** —
 klientas nieko neklausinėtas.
 
-**Žinia įmonei:** gedimas užregistruojamas nuo pirmo skambučio; kiti to mazgo klientai
-išgirs tą patį, nesukurdami dublikatų.
+**Žinia įmonei:** per avariją skambina visi — agentas atsiliepia kiekvienam iš karto, gedimas
+užregistruojamas nuo pirmo skambučio, kiti to mazgo klientai išgirs tą patį be dublikatų.
 
 *Atsarginis:* `outage` (`+37060020102`, Rasa) — registruota avarija su atstatymo laiku; avarija
 neskelbiama, kol adresas nepatvirtintas (privatumas).
 
 ### ③ Pakibęs routeris — lygis 3: išspręsta telefonu · 5 min
-**`+37060020112`** · Paulius, Vilniaus g. 33-2 · kortelė `router_hung`
+**`+37060020112`** · Paulius, Vilniaus g. 33-2 · kortelė `router_hung` · skambini tu
 
 | Klientas | Agentas turi |
 |---|---|
-| „Neveikia internetas visuose įrenginiuose" → „Taip" → „Paulius" | **pirma išvada**: mazgas veikia, linija veikia, srautas iki routerio nevaikšto — panašu, pakibęs |
+| „Neveikia internetas visuose įrenginiuose" → „Taip" → „Paulius" → „Taip" | **pirma išvada**: mazgas veikia, linija veikia, srautas iki routerio nevaikšto — panašu, pakibęs |
 | „Taip, galiu prieiti" | instrukcija: maitinimą **iš rozetės** 5–10 s |
 | *spausk* **🔄 Routeris** → „Perkroviau" | **pats perskaito liniją** ir pasako rezultatą |
 | „Taip, veikia" | uždaryti **be tiketo** |
@@ -147,13 +164,35 @@ ne kliento žodis.
 
 **Žinia įmonei:** meistras nevažiuoja perkrauti routerio.
 
-### ④ Telefone neveikia — lygis 4: duomenų nėra, viskas iš pokalbio · 6 min
+### ④ Miręs routeris — lygis 3: internetas šįvakar, meistras su aprašu · 6 min
+**`+37060012353`** · Giedrius, Vilniaus g. 29 · kortelė `no_mac_observed` · skambini tu
+
+| Klientas | Agentas turi |
+|---|---|
+| „Neveikia internetas" → „Taip" → „Giedrius" → „Taip" | paklausti, ar galite prieiti prie routerio (linijoje jo nesimato) |
+| „Taip, galiu prieiti" | mandagiai paprašyti pažiūrėti, ar dega routerio lemputės |
+| „Jokia lemputė nedega" → „Kitoje rozetėje irgi nedega" | routeris sugedęs; pasiūlyti **laikinai internetą per kompiuterį** |
+| „Turiu kompiuterį" → *spausk* **🔌 Kabelis** → „Įkišau" | pats pamato kompiuterį linijoje, **pririša**, paprašo patikrinti |
+| „Taip, veikia" | registruoja meistrą naujam routeriui; „Tiks" → laikas |
+
+**Archyve parodyk:** faktą `device_seen=no` → kortelę; modulius `reach → check_lights →
+check_power → offer_bridge → connect_direct → bind → verify → escalate`; **tiketo tekstą** —
+kas patikrinta, kad laikinas tiltas veikia, ką meistrui vežtis (naują routerį).
+
+**Nukrypimo demonstracija (nebūtina):** pačioje pradžioje sakyk „atvažiuokite, registruokite
+meistrą". Agentas vieną kartą pasiūlo pirma patikrinti kartu (kortelės `only_after`:
+lemputės, maitinimas); pakartojus — registruoja.
+
+**Žinia įmonei:** klientas be interneto nelieka iki pirmadienio, o meistras važiuoja vieną
+kartą ir žino, ką vežtis.
+
+### ⑤ Telefone neveikia — lygis 4: duomenų nėra, viskas iš pokalbio · 6 min *(atsarginis)*
 **`+37060020109`** · Aldona, Žeimių g. 12-6 · kortelė `healthy_to_router`
 **Prieš skambutį telefone išjunk Wi-Fi.**
 
 | Klientas | Agentas turi |
 |---|---|
-| „Neveikia internetas telefone" → „Taip" → „Aldona" | pasakyti, ką mato: **iki routerio internetas ateina** |
+| „Neveikia internetas telefone" → „Taip" → „Aldona" → „Taip" | pasakyti, ką mato: **iki routerio internetas ateina** |
 | | pakartoti, ką suprato, ir paklausti „ar galite dabar pasižiūrėti?" |
 | „Taip, galiu" → „Nežinau, kur žiūrėti" | paklausti telefono modelio |
 | „Samsung" | pasakyti, **kur spausti tame telefone** |
@@ -166,10 +205,10 @@ Agentas neskuba (`pace: guided`) ir klausia kitaip, jei atsakymas neaiškus.
 
 **Žinia įmonei:** didžiausia skambučių dalis — „pas klientą", kur meistras nieko nepataisytų.
 
-**Jei klientas nepaklūsta (gera nukrypimo demonstracija):** sakyk, kad Wi-Fi įjungtas.
-Agentas eina toliau — kiti įrenginiai, tinklų palyginimas, routerio perkrovimas — ir tik
-tada registruoja meistrą su tekstu „atlikome visus veiksmus…" ir ką meistrui patikrinti.
-Medis: [KLIENTO_PUSES_MEDIS.md](KLIENTO_PUSES_MEDIS.md).
+**Jei klientas nepaklūsta:** sakyk, kad Wi-Fi įjungtas. Agentas eina toliau — kiti įrenginiai,
+tinklų palyginimas, routerio perkrovimas — ir tik tada registruoja meistrą su tekstu
+„atlikome visus veiksmus…" ir ką meistrui patikrinti. Medis:
+[KLIENTO_PUSES_MEDIS.md](KLIENTO_PUSES_MEDIS.md).
 
 ---
 
@@ -179,8 +218,8 @@ Medis: [KLIENTO_PUSES_MEDIS.md](KLIENTO_PUSES_MEDIS.md).
    kiekviena eilutė yra kitos kortelės teritorija), `needs` (ko paklausti), `solution`
    (moduliai `reach → reboot → verify`), `escalate` (kada ir ką rašyti meistrui).
    Žinia: *naujas gedimas — naujas failas, kurį gali rašyti technikas, ne programuotojas*.
-2. **Tiketas.** Archyve atidaryk bet kurį tiketo skambutį (pvz. `dead_router`): kas atlikta,
-   kokie faktai, ką meistrui patikrinti / ką vežtis.
+2. **Tiketai.** Jei dar nerodei — ① ir ④ tiketų tekstai archyve: kas atlikta, kokie faktai,
+   ką meistrui patikrinti / ką vežtis, ką buhalterijai atsakyti. *Pirmadienį darbas paruoštas.*
 3. **Kaina ir trukmė** — viršutinė juosta.
 4. **Kas toliau** (užsakovo klausimas „ką dar galima?"): naujos kortelės (lėtas internetas,
    TV), gilesni lygiai (kitas MAC, sugedęs routeris jau yra), žinių bazė, integracija su jų
@@ -193,7 +232,9 @@ Medis: [KLIENTO_PUSES_MEDIS.md](KLIENTO_PUSES_MEDIS.md).
 | Klausimas iš salės | Skambutis |
 |---|---|
 | „O jei skambina iš kito numerio?" | identifikacija pagal adresą — [IDENTIFIKACIJA_PAGAL_ADRESA.md](IDENTIFIKACIJA_PAGAL_ADRESA.md) (gyvai mažai bandyta) |
-| „O jei routeris visai negyvas?" | `dead_router` (`+37060012353`) — lemputės → laikinas internetas per kompiuterį (🔌 Kabelis) → tiketas |
+| „O jei klientas tik nori sužinoti skolą?" | `debt` (`+37060020101`) — ① be ginčo: suma, mėnesiai, be tiketo |
+| „O masinė avarija?" | `outage` (`+37060020102`, Rasa) — registruota avarija su atstatymo laiku |
+| „O jei neveikia tik telefone?" | ⑤ Aldona (`+37060020109`), jei liko laiko |
 | „O jei klientas pasikeitė routerį?" | kortelė `foreign_mac.yaml` (demo skambučio dar nėra) |
 | „O jei jau skambino?" | `repeat_call` (`+37060030307`) — pastaba prie atviro tiketo, naujo nekuria |
 | „O TV?" | `iptv_over_internet` (TV neveikia, nes neveikia internetas) |
@@ -211,7 +252,9 @@ suklydo. Tai įrodo skaidrumą — sistema taisoma, ne juoda dėžė.
 | Agentas nepasiūlė adreso | numeris ne iš demo bazės arba nedarytas ♻ DB |
 | Avarijos ETA praeityje | ♻ DB |
 | „Perkroviau", o agentas netiki | nepaspaustas **🔄 Routeris** — taip ir turi būti |
-| 4 skambutyje telefonas jau buvo prisijungęs | Wi-Fi nebuvo išjungtas — tęsk „nepaklūstančio kliento" keliu |
+| Agentas vardą išgirdo kitaip | telefono linijoje taip būna — „Ne, Tomas"; agentas pakartos dar kartą |
+| ④ agentas nemato kompiuterio | nepaspaustas **🔌 Kabelis** — paspausk ir sakyk „įkišau" |
+| ⑤ telefonas jau buvo prisijungęs | Wi-Fi nebuvo išjungtas — tęsk „nepaklūstančio kliento" keliu |
 | Agentas kartoja instrukciją po „Mhm" | žinoma smulkmena — tiesiog atsakyk „padariau" |
 | Naršyklė rodo seną vaizdą | Ctrl+F5 |
 
@@ -220,7 +263,7 @@ suklydo. Tai įrodo skaidrumą — sistema taisoma, ne juoda dėžė.
 ## 8. Skaičiai, jei klaus
 
 ```powershell
-uv run pytest chatbot_core/tests -q                    # ~2100 testų
+uv run pytest chatbot_core/tests -q                    # ~2300 testų
 uv run python chatbot_core/src/agent/eval/run_eval.py  # automatiniai skambučiai (~0,10 USD)
 ```
 
