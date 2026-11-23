@@ -15,7 +15,7 @@ duomenys. Viskas veikia jūsų serveryje.
 | # | Tema | Trukmė |
 |---|---|---|
 | 1 | Nauda: dabar ir su agentu | 5 min. |
-| 2 | **Demo: 4 skambučiai** (skola, mazgo gedimas, routeris, Wi-Fi) + tiketas ir „kodėl taip“ | 10–15 min. |
+| 2 | **Demo: 4 skambučiai** (skola su ginču, mazgo gedimas, pakibęs ir miręs routeris) + tiketas ir „kodėl taip“ | 10–15 min. |
 | 3 | Kodėl patikima: sprendžia variklis, ko nežino — tiketas, duomenys lieka įmonėje | 5 min. |
 | 4 | Kas jau yra ir ko trūksta | 5 min. |
 | 5 | Planas, etapai, ko reikia iš įmonės | 10 min. |
