@@ -175,6 +175,8 @@ identification:
   # sakome girdėtą (dar nepatvirtintą) adresą; šerdis „dėl šio adreso" verbatim,
   # nuo jos raktuojasi patvirtinimo sargas.
   ident_address_heard: "Girdėjau adresą {address}, bet dar nepatvirtinau. Ar skambinate dėl šio adreso?"
+  # Gyvai 2026-11-23: į „Ne." tas pats adresas buvo pasiūlytas dar kartą (#6).
+  address_offer_declined: "Supratau. Dėl kokio adreso skambinate?"
   ident_address_none: "Adreso dar nenustatėme — kaip tik jį tikslinuosi. Koks adresas, dėl kurio skambinate?"
   # Rastas adresas tvirtinamas variklio žodžiais — klientas girdi tai, ką variklis turi.
   address_heard_confirm: "Ar teisingai supratau — {address}?"
@@ -196,6 +198,9 @@ identification:
   # Andrius (2026-10-14): vardas tikrinamas kaip adresas — pirma, ar gerai išgirdom.
   # #78: kiekvienas išgirstas vardas pakartojamas — klientas jį čia pataiso.
   name_confirm: "Išgirdau — {name}. Ar teisingai?"
+  # Gyvai 2026-11-24: „Tomo vardu ten sutartis" → „Išgirdau — Ten". Sakinys apie SAVININKĄ:
+  # kartojamas tas pats klientas pasakytas vardas, ir klausiama, ar tai jis pats.
+  name_confirm_holder: "Supratau, sutartis {holder} vardu. O jūs pats — {name}?"
   repeat_ack: "Atsiprašau, kad kartojuosi — noriu būti visiškai tikras. "
   escalate_clarify: "Norėjau patikslinti — ar bandome išspręsti kartu dabar, ar registruoju meistrą?"
   ticket_cancel_confirm: "Tik patikslinsiu — telefonu šio gedimo išspręsti nepavyks, todėl siūliau registruoti meistrą. Registruoti, ar tikrai nereikia?"
@@ -926,6 +931,8 @@ case:
     phone: "Pasakysiu tiksliai, kur spausti — koks jūsų telefonas: Samsung ar kitas Android, ar iPhone?"
     computer: "Pasakysiu tiksliai, kur spausti — kompiuteris su Windows ar Mac?"
   how_to_tell: "Pasakykite, ką matote."
+  # Andrius (2026-11-24): neįskaitomas atsakymas į „Ar galite prieiti?" („Lidu.") — perklausti.
+  reach_garble: "Atsiprašau, ar galite dabar prieiti prie routerio?"
   confirm:
     fact: "Noriu įsitikinti, kad gerai supratau: {said} — ar teisingai?"
     power_cable:
@@ -1057,6 +1064,7 @@ evidence:
     fail_device: {phone: "telefone", computer: "kompiuteryje", other: "nepatikslintame įrenginyje"}
     connection_type: {wired: "laidu", wifi: "per WiFi"}
     rebooted: {"yes": "jau perkrautas", "no": "dar neperkrautas"}
+    reachable: {"yes": "gali prieiti", "no": "dabar prieiti negali"}
     recent_events: {"yes": "buvo įvykis (elektra/laidai/audra)", "no": "nieko neįvyko"}
     changed_device: {"yes": "keitė arba prijungė naują įrenginį", "no": "nieko nekeitė"}
     cable_port: {wan: "interneto (WAN) lizde", lan: "kitame (LAN) lizde"}
@@ -1176,6 +1184,7 @@ ticket:
     tried: " Bandyta/atmesta: {causes}."
     extra: " Papildomai patikrinti: {items}."
     extra_item: "{type}: „{text}“"
+    extra_item_plain: "„{text}“"
     actions: "Atlikta: {tools}"
 
 module:

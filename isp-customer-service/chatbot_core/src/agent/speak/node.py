@@ -233,7 +233,9 @@ def _stream_tokens(state: Any, rt: Any, messages: list[dict], *, held: bool = Fa
 
     guard = ReplyGuard(
         stop_chars=limits.get("reply_stop_chars"),
-        drop=lambda sentence: unbacked_promise(state, sentence),
+        drop=lambda sentence: (
+            unbacked_promise(state, sentence) or unbacked_diagnosis(state, sentence)
+        ),
         fix=_fix,
     )
     while True:
@@ -266,6 +268,23 @@ def _stream_tokens(state: Any, rt: Any, messages: list[dict], *, held: bool = Fa
             rt.tracer.emit("reply_guard", reason=guard.stopped, chars=len(guard.text))
             _trace_dropped(rt, guard)
             return guard.text.strip()
+
+
+def unbacked_diagnosis(state: Any, sentence: str) -> bool:
+    """A finding the ENGINE does not have — the sentence is not spoken.
+
+    Live 2026-11-23: still dictating the address, the caller asked „Kaip supratai?", and the
+    model said „Panašu, kad mūsų linija yra gerai, tad problema gali būti jūsų namuose" — no
+    line had been checked. Until the caller is identified and the line has been read, the
+    model does not say what is wrong (the engine decides, the model only says it).
+    """
+    from ..contract.locale import vocab
+
+    low = (sentence or "").lower()
+    if not any(m in low for m in vocab("diagnosis_claim")):
+        return False
+    read = bool((state.diagnosis.verdicts or {}).get("network"))
+    return not (state.identity.customer_id and read)
 
 
 def _trace_dropped(rt: Any, guard) -> None:

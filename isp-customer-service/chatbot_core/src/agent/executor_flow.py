@@ -162,12 +162,10 @@ def register_ticket_from_state(state: Any, rt: Any) -> None:
         details += phrase("ticket.details.tried", causes=glosses)
     # A (2026-08-21): secondary problems the caller mentioned mid-call — the
     # technician checks them on the same visit.
-    if getattr(s.intake, "secondary_problems", None):
-        extra = "; ".join(
-            phrase("ticket.details.extra_item", type=x["type"], text=x["text"])
-            for x in s.intake.secondary_problems
-        )
-        details += phrase("ticket.details.extra", items=extra)
+    extra = [_extra_item(x) for x in getattr(s.intake, "secondary_problems", None) or []]
+    extra = [x for x in extra if x]
+    if extra:
+        details += phrase("ticket.details.extra", items="; ".join(extra))
     # What the caller could NOT tell us, and what the call ran on instead.
     details += _unanswered_and_assumed(s)
     # The card's own words for why a technician is needed, as the Case recorded them.
@@ -209,20 +207,56 @@ def register_ticket_from_state(state: Any, rt: Any) -> None:
         s.ticket.ticket_type = ticket_type
 
 
+def _extra_item(x: dict[str, Any]) -> str | None:
+    """One side complaint for the ticket — an unnamed one only when it says something."""
+    from .contract.locale import phrase, vocab
+
+    text = (x.get("text") or "").strip()
+    if not text:
+        return None
+    if x.get("type"):
+        return phrase("ticket.details.extra_item", type=x["type"], text=text)
+    words = [w.strip('.,!?…„“"') for w in text.lower().split()]
+    if not any(w.startswith(m) for w in words for m in vocab("secondary_problem_marks")):
+        return None
+    return phrase("ticket.details.extra_item_plain", text=text)
+
+
 def _steps_not_reached(s: Any) -> list[str]:
-    """The fix's steps the call never got to — the technician starts there."""
+    """The fix's steps the call never got to — the technician starts there.
+
+    Not a step whose answer the caller already gave (live 2026-11-24: „nespėta patikrinti:
+    routerio maitinimas", though the caller had said the lead was in and the outlet worked),
+    nor one the card would not have run (`run_when` / `skip_when` / `done_when`).
+    """
     from .contract import cards as catalog
     from .contract.locale import phrase_or
+    from .contract.schema import Condition
 
     card = catalog.card(s.case.fault) if s.case.fault else None
     if card is None or s.case.solution is None:
         return []
     done = set(s.case.worked) | set(s.case.did)
+    facts = dict(s.case.facts)
+    said = set(s.case.said or [])
     names = []
     for call in card.solution[s.case.solution].steps[s.case.step :]:
         name = phrase_or(f"summary.step_name.{call.module}", None)
-        if name and call.module not in done and name not in names:
-            names.append(name)
+        if not name or call.module in done or name in names:
+            continue
+        spec = catalog.module(call.module)
+        if spec is not None and spec.produces and any(f in said for f in spec.produces):
+            continue  # the caller answered it
+        run_when = getattr(call, "run_when", None) or []
+        if run_when and not all(Condition.parse(t).holds(facts) is True for t in run_when):
+            continue
+        skip_when = getattr(call, "skip_when", None) or []  # any one is enough
+        if any(Condition.parse(t).holds(facts) is True for t in skip_when):
+            continue
+        done_when = getattr(call, "done_when", None) or []  # all of them (IR)
+        if done_when and all(Condition.parse(t).holds(facts) is True for t in done_when):
+            continue
+        names.append(name)
     return names
 
 

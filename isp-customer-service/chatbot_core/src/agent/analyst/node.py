@@ -192,6 +192,18 @@ def _already_answered(state: Any, rt: Any, signal: Signal) -> None:
         rt.tracer.emit("analyst_applied", signal="already_answered", key=key)
 
 
+def _step_answered(state: Any) -> bool:
+    """Does the step the Case is on already have the CALLER's answer (not a probe's)?"""
+    from ..contract import cards as catalog
+    from ..decide.rules.case_rule import _current
+
+    call = _current(state)
+    spec = catalog.module(call.module) if call is not None else None
+    if spec is None:
+        return False
+    return any(fact in state.case.said for fact in spec.produces)
+
+
 def _dead_end(state: Any, rt: Any, signal: Signal) -> None:
     """„We are going round in circles" — the engine's own ladder decides what follows (one more
     chance, then the conclusion and a registration for „nesusikalbame"). The analyst only
@@ -202,6 +214,10 @@ def _dead_end(state: Any, rt: Any, signal: Signal) -> None:
 
     if _guided(state):
         return  # a guided fix is never ended by an inference (live 2026-11-05)
+    if _step_answered(state):
+        # Live 2026-11-24: „Nedega nė viena lemputė" was read as going round in circles — it is
+        # the card's answer (the router is dead), and the step had its answer.
+        return
     state.case.dead_end_step = state.case.step
     rt.tracer.emit("analyst_applied", signal="dead_end", step=state.case.step, why=signal.value)
 
@@ -211,7 +227,7 @@ def _wants_technician(state: Any, rt: Any, signal: Signal) -> None:
     (patikslinti, ne spėti)."""
     if not state.case.in_progress or state.ticket.stage or state.ticket.ticket_id:
         return
-    if state.case.facts.get("_phone_work_offer"):
+    if state.case.facts.get("_phone_work_offer") or state.case.facts.get("_away_offer"):
         return  # the engine already asked and heard the answer
     if not state.case.did:
         # #79 (live 2026-11-20): „atvažiuokite" in the opening line offered the technician on

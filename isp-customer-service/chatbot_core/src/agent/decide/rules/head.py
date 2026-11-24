@@ -417,11 +417,18 @@ def caller_intro(state: Any, rt: Any, user_input: str) -> bool:
             else:
                 # The bare NAME, not the sentence — "Taip. Mano vardas Andrius.
                 # Taip, aš sutartį sudaręs asmuo." went on the ticket verbatim.
-                from ...perceive.caller import extract_caller_name
+                from ...perceive.caller import extract_caller_name, holder_said, holder_spelling
 
                 # Live 2026-09-17: „Po anas mano vardas." went on the record and into
                 # „Malonu, Po anas mano vardas!" — no readable name is "nenurodyta".
                 name = extract_caller_name(user_input)
+                said_holder = holder_said(user_input) if not names_self else None
+                holder_name = holder_spelling(state, said_holder) if said_holder else None
+                if holder_name:
+                    # „Tomo vardu ten sutartis" (live 2026-11-24 → „Išgirdau — Ten"): whose the
+                    # contract is, not who is calling — „O jūs pats — Tomas?" asks it.
+                    name = holder_name
+                    s.identity.name_confirm_holder = said_holder
                 if name is None and not s.identity.caller_name_reasked:
                     # Nothing readable as a name — ask once more instead of guessing
                     # (Andrius, 2026-10-12: patikslinti, ne spėti).
@@ -430,6 +437,8 @@ def caller_intro(state: Any, rt: Any, user_input: str) -> bool:
                     return True
                 s.identity.caller_name = name or "nenurodyta"
                 s.identity.caller_relation = detect_caller_relation(user_input)
+                if holder_name:
+                    s.identity.caller_relation = "unknown"  # „O jūs pats — Tomas?" settles it
                 # Phrasebook (reference dialogue, 2026-09-03): the caller JUST introduced
                 # themselves — the next reply opens with a warm acceptance
                 # („Malonu, Tomai") instead of a dry „Supratau — X". One-shot — said once the
@@ -576,6 +585,11 @@ def unidentified_address(state: Any, rt: Any, user_input: str) -> bool:
                         "offer answer unclear; re-ask the same yes/no",
                         level="warn",
                     )
+                elif verdict == "no" and s.identity.phone_candidate and not heard_open:
+                    # „Ne." / „Ne dėl šio adreso" and no other address in it: the engine asks
+                    # which one (live 2026-11-23: the same address was offered again).
+                    state.turn.address_offer_declined = True
+                    rt.tracer.emit("decision", intent="address_confirm", action="declined")
                 else:
                     state.turn.address_confirm_note = (
                         "- ADRESAS NEPATVIRTINTAS: kliento atsakymas AIŠKIAI "
