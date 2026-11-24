@@ -168,6 +168,8 @@ identification:
   # A-2b (2026-09-07): patvirtintas adresas nėra paslaptis — paklaustas agentas
   # jį pasako; frazė pati kviečia pasitaisyti, jei adresas ne tas.
   current_address_unknown: "dabartinio adreso"
+  # #85: „iš kur žinot?" while confirming the offered address — then the name question.
+  address_from_number: "Šis adresas užregistruotas prie numerio, iš kurio skambinate."
   current_address_info: "Kalbame dėl adreso {address}. Jei skambinate dėl kito adreso — pasakykite."
   # A-2R-b (2026-09-07): klausimas „dėl kokio adreso?" VIDURY identifikacijos —
   # sakome girdėtą (dar nepatvirtintą) adresą; šerdis „dėl šio adreso" verbatim,
@@ -912,8 +914,13 @@ case:
   technician_offer_clarify: "Kad tiksliai suprasčiau — registruoti meistrą, ar pabandome kartu dabar?"
   # Andrius (2026-10-14): vienintelis motyvas — išspręsti dabar telefonu; vieną kartą per
   # skambutį, be spaudimo ir be kainos (kainą, jei reikia, praneša meistrai).
-  phone_work_offer: "Dažniausiai tai išsprendžia {work} — padarytume kartu per minutę, ir internetas veiktų jau dabar. Gal pabandome?"
-  phone_work_offer_plain: "Dažniausiai tai pavyksta išspręsti telefonu — padarytume kartu per minutę, ir internetas veiktų jau dabar. Gal pabandome?"
+  # Andrius (2026-11-23): a technician asked for before the cause is clear — say what the
+  # registration costs the caller (a call back, a wait) and offer the few steps now. Once.
+  phone_work_offer: "Meistrą galiu užregistruoti, bet jis dar paskambins ir atvyks tik po kurio laiko. Dažnai užtenka kelių veiksmų telefonu — pabandome kartu dabar?"
+  phone_work_offer_plain: "Meistrą galiu užregistruoti, bet jis dar paskambins ir atvyks tik po kurio laiko. Dažnai užtenka kelių veiksmų telefonu — pabandome kartu dabar?"
+  # The same, when the caller is not at the device: the few steps when they are back.
+  away_offer: "Meistrą galiu užregistruoti, bet jis dar paskambins ir atvyks tik po kurio laiko. Dažnai užtenka kelių veiksmų — kai būsite prie routerio, paskambinkite, patikrinsim per kelias minutes. Ar vis tiek registruoti meistrą?"
+  away_offer_clarify: "Kad tiksliai suprasčiau — registruoti meistrą, ar paskambinsite, kai būsite prie routerio?"
   # Klientas „nežino kaip": sistemos klausiama tik tada, kai jos reikia nurodymui.
   device_os_question:
     phone: "Pasakysiu tiksliai, kur spausti — koks jūsų telefonas: Samsung ar kitas Android, ar iPhone?"

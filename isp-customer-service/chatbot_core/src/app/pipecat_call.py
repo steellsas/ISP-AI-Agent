@@ -435,11 +435,64 @@ class WholeTurnUserAggregator(LLMUserAggregator):
     turn's earlier ones (`EngineSTT`, ASR_WHOLE_TURN) instead of being added after them.
     Pipecat builds its own in `LLMContextAggregatorPair`; `build_call` swaps the class."""
 
+    _sent = ""  # the text this turn already handed to the engine
+
     async def _handle_transcription(self, frame: TranscriptionFrame):
         replaces = frame.result.get("replaces", 0) if isinstance(frame.result, dict) else 0
         if replaces and frame.text.strip() and self._aggregation:
             del self._aggregation[-min(replaces, len(self._aggregation)) :]
+        elif replaces and frame.text.strip() and self._sent:
+            # #83 (live 2026-11-23): the turn's earlier transcript already went to the engine,
+            # so this whole-turn text is that one again plus what came after. Appended as it
+            # was, the old words opened the NEXT turn and the engine read the old answer twice
+            # („Taip, dėl šio adreso…" re-confirmed, the reboot instruction said again).
+            tail = new_tail(self._sent, frame.text)
+            if not tail:
+                return
+            frame.text = tail
         await super()._handle_transcription(frame)
+
+    async def _push_aggregation(self, *, run_llm: bool = True) -> str:
+        sent = await super()._push_aggregation(run_llm=run_llm)
+        if sent:
+            self._sent = sent
+        return sent
+
+
+def _words_of(text: str) -> list[str]:
+    import re
+
+    return re.findall(r"\w+", text.lower())
+
+
+def new_tail(sent: str, whole: str) -> str:
+    """What `whole` (a fresh transcript of the turn) says beyond `sent` (what already went).
+
+    The two transcripts of the same audio differ in places („Ei, na, dabar esu…" / „E, na
+    dabar su…"), so the cut is where the last words both share end; with nothing shared,
+    after as many words as were sent."""
+    import difflib
+    import re
+
+    old, new = _words_of(sent), _words_of(whole)
+    if not new:
+        return ""
+    matcher = difflib.SequenceMatcher(None, old, new, autojunk=False)
+    # A word of the tail that happens to repeat a sent one („…skambinu. Dėl Žeimių…") is not
+    # where the sent part ends: only matches that start within the sent length count.
+    blocks = [b for b in matcher.get_matching_blocks() if b.size and b.b <= len(old) + 1]
+    if blocks:
+        # The sent words after the last shared one were heard differently this time
+        # („iš kurios skambinate" / „iš kurio skambinu"): as many words of the new text.
+        last = blocks[-1]
+        cut = last.b + last.size + (len(old) - last.a - last.size)
+    else:
+        cut = len(old)
+    if cut >= len(new):
+        return ""
+    # Cut the original text after its cut-th word, keeping its punctuation and case.
+    spans = list(re.finditer(r"\w+", whole))
+    return whole[spans[cut].start() :].strip()
 
 
 def whole_turn_enabled() -> bool:

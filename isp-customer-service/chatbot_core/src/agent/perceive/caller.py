@@ -95,14 +95,46 @@ def extract_caller_name(text: str | None) -> str | None:
     import re as _re
 
     m = _re.search(rf"vard(?:as|u)(?:\s+yra)?\s+({vocab_text('name_word')})", text, _re.IGNORECASE)
-    if m and m.group(1).lower() not in vocab_set("name_stop_words"):
+    if m and m.group(1).lower() not in vocab_set("name_stop_words") and not _place(m.group(1)):
         return m.group(1).capitalize()
+    if about_an_address(text):
+        # #85 (live 2026-11-23: „Taip, dėl V. 29 Šiauliai" → „Išgirdau — Šiauliai"; „Aš
+        # skambinau dėl Vilniaus gatvės" → „Vilniaus"): a sentence about the address names no
+        # caller — nothing is taken, and the name is asked again.
+        return None
     for tok in _re.findall(vocab_text("name_word"), text):
         if tok.lower() not in vocab_set("name_stop_words") and len(tok) >= 3:
+            if _place(tok):
+                continue
             if _garbled_marker(tok):
                 continue  # „Panavardos" — STT of „mano vardas" (live 2026-10-12)
             return tok
     return None
+
+
+def _place(token: str) -> bool:
+    """A city word („Šiauliai", „Vilniaus") — a place, never a caller's name."""
+    low = token.lower()
+    return any(low.startswith(s) for s in (*vocab("served_city_stems"), *vocab("big_city_stems")))
+
+
+def about_an_address(text: str) -> bool:
+    """The sentence talks about an address: a house number, a street, a district, the word
+    „adresas" — or a city."""
+    import re as _re
+
+    low = f" {text.lower()} "
+    if _re.search(r"\d", low):
+        return True
+    marks = (
+        *vocab("address_content_words"),
+        *vocab("street_kind_words"),
+        *vocab("district_words"),
+        *vocab("address_topic_words"),
+    )
+    if any(m in low for m in marks):
+        return True
+    return any(_place(t) for t in _re.findall(r"\w+", text))
 
 
 def _garbled_marker(token: str) -> bool:

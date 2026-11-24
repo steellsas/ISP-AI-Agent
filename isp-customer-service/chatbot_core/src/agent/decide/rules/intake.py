@@ -40,10 +40,14 @@ def _apply_caller_relation(state: Any, rt: Any) -> None:
     # The same answer often CORRECTS the name: live 2026-09-30 the caller said „Ne, mano vardu
     # Giedrius" and heard „Gedriau" for the rest of the call — the name question was already
     # closed, so nothing was listening. A name given here wins over what was misheard.
-    from ...perceive.caller import extract_caller_name
+    from ...perceive.caller import extract_caller_name, holder_spelling
 
     heard = state.dialog.last_heard or ""
     corrected = extract_caller_name(heard)
+    if corrected:
+        # #85 (live 2026-11-23: „Tomo vardu sudaryta" → „Malonu, Tomo!"): the holder's own
+        # spelling for an inflected or garbled form of the same name.
+        corrected = holder_spelling(state, corrected) or corrected
     # Only a name the caller gives as THEIR OWN corrects the record. Live 2026-10-07:
     # „Taip, mano tėtis Gedrius yra vardu" renamed the caller Andrius to the HOLDER Gedrius,
     # and „Aršku ačių lauksu" renamed Rasa to „Aršku" (wave 10, V5).

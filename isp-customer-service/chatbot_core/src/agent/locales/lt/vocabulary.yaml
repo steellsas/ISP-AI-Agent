@@ -569,6 +569,7 @@ available_when: ["po pusvalandžio", "po pusvalandzio", "po valandos", "po dviej
 never_available: ["nežinau", "nezinau", "negalėsiu", "negalesiu", "niekada", "iš viso negaliu", "is viso negaliu", "nebus kam"]
 cannot_now:
   - "nepatogu"
+  - "nenamos"  # #86: speech's „ne namuose" on the phone line (live 2026-11-23)
   - "ne patogu"
   - "ne namie"
   - "ne namuose"
@@ -622,6 +623,13 @@ ticket_demand:
   - "atsiusk technik"
   - "tegul atvažiuoj"
   - "tegul atvaziuoj"
+  # #86 (live 2026-11-23: „Atvažiuokit, sutvarkykit" got „Kada galėsite prieiti?"). The engine
+  # still offers the card's must-do checks once (`only_after`) before it registers. (Marks are
+  # matched word by word.)
+  - "atvažiuokit"
+  - "atvaziuokit"
+  - "atsiųskit"
+  - "atsiuskit"
   # Live 2026-08-13: "žegistruokit gedimą" (STT garble) missed the exact
   # imperative marks — the -k stem covers registruok/registruokit(e) and
   # the ž-/iš- garbled variants. Imperatives are unconditional demands.
@@ -1461,6 +1469,11 @@ registration_claim_subject: ["gedim", "meistr", "tiket", "koleg", "technik", "kl
 caller_not_holder: ["ne sutart", "nesu sudar", "ne aš sudar", "ne as sudar"]
 # A plain yes to "ar jūs sutartį sudaręs asmuo?".
 # The caller names THEMSELVES (a correction of the misheard name), not the holder.
+# #85 (live 2026-11-23: „Teiks." to „Išgirdau — Tomas. Ar teisingai?" became the name „Teiks"):
+# a one-word reply to the name check that is speech's „tiks" / „teisingai" / „tinka" — a yes.
+# #86: „Gerai, paskambinsiu, kai grįšiu" to „Ar vis tiek registruoti meistrą?" — the call back.
+away_callback_words: ["paskambins", "perskambins", "skambinsiu", "pabandysiu", "grįšiu", "grisiu", "grįžęs", "grizes", "grįžusi"]
+name_check_yes_like: ["tiks", "teik", "tink", "teising", "tesing", "teisink", "taip", "tep"]
 caller_own_name_markers: ["mano vardas", "mano vardu", "vardas mano", "aš esu", "as esu", "mane vadina", "vadinuosi", "mano pavard"]
 caller_plain_yes: ["taip", "aš", "as "]
 # Homework step: consent words; a ticket/technician wish blocks the consent.
