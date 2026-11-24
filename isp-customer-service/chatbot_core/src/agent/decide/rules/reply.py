@@ -78,6 +78,11 @@ def reply_plan(state: Any, rt: Any, user_input: str | None) -> TurnPlan | None:
     _turn_type = str((getattr(state.turn, "understanding", None) or {}).get("type") or "")
     if state.identity.name_confirm_open and not state.identity.name_confirm_asked:
         return _name_confirm_plan(state, rt)
+    if state.turn.address_offer_declined and not s.identity.customer_id:
+        return _words(
+            "identification.address_declined",
+            phrase("identification.address_offer_declined"),
+        )
     if (
         state.identity.holder_clarify_open
         and not state.identity.holder_clarify_asked
@@ -688,6 +693,17 @@ def _name_confirm_plan(state: Any, rt: Any) -> TurnPlan:
 
     state.identity.name_confirm_asked = True
     _q_register(state, rt, "ident", "name_confirm")
+    holder = state.identity.name_confirm_holder
+    if holder:
+        state.identity.name_confirm_holder = None
+        return _words(
+            "identification.name_confirm",
+            phrase(
+                "identification.name_confirm_holder",
+                holder=holder,
+                name=state.identity.caller_name or "",
+            ),
+        )
     return _words(
         "identification.name_confirm",
         phrase("identification.name_confirm", name=state.identity.caller_name or ""),

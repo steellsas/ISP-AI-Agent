@@ -112,6 +112,9 @@ class IdentityState(BaseModel):
     # match the contract is first checked as a mishearing, like the address.
     name_confirm_open: bool = False
     name_confirm_asked: bool = False
+    # „Tomo vardu sutartis" — the holder's name as the caller said it; the confirm asks „O jūs
+    # pats — Tomas?" instead of „Išgirdau — …" (live 2026-11-24).
+    name_confirm_holder: str | None = None
     # The caller just introduced themselves — accept warmly, once.
     caller_name_heard: bool = False
     caller_name_heard_turn: int = -1  # #78: the welcome belongs to this turn only
@@ -437,6 +440,9 @@ class TurnScratch(BaseModel):
     # Identification notes for this turn's facts block.
     address_lookup_note: str | None = None
     address_confirm_note: str | None = None
+    # A plain „ne" to the offered address, no other address in it (live 2026-11-23: the same
+    # address was offered again, and „Taip, palauk" took it): the engine asks which one.
+    address_offer_declined: bool = False
     db_address_note: str | None = None
     # This utterance's address reading: {"house", "apartment", "street", "anchored"}.
     address_reading: dict[str, Any] | None = None

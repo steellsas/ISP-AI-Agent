@@ -45,6 +45,13 @@ def _dictate_phone(number: str, plus: str) -> str:
     return lead + ", ".join(" ".join(group) for group in groups)
 
 
+# English terms the Lithuanian voice reads letter by letter or oddly — said as a Lithuanian
+# speaker says them (Andrius, live 2026-11-24: „Wi-Fi kažkaip keistai sako").
+_SAY_AS = {
+    "lt": [(re.compile(r"\bwi[\s-]?fi\b", re.IGNORECASE), "vai fai")],
+}
+
+
 def speakable(text: str, language: str | None = "lt") -> str:
     """Tas pats sakinys, bet DIKTUOJAMAS: IP adresas po gabalo, telefono numeris po skaitmenį,
     pasvirasis brūkšnys — pauzė.
@@ -57,6 +64,8 @@ def speakable(text: str, language: str | None = "lt") -> str:
     plus = _PLUS_WORD.get(lang, _PLUS_WORD["en"])
     spoken = _PHONE_RE.sub(lambda m: _dictate_phone(m.group(0).strip(), plus), spoken)
     spoken = _SLASH_RE.sub(", ", spoken)
+    for pattern, said in _SAY_AS.get(lang, []):
+        spoken = pattern.sub(said, spoken)
     return spoken
 
 

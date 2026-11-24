@@ -115,8 +115,17 @@ class TestWantsTechnician:
         case_rule.plan(state, rt)
         state.dialog.turn_count += 1
         state.dialog.last_heard = "Taip, geriau meistrą"
+        plan = case_rule.plan(state, rt)
+        # Andrius (2026-11-24): the dead router's temporary internet is offered on the way.
+        assert plan.rule == "case.offer_bridge"
+        state.case.step_said = state.case.step  # the offer was said
+        state.dialog.turn_count += 1
+        state.dialog.last_heard = "Ne, kompiuterio neturiu"
         case_rule.plan(state, rt)  # the conclusion turn
-        case_rule.plan(state, rt)
+        for _ in range(3):  # (a demo `reflect` may take a pass when its env flag leaked on)
+            if state.ticket.reason:
+                break
+            case_rule.plan(state, rt)
 
         assert state.ticket.reason == "klientas_praso"
 
@@ -243,3 +252,15 @@ class TestPhoneWorkFirstOfferedOnce:
         plan = self._demand(hung)  # asks again later
 
         assert plan.rule != "case.phone_work_offer"
+
+
+def test_an_answered_step_is_not_a_dead_end(fixing):
+    """Live 2026-11-24: „Nedega nė viena lemputė" was read as going round in circles."""
+    from agent.analyst.node import _dead_end
+    from agent.decide.rules.case_rule import _no_way_forward
+    from agent.ledger import record_client
+
+    state, rt, _ = fixing
+    record_client(state, rt, "power", "off")  # the lights question has the caller's answer
+    _dead_end(state, rt, _signal("dead_end", value="no lights on router"))
+    assert not _no_way_forward(state)

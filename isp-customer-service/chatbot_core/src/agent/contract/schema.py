@@ -436,6 +436,12 @@ class Escalation(_Model):
     # (Andrius, 2026-09-23). When one is missing and still possible, the engine does it first;
     # when it cannot be done, the ticket says so.
     only_after: list[str] = []
+    # OFFERS made once before the technician is registered, however the registration came
+    # about — the caller asked, or the card ran out. Not a precondition: the ticket goes in
+    # either way. A dead router is replaced by a technician, but the caller can have the
+    # internet on a computer until then (Andrius, 2026-11-24: „nebepasiūlė pajungti interneto
+    # tiesiai per kabelį").
+    offer_before: list[str] = []
     # What the technician should check, as phrase keys — a ticket is a task, not „call them
     # back and find out" (Andrius, 2026-11-05).
     checks: list[str] = []

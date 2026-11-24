@@ -97,10 +97,12 @@ def extract_caller_name(text: str | None) -> str | None:
     m = _re.search(rf"vard(?:as|u)(?:\s+yra)?\s+({vocab_text('name_word')})", text, _re.IGNORECASE)
     if m and m.group(1).lower() not in vocab_set("name_stop_words") and not _place(m.group(1)):
         return m.group(1).capitalize()
-    if about_an_address(text):
+    if about_an_address(text, city_counts=False):
         # #85 (live 2026-11-23: „Taip, dėl V. 29 Šiauliai" → „Išgirdau — Šiauliai"; „Aš
         # skambinau dėl Vilniaus gatvės" → „Vilniaus"): a sentence about the address names no
-        # caller — nothing is taken, and the name is asked again.
+        # caller — nothing is taken, and the name is asked again. A city alone does not make
+        # it one (live 2026-11-24: „Šiauliuose, jo, Šiauliai. Giedrius, manau" lost „Giedrius"):
+        # the city is skipped as a place below.
         return None
     for tok in _re.findall(vocab_text("name_word"), text):
         if tok.lower() not in vocab_set("name_stop_words") and len(tok) >= 3:
@@ -112,15 +114,34 @@ def extract_caller_name(text: str | None) -> str | None:
     return None
 
 
+def holder_said(text: str | None) -> str | None:
+    """„Tomo vardu sutartis" — the word before „vardu" names whose the contract is (the
+    genitive, as said), not the caller. None when the sentence is no such statement („mano
+    vardu", „žmonos vardu" are the caller's own or a relation's)."""
+    if not text:
+        return None
+    import re as _re
+
+    m = _re.search(rf"({vocab_text('name_word')})\s+vardu\b", text)
+    if not m:
+        return None
+    word = m.group(1)
+    if not word[:1].isupper() or word.lower() in vocab_set("name_stop_words"):
+        return None
+    if _place(word) or len(word) < 3:
+        return None
+    return word
+
+
 def _place(token: str) -> bool:
     """A city word („Šiauliai", „Vilniaus") — a place, never a caller's name."""
     low = token.lower()
     return any(low.startswith(s) for s in (*vocab("served_city_stems"), *vocab("big_city_stems")))
 
 
-def about_an_address(text: str) -> bool:
+def about_an_address(text: str, city_counts: bool = True) -> bool:
     """The sentence talks about an address: a house number, a street, a district, the word
-    „adresas" — or a city."""
+    „adresas" — or a city (unless `city_counts` is False)."""
     import re as _re
 
     low = f" {text.lower()} "
@@ -134,7 +155,7 @@ def about_an_address(text: str) -> bool:
     )
     if any(m in low for m in marks):
         return True
-    return any(_place(t) for t in _re.findall(r"\w+", text))
+    return city_counts and any(_place(t) for t in _re.findall(r"\w+", text))
 
 
 def _garbled_marker(token: str) -> bool:

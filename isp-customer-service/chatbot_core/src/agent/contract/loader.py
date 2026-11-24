@@ -222,13 +222,14 @@ def _check_cards(cards: dict | None = None, modules: dict | None = None) -> None
                     errors.append(f"{where}: needs.{fact}.answers.{value} is not one of its values")
         if card.escalate and card.escalate.need and not locale.has(card.escalate.need):
             errors.append(f"{where}: escalate.need phrase '{card.escalate.need}' is missing")
-        for name in card.escalate.only_after if card.escalate else []:
-            if name not in modules:
-                errors.append(f"{where}: escalate.only_after names unknown module '{name}'")
-            elif not any(call.module == name for s in card.solution for call in s.steps):
-                errors.append(
-                    f"{where}: escalate.only_after '{name}' is not a step of any solution"
-                )
+        for field in ("only_after", "offer_before"):
+            for name in getattr(card.escalate, field) if card.escalate else []:
+                if name not in modules:
+                    errors.append(f"{where}: escalate.{field} names unknown module '{name}'")
+                elif not any(call.module == name for s in card.solution for call in s.steps):
+                    errors.append(
+                        f"{where}: escalate.{field} '{name}' is not a step of any solution"
+                    )
         for i, solution in enumerate(card.solution):
             check_conditions(f"{where}: solution.{i}.when", solution.when)
             if solution.hands_to and solution.hands_to not in cards:

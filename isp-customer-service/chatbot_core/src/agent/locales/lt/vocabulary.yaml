@@ -447,8 +447,12 @@ technician_choice_tech: ["meistr", "registruok", "atvažiuok", "atvaziuok", "ats
 technician_choice_try: ["pabandom", "pabandykim", "bandom", "bandykim", "kartu", "galiu priei", "galiu ate", "prieisiu", "esu prie", "darom", "darykim"]
 phone_work_try: ["pabandom", "pabandykim", "bandom", "bandykim", "gerai", "galim", "darom", "darykim"]
 # „Ar galite prieiti?" — „galiu" as a phone line's ASR writes it (#75), short answers only.
-reach_can_asr: ["galiu", "galo", "galu", "galiū", "galim", "galime"]
-reach_there: ["stoviu prie", "esu prie", "prie routerio", "prie jo", "jau čia", "jau cia", "šalia jo", "salia jo", "šalia routerio", "salia routerio", "priėjau", "priejau", "jau priėj", "jau priej"]
+reach_can_asr: ["galiu", "galo", "galu", "galiū", "galim", "galime", "galio"]
+# „Galiu" in a longer answer is a yes when it is about NOW (live 2026-11-24: „Gerai, pabandu,
+# galiu prieiti" and „Šiandien galiu dabar…" got „Ar jūs jau prie routerio?" / homework).
+reach_now_words: ["prieit", "prieet", "priėj", "priej", "dabar", "jau"]
+reach_later_words: ["vėliau", "veliau", "rytoj", "vakare", "poryt", "grįš", "gris"]
+reach_there: ["stoviu prie", "esu prie", "prie routerio", "prie routera", "prie rauter", "prie jo", "jau čia", "jau cia", "šalia jo", "salia jo", "šalia routerio", "salia routerio", "priėjau", "priejau", "jau priėj", "jau priej"]
 reported_plug_power: ["įkišau", "ikisau", "įjungiau", "ijungiau", "įsijungė", "isijunge", "užsidegė", "uzsidege", "dega lemput", "lemputės dega", "lemputes dega", "jau dega"]
 reported_reboot:
   - "perkroviau"
@@ -543,6 +547,9 @@ consent_no:
 addr_no:
   - "ne dėl"
   - "ne del"
+  # Live 2026-11-23: „nedėl šios adresos" — „dėl šio" inside read it as a yes-and-no garble.
+  - "nedėl"
+  - "nedel"
   - "ne tas adres"
   - "ne to adres"
   - "ne tuo adres"
@@ -630,6 +637,12 @@ ticket_demand:
   - "atvaziuokit"
   - "atsiųskit"
   - "atsiuskit"
+  # Live 2026-11-24: „O jūs galite atvažiuoti?" missed every mark — the LLM answered
+  # „registruoju tik jei nepavyks", not the engine's one offer (#86).
+  - "atvažiuosit"
+  - "atvaziuosit"
+  - "atvažiuotum"
+  - "atvaziuotum"
   # Live 2026-08-13: "žegistruokit gedimą" (STT garble) missed the exact
   # imperative marks — the -k stem covers registruok/registruokit(e) and
   # the ž-/iš- garbled variants. Imperatives are unconditional demands.
@@ -639,7 +652,7 @@ ticket_demand:
 # too — live 2026-08-14: "O jums dažnai taip skambina gedimus? Registruoti."
 # (small talk + a done-report) escalated mid-collection and the findings
 # moment never happened. It counts as a demand only next to an INTENT word.
-ticket_demand_inf: ["gistruot"]
+ticket_demand_inf: ["gistruot", "atvažiuot", "atvaziuot"]
 
 ticket_demand_intent:
   - "prašau"
@@ -1078,6 +1091,10 @@ caller_relation_marks:
 # Taip, aš sutartį sudaręs asmuo." landed VERBATIM in the ticket's Kontaktas field
 # — observed live 2026-08-04). Lowercase; sentence-leading fillers included.
 name_stop_words:
+  # Live 2026-11-24: „Tomo vardu ten sutartis" → „Išgirdau — Ten".
+  - "ten"
+  - "tas"
+  - "tai"
   - "taip"
   - "ne"
   - "gerai"
@@ -1685,3 +1702,16 @@ hedge_words:
   - "manau"
   - "berods"
   - "tikriausiai"
+
+# A side complaint the analyst heard but could not name: it reaches the ticket only when it
+# says something a technician can act on (live 2026-11-24: „Papildomai patikrinti: None:
+# „Antipinternatoriai kioto."" — an ASR garble). Matched at a word's start.
+secondary_problem_marks: ["neveik", "nevei", "nevyk", "nebeveik", "gedim", "tv", "televiz",
+  "telefon", "internet", "lėt", "let", "string", "trūkinė", "trukine", "dingst", "dingo",
+  "nerod", "kanal", "wifi", "vaifa"]
+
+# What the line or the equipment shows — said only once the engine has read the line
+# (`speak.node.unbacked_diagnosis`; live 2026-11-23: „mūsų linija yra gerai, problema gali būti
+# jūsų namuose" before the address was known). „Patikrinsiu liniją" is not a claim.
+diagnosis_claim: ["linija yra", "linija gerai", "linija veikia", "linijoje", "problema gali būti",
+  "problema yra", "gedimas yra", "jūsų namuose", "jusu namuose"]

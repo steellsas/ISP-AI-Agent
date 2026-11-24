@@ -128,5 +128,9 @@ escalate:
   # Ištrauktas maitinimo laidas sprendžiamas telefonu per minutę; meistras dėl jo — tuščia
   # kelionė. Negalintis prieiti klientas nespaudžiamas (`_phone_work_left`).
   only_after: [check_lights, check_power]
+  # Gyvai 2026-11-24: klientas paprašė meistro po maitinimo patikros, ir tiltas nebuvo
+  # pasiūlytas — „telefonu daugiau nieko nepadarysim". Meistras vis tiek registruojamas, bet
+  # pirma vieną kartą pasiūlomas laikinas internetas per kompiuterį.
+  offer_before: [offer_bridge]
 
 knowledge: troubleshooting/internet_mires_routeris_tiltas

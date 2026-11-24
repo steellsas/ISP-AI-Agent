@@ -407,6 +407,9 @@ def detect_address_confirm(text: str | None) -> str | None:
     has_yes = any(m in low for m in vocab("address_yes"))
     if ne_tokens:
         return "no" if not has_yes else None  # mixed "taip…ne…" garble -> re-ask
+    if has_yes and any(m in low for m in vocab("in_progress")):
+        # „Taip, palauk." (live 2026-11-23) is no confirmation — the caller is still thinking.
+        return None
     return "yes" if has_yes else None
 
 
@@ -598,17 +601,24 @@ def detect_reach(text: str | None) -> str | None:
     if not text:
         return None
     low = text.lower()
-    if any(m in low for m in vocab("reach_there")) and not any(
-        m in low for m in vocab("in_progress")
+    cannot = detect_cannot_now(text)
+    if (
+        not cannot
+        and any(m in low for m in vocab("reach_there"))
+        and not any(m in low for m in vocab("in_progress"))
     ):
         return "yes"
     if detect_turn_intent(text) == INTENT_IN_PROGRESS:
         return None
     # „Galo." — „galiu" through a phone line (live 2026-11-18, #75): the model read it as
-    # „no" and the agent asked when they could. Only a short answer: „iki galo" is not it.
+    # „no" and the agent asked when they could. Only a short answer: „iki galo" is not it —
+    # unless the answer is about NOW („galiu prieiti", „galiu dabar"; live 2026-11-24).
     words = [w.strip(".,!?…") for w in low.split()]
-    if 0 < len(words) <= 2 and any(w in vocab("reach_can_asr") for w in words):
-        return "yes"
+    can = any(w in vocab("reach_can_asr") for w in words)
+    later = any(w.startswith(m) for w in words for m in vocab("reach_later_words"))
+    if can and not cannot and not later:
+        if len(words) <= 2 or any(w.startswith(m) for w in words for m in vocab("reach_now_words")):
+            return "yes"
     outcome = detect_yes_no(text)
     return outcome.value.lower() if outcome is not None else None
 

@@ -109,6 +109,8 @@ def plan(state: Any, rt: Any) -> TurnPlan | None:
             return _resolved(state, rt)
         if status == "confirm":
             return _confirm_plan(state, rt)
+        if status == "garble":
+            return _phrase_plan("case.reach_garble", "case.reach_garble")
         if status == "hedged":
             return _hedged_plan(state, rt)
         if status == "pushback":
@@ -230,6 +232,16 @@ def _not_now_plan(state: Any, rt: Any, facts: dict[str, str]) -> TurnPlan | None
     # N1 (Andrius, 2026-10-09): first WHEN they can get to it — once. „Nežinau" / „negalėsiu" is
     # not a refusal (U9): a technician is the honest way on.
     heard = state.dialog.last_heard or ""
+    if state.case.facts.get("_when_asked") and state.case.awaiting != "later_agreed":
+        from ...perceive.detectors import detect_cannot_now, detect_reach
+
+        if detect_reach(heard) == "yes" and not detect_cannot_now(heard):
+            # „Kada galėsite?" — „Šiandien galiu dabar…" (live 2026-11-24 got the homework for
+            # later): they can NOW, and the instruction follows at once.
+            ledger.record_client(state, rt, "reachable", "yes")
+            state.case.facts.pop("_available_when", None)
+            rt.tracer.emit("case", move="can_now_after_all", fault=state.case.fault)
+            return None
     when = state.case.facts.get("_available_when")
     if not when and state.case.facts.get("_when_asked"):
         when = _when_from(heard)
@@ -320,6 +332,11 @@ def _hear_cannot_now(state: Any, rt: Any) -> bool:
         return False
     if not detect_cannot_now(heard) and state.turn.reply_status != "not_now":
         return False
+    if not detect_cannot_now(heard) and _a_garble(heard):
+        # Live 2026-11-24: „Lidu." (galiu) — the model's „not now" on a word nobody can read
+        # became „Kada galėsite prieiti?". Patikslinti, ne spėti: the step asks again.
+        rt.tracer.emit("case", move="garble_not_cannot", heard=heard)
+        return False
     when = _when_from(heard)
     if when:
         state.case.facts["_available_when"] = when
@@ -327,6 +344,18 @@ def _hear_cannot_now(state: Any, rt: Any) -> bool:
     if changed:
         rt.tracer.emit("case", move="cannot_now", fault=state.case.fault, when=when)
     return changed
+
+
+def _a_garble(heard: str | None) -> bool:
+    """One or two words the engine cannot read as anything — not a yes, no or a time."""
+    from ...perceive.detectors import detect_reach, detect_yes_no
+
+    words = [w.strip(".,!?…") for w in (heard or "").lower().split()]
+    if not words or len(words) > 2:
+        return False
+    if detect_yes_no(heard) is not None or detect_reach(heard) is not None:
+        return False
+    return not any(w.startswith(m) for w in words for m in vocab("reach_later_words"))
 
 
 def _away_and_wants_technician(state: Any, rt: Any) -> TurnPlan | None:
@@ -1072,6 +1101,11 @@ def _absorb(state: Any, rt: Any, facts: dict[str, str]) -> str:
         # kartojosi tris kartus.
         if state.case.awaiting and state.case.awaiting not in facts:
             model = _model_read(state, rt, call)
+            if model is not None and call.module == "reach" and _a_garble(state.dialog.last_heard):
+                # „Lidu." (live 2026-11-24): a word nobody can read is no answer to confirm —
+                # the question is asked again, plainly (Andrius: patikslinti, ne spėti).
+                rt.tracer.emit("case", move="garble_reask", module=call.module)
+                return "garble"
             if model is not None:
                 # Only the model read it — no word of theirs says so. Ask, do not guess
                 # (Andrius, 2026-10-12; eval S4: „Vis tiek nedega" became „the lead was out").
@@ -2968,6 +3002,9 @@ def _escalate(
 
     if why == "sprendimas_baigtas" and state.case.facts.get("_escalate_why"):
         why = state.case.facts["_escalate_why"]  # said on the conclusion turn, kept for this one
+    elif state.case.facts.get("_offered_before") and state.case.facts.get("_escalate_why"):
+        # The card's own end after the offer on the way: the caller's reason still stands.
+        why = state.case.facts["_escalate_why"]
     walked = _guided(state) and bool(state.case.worked)
     if why in ("sprendimas_baigtas", "telefonu_nepataisoma") and walked:
         # The whole ladder was walked together: a technician, not a call-back (2026-11-05).
@@ -3004,6 +3041,9 @@ def _escalate(
         started = _start_branch_with(state, rt, fault, pending)
         if started is not None:
             return started
+    offered = _offer_before(state, rt, fault, why)
+    if offered is not None:
+        return offered
     card = catalog.card(fault) if fault else None
     if card is not None and card.escalate and not state.case.facts.get("_phone_work_declined"):
         # (the card's note assumes its phone work ran — not when the caller declined it)
@@ -3197,6 +3237,12 @@ def _answer_to_the_phone_work_offer(
     if wants_to_try:
         s.case.facts["_phone_work_offer"] = "accepted"
         rt.tracer.emit("case", move="phone_work_accepted", fault=s.case.fault, module=module)
+        from ...perceive.detectors import detect_reach
+
+        if detect_reach(heard) == "yes":
+            # „Gerai, pabandom, galiu prieiti" also answers „Ar galite prieiti?" — the branch
+            # starts past it (replay 2026-11-24: „nesėkmingai susitarėm, ar pavyksta prieiti?").
+            ledger.record_client(state, rt, "reachable", "yes")
         return _start_branch_with(state, rt, s.case.fault, module)
     s.case.facts["_phone_work_offer"] = "declined"
     s.case.facts["_phone_work_declined"] = module
@@ -3440,6 +3486,60 @@ def _phone_work_left(state: Any, fault: str | None) -> str | None:
             # what could not be done.
             return None
         return name
+    return None
+
+
+# Registrations where an offer on the way makes no sense: the caller does not want to do
+# anything now, cannot get to the device, we cannot understand each other, or this is paid
+# help / a call-back, not a visit.
+_NO_OFFER_BEFORE = (
+    "klientas_nenori",
+    "klientas_negali",
+    "nesusikalbame",
+    "kliento_pagalba",
+    "nebaigtas",
+)
+
+
+def _offer_before(state: Any, rt: Any, fault: str | None, why: str) -> TurnPlan | None:
+    """The card's `escalate.offer_before`: offered ONCE before the technician is registered.
+
+    Live 2026-11-24: the router was dead, the caller asked for a technician after the power
+    check, and the summary said „telefonu daugiau nieko nepadarysim" — the card's temporary
+    internet over a computer was never offered. The technician is still registered whatever
+    the answer: the offer's own steps run, and the card's `escalate` step ends them.
+    """
+    if state.case.summarised or why in _NO_OFFER_BEFORE or _callback_card(fault):
+        return None
+    if state.case.facts.get("_offered_before"):
+        return None
+    from ...contract.schema import Condition
+
+    card = catalog.card(fault) if fault else None
+    if card is None or not card.escalate or not card.escalate.offer_before:
+        return None
+    facts = ledger.facts_of(state)
+    if facts.get("reachable") == "no" or facts.get("later_agreed") == "no":
+        return None  # not at the device — nothing to plug in now
+    for name in card.escalate.offer_before:
+        spec = catalog.module(name)
+        if name in state.case.did or spec is None:
+            continue
+        if any(facts.get(p) for p in spec.produces):
+            continue  # already answered („neturiu kompiuterio" said ahead counts)
+        if any(Condition.parse(r.when).holds(facts) is True for r in spec.answered_when):
+            continue
+        for index, solution in enumerate(card.solution):
+            at = next((i for i, c in enumerate(solution.steps) if c.module == name), None)
+            if at is None:
+                continue
+            if any(Condition.parse(text).holds(facts) is False for text in solution.when):
+                continue
+            state.case.facts["_offered_before"] = name
+            state.case.facts["_escalate_why"] = why  # the registration keeps the caller's reason
+            state.case.solution, state.case.step, state.case.awaiting = index, at, None
+            rt.tracer.emit("case", move="offer_before_technician", fault=fault, module=name)
+            return _step_plan(state, rt, solution.steps[at], facts)
     return None
 
 

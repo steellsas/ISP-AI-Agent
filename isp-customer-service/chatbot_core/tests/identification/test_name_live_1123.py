@@ -7,6 +7,8 @@
   „Tomo vardu sudaryta" became „Malonu, Tomo!".
 """
 
+import pytest
+
 FUNCTION = "Vardo klaidos"
 
 TOMAS = "+37060020101"  # CUST101 — the holder is Tomas
@@ -66,3 +68,58 @@ def test_the_contract_name_in_the_genitive_takes_the_holders_spelling(call):
     assert c.identity.holder_clarify_open
     c.say("Tomo vardu sudaryta, tai mano vardu sudaryta sutartis.")
     assert c.identity.caller_name == "Tomas"
+
+
+# --- live 2026-11-24 ---------------------------------------------------------------------
+
+
+def test_a_name_after_the_city_is_taken():
+    """„Šiauliuose, jo, Šiauliai. Giedrius, manau" — the name was asked twice more."""
+    from agent.perceive.caller import extract_caller_name
+
+    assert extract_caller_name("Šiauliuose, jo, Šiauliai. Giedrius, manau,") == "Giedrius"
+
+
+def test_whose_the_contract_is_asks_if_it_is_them(call):
+    """„Tomo vardu ten sutartis su Daryto." became „Išgirdau — Ten"."""
+    c = call(TOMAS)
+    c.say("Neveikia internetas")
+    c.say("Taip")
+    said = c.say("Tomo vardu ten sutartis su Daryto.")
+    assert c.rule == "identification.name_confirm"
+    assert said == "Supratau, sutartis Tomo vardu. O jūs pats — Tomas?"
+    c.say("Taip")
+    assert c.identity.caller_name == "Tomas" and not c.identity.holder_clarify_open
+
+
+def test_ten_is_no_name():
+    from agent.perceive.caller import extract_caller_name
+
+    assert extract_caller_name("Vardu ten.") is None
+
+
+# --- „Ne" to the offered address (live 2026-11-23, call 6) ---------------------------------
+
+OFFERED = "+37060020105"  # the number's address is offered first
+
+
+@pytest.mark.parametrize(
+    ("said", "reading"),
+    [
+        ("Ne. Nel... nedėl šios adresos skambinų.", "no"),
+        ("Taip, palauk.", None),
+        ("Taip, dėl šio adreso.", "yes"),
+    ],
+)
+def test_the_offer_answer_is_read(said, reading):
+    from agent.perceive.detectors import detect_address_confirm
+
+    assert detect_address_confirm(said) == reading
+
+
+def test_no_to_the_offered_address_asks_which(call):
+    c = call(OFFERED)
+    c.say("Neveikia internetas")
+    said = c.say("Ne.")
+    assert said == "Supratau. Dėl kokio adreso skambinate?"
+    assert c.identity.customer_id is None
