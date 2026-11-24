@@ -444,7 +444,8 @@ step_cant: ["negaliu", "nepasiekiu", "neturiu kaip", "nėra kaip", "nera kaip", 
 # „Gal pabandome?" (darbas telefonu prieš meistrą) — sutikimas pabandyti.
 # #79: „meistrą ar pabandome kartu?" — which of the two the caller chose.
 technician_choice_tech: ["meistr", "registruok", "atvažiuok", "atvaziuok", "atsiųsk", "atsiusk", "technik"]
-technician_choice_try: ["pabandom", "pabandykim", "bandom", "bandykim", "kartu", "galiu priei", "galiu ate", "prieisiu", "esu prie", "darom", "darykim"]
+# „Nežinau, galiu pabandyti" (live 2026-11-24) — the infinitive and the future too.
+technician_choice_try: ["pabandom", "pabandykim", "pabandyt", "pabandys", "bandyt", "bandys", "bandom", "bandykim", "kartu", "galiu priei", "galiu ate", "prieisiu", "esu prie", "darom", "darykim"]
 phone_work_try: ["pabandom", "pabandykim", "bandom", "bandykim", "gerai", "galim", "darom", "darykim"]
 # „Ar galite prieiti?" — „galiu" as a phone line's ASR writes it (#75), short answers only.
 reach_can_asr: ["galiu", "galo", "galu", "galiū", "galim", "galime", "galio"]

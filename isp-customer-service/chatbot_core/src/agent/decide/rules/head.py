@@ -300,16 +300,20 @@ def name_confirm_answer(state: Any, rt: Any, user_input: str) -> bool:
     answer = detect_yes_no(user_input)
     names_self = any(m in low for m in vocab("caller_own_name_markers"))
     tokens = [t.strip(".,!?") for t in low.split() if t.strip(".,!?")]
+    yes_like = tuple(vocab("name_check_yes_like"))
     if answer is None and tokens and len(tokens) <= 2 and not asking:
-        yes_like = vocab("name_check_yes_like")
-        if all(any(t.startswith(y) for y in yes_like) for t in tokens):
-            answer = Outcome.YES  # „Teiks." is speech's „tiks" — a yes, not a new name (#85)
+        # „Teiks." is speech's „tiks" — a yes, not a new name (#85). The first word is enough:
+        # „Teikti sengą." („tinka, teisingai") became the name „Teikti" (live 2026-11-24).
+        if tokens[0].startswith(yes_like):
+            answer = Outcome.YES
     # A correction is a name given AS one: after „ne", with „mano vardas", or the reply is the
     # name alone. „Taip. Visingai žiūrėtum." confirms — its stray word is no new name (#78).
     correcting = not asking and (
         answer is Outcome.NO or names_self or (answer is not Outcome.YES and len(tokens) <= 2)
     )
     corrected = extract_caller_name(user_input) if correcting else None
+    if corrected and corrected.lower().startswith(yes_like):
+        corrected = None  # a misheard „tinka / teisingai" is never the name
     if corrected and corrected.lower() != (s.identity.caller_name or "").lower():
         s.identity.caller_name = holder_spelling(state, corrected) or corrected
         mark_name_heard(state)

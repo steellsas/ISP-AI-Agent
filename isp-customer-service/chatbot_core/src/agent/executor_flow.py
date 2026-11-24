@@ -45,6 +45,9 @@ def register_ticket_from_state(state: Any, rt: Any) -> None:
     from .contract.locale import phrase
 
     gloss = phrase_or(f"verdict.{cause}.gloss", cause or phrase("ticket.details.unknown_cause"))
+    # The card's own reading of the checks: the cause they support and why (2026-11-24).
+    found, because, covered = _card_reading(s)
+    gloss = found or gloss
     details = phrase(
         "ticket.details.fault",
         # In words, not the engine's key: a technician read "Gedimas: internet_down" and
@@ -55,6 +58,8 @@ def register_ticket_from_state(state: Any, rt: Any) -> None:
         ),
         gloss=gloss,
     )
+    if because:
+        details += phrase("ticket.details.because", items="; ".join(because))
     # The same wording the caller heard, and under the same honesty rule: a card's
     # `escalate.need` describes the state after its fix ran, so a fix that never ran is
     # written as a suspicion (live 2026-09-23: a ticket claimed the router was rebooted).
@@ -119,21 +124,7 @@ def register_ticket_from_state(state: Any, rt: Any) -> None:
         )
     # Ledger: what the CALLER established (client-side evidence) — the human
     # taking over sees the checked physical facts, not just telemetry.
-    client_bits = []
-    from .evidence import CLIENT as _EV_CLIENT
-    from .evidence import gloss_label, gloss_value
-
-    for key, e in s.diagnosis.evidence.items():
-        # A fact only heard in passing („seeded") was never checked with the caller.
-        if e.get("source") == _EV_CLIENT and not e.get("conflict") and not e.get("seeded"):
-            client_bits.append(f"{gloss_label(key)}: {gloss_value(e['value'], key)}")
-    # The answers to the Case's own steps (Wi-Fi on, own network, cable in) are the caller's
-    # too — the person taking over must not ask them again.
-    for key in s.case.said or []:
-        value = s.case.facts.get(key)
-        if key in s.diagnosis.evidence or key.startswith("_") or key == "restored" or not value:
-            continue
-        client_bits.append(f"{gloss_label(key)}: {gloss_value(value, key)}")
+    client_bits = _checked_with_client(s, covered)
     if client_bits:
         details += phrase("ticket.details.checked", facts="; ".join(client_bits))
     # Ta pati išvada, kurią išgirdo klientas, keliauja ir meistrui: kas PADARYTA, kas veikia
@@ -170,7 +161,7 @@ def register_ticket_from_state(state: Any, rt: Any) -> None:
     details += _unanswered_and_assumed(s)
     # The card's own words for why a technician is needed, as the Case recorded them.
     note = (s.case.facts or {}).get("_ticket_note")
-    if note:
+    if note and not found:  # the cause line already says it, and better
         details += f" {note[0].upper()}{note[1:]}."
     when = (s.case.facts or {}).get("_available_when")
     if when:
@@ -205,6 +196,116 @@ def register_ticket_from_state(state: Any, rt: Any) -> None:
         trace_note(rt.tracer, state, "register_ticket", str(e), level="error")
     if s.ticket.ticket_id:
         s.ticket.ticket_type = ticket_type
+
+
+# What arranged the call, not what was found: the technician does not need „gali prieiti" or
+# „laikinas prijungimas: jums tinka" (live 2026-11-24). `restored` is the summary's to say.
+_NOT_FINDINGS = frozenset(
+    {
+        "reachable",
+        "device_ready",
+        "later_agreed",
+        "bridge_agreed",
+        "has_computer",
+        "fix_wanted",
+        "guide_agreed",
+        "restored",
+    }
+)
+
+
+# What the caller tells about the call itself, whatever the card: where and since when.
+# Not `fail_device`: „Turiu kompiuterį" to the bridge offer was heard in passing as „neveikia
+# kompiuteryje" (replay 2026-11-24) — a card that needs the device asks it itself.
+_CALL_FACTS = frozenset(
+    {"fail_scope", "connection_type", "recent_events", "changed_device", "rebooted"}
+)
+
+
+def _card_facts(s: Any) -> set[str]:
+    """The facts this fault's card asks or its steps produce (empty: no card, no filter)."""
+    from .contract import cards as catalog
+
+    card = catalog.card(s.case.fault) if s.case.fault else None
+    if card is None:
+        return set()
+    known = set(card.needs)
+    for solution in card.solution:
+        for call in solution.steps:
+            spec = catalog.module(call.module)
+            known |= set(spec.produces if spec is not None else [])
+    return known
+
+
+def _card_reading(s: Any) -> tuple[str | None, list[str], set[str]]:
+    """The card's `escalate.cause` / `escalate.because` lines whose facts hold, and the facts
+    those lines speak for (they are not listed a second time)."""
+    from .contract import cards as catalog
+    from .contract.locale import maybe_phrase
+    from .contract.schema import Condition
+
+    card = catalog.card(s.case.fault) if s.case.fault else None
+    esc = card.escalate if card is not None else None
+    if esc is None or not (esc.cause or esc.because):
+        return None, [], set()
+    facts = dict(s.case.facts)
+
+    def holds(line: Any) -> bool:
+        return all(Condition.parse(t).holds(facts) is True for t in line.when)
+
+    found = next((maybe_phrase(line.say) for line in esc.cause if holds(line)), None)
+    because = [maybe_phrase(line.say) for line in esc.because if holds(line)]
+    covered = {Condition.parse(t).fact for line in esc.because if holds(line) for t in line.when}
+    return found, [b for b in because if b], covered
+
+
+def _checked_with_client(s: Any, covered: set[str]) -> list[str]:
+    """„Patikrinta su klientu": each finding once, as the engine holds it now.
+
+    One list from both stores (the reader's evidence and the Case's own answers), the value
+    from the Case — the engine's later reading wins over the model's first one (live
+    2026-11-24: „lemputės: dega", though the caller said none was on). A fact with no human
+    label is the engine's own; a fact another listed one already says („laidas įkištas" next to
+    „maitinimo laidas įkištas") is left out.
+    """
+    from .evidence import CLIENT as _EV_CLIENT
+    from .evidence import gloss_label, gloss_value
+    from .ledger import _same_news
+
+    keys = [
+        key
+        for key, e in s.diagnosis.evidence.items()
+        # A fact only heard in passing („seeded") was never checked with the caller.
+        if e.get("source") == _EV_CLIENT and not e.get("conflict") and not e.get("seeded")
+    ]
+    # The answers to the Case's own steps (Wi-Fi on, own network, cable in) are the caller's
+    # too — the person taking over must not ask them again.
+    keys += list(s.case.said or [])
+    known = _card_facts(s)
+    listed: dict[str, str] = {}
+    for key in dict.fromkeys(keys):
+        if key.startswith("_") or key in _NOT_FINDINGS or key in covered:
+            continue
+        if known and key not in known and key not in _CALL_FACTS:
+            continue  # the model's own name for a check this card made under its own
+        entry = s.diagnosis.evidence.get(key) or {}
+        value = s.case.facts.get(key) or entry.get("value")
+        if not value or gloss_label(key) == key:
+            continue
+        listed[key] = str(value)
+    said_elsewhere = {
+        key
+        for key, value in listed.items()
+        if any(
+            name != key and (name in listed or name in covered)
+            for name, _ in _same_news(key, value)
+        )
+    }
+    return [
+        f"{gloss_label(key)}: {gloss_value(value, key)}"
+        for key, value in listed.items()
+        if key not in said_elsewhere
+    ]
 
 
 def _extra_item(x: dict[str, Any]) -> str | None:

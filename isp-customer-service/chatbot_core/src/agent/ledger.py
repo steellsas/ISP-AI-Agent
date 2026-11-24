@@ -69,6 +69,17 @@ def record_client(state: Any, rt: Any, fact: str, value: str | None) -> bool:
             said_back.append(fact)
     state.case.hedged.pop(fact, None)  # their plain word replaces their doubt
     state.case.facts[fact] = value
+    # One truth for both stores: the reader's older entry must not be mirrored back over what
+    # the engine read later (live 2026-11-24: the model heard „dega viena lemputė", the engine
+    # „nedega nė viena", and every next turn wrote „dega" back — the ticket said „dega").
+    entry = (getattr(state.diagnosis, "evidence", None) or {}).get(fact)
+    if (
+        isinstance(entry, dict)
+        and entry.get("source") == CLIENT
+        and entry.get("value") not in (None, value)
+    ):
+        entry["value"] = value
+        entry["conflict"] = False
     state.case.unavailable = [f for f in state.case.unavailable if f != fact]
     if fact not in state.case.said:
         # WHO said it matters later: a question whose answer only the caller has is never
