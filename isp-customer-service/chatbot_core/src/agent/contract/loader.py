@@ -222,6 +222,11 @@ def _check_cards(cards: dict | None = None, modules: dict | None = None) -> None
                     errors.append(f"{where}: needs.{fact}.answers.{value} is not one of its values")
         if card.escalate and card.escalate.need and not locale.has(card.escalate.need):
             errors.append(f"{where}: escalate.need phrase '{card.escalate.need}' is missing")
+        for field in ("cause", "because"):
+            for i, line in enumerate(getattr(card.escalate, field) if card.escalate else []):
+                check_conditions(f"{where}: escalate.{field}.{i}", line.when)
+                if not locale.has(line.say):
+                    errors.append(f"{where}: escalate.{field}.{i} phrase '{line.say}' is missing")
         for field in ("only_after", "offer_before"):
             for name in getattr(card.escalate, field) if card.escalate else []:
                 if name not in modules:

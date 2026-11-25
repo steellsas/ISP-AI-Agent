@@ -92,6 +92,18 @@ def test_whose_the_contract_is_asks_if_it_is_them(call):
     assert c.identity.caller_name == "Tomas" and not c.identity.holder_clarify_open
 
 
+def test_a_misheard_tinka_is_a_yes_not_a_name(call):
+    """„Teikti sengą." to „Išgirdau — Giedrius. Ar teisingai?" became the name „Teikti",
+    and the ticket's contact with it (live 2026-11-24)."""
+    c = call(GIEDRIUS)
+    c.say("Neveikia internetas")
+    c.say("Taip")
+    c.say("Mano vardas yra Giedrius.")
+    c.say("Teikti sengą.")
+    assert c.identity.caller_name == "Giedrius"
+    assert not c.identity.holder_clarify_open
+
+
 def test_ten_is_no_name():
     from agent.perceive.caller import extract_caller_name
 

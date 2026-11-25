@@ -426,6 +426,13 @@ class Solution(_Model):
         return self
 
 
+class TicketLine(_Model):
+    """One ticket sentence (a phrase key) that is true when all its facts hold."""
+
+    when: list[str] = []
+    say: str
+
+
 class Escalation(_Model):
     # Why the technician is needed. Optional: some faults escalate with the generic
     # reason, exactly as their v1 packs did.
@@ -445,6 +452,13 @@ class Escalation(_Model):
     # What the technician should check, as phrase keys — a ticket is a task, not „call them
     # back and find out" (Andrius, 2026-11-05).
     checks: list[str] = []
+    # The CAUSE the checks support, for the ticket's first line: the first line whose facts
+    # all hold. A technician reads „sugedęs routeris", not „linijoje nematoma jokio įrenginio"
+    # (Andrius, 2026-11-24: „iš kur suprasti, kad gedimas dėl routerio").
+    cause: list[TicketLine] = []
+    # WHY we think so — every line whose facts hold, in order (lights off, power in, the
+    # computer works straight on the line).
+    because: list[TicketLine] = []
 
 
 class ParamSpec(_Model):

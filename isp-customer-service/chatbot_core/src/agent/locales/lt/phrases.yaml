@@ -379,6 +379,15 @@ pack:
     # v3 4 etapas: kodėl įvyko, kai įkišus maitinimą linija atsigavo (išvada klientui ir įrašui).
     cause:
       power: "routeris buvo be maitinimo — maitinimo laidas buvo ištrauktas; jį įkišus, routeris vėl prisijungė prie linijos"
+    # Tiketui (Andrius, 2026-11-24): pagrindinė priežastis ir kodėl taip manome — meistrui.
+    ticket:
+      cause_dead: "sugedęs routeris — neįsijungia, nors elektra iki jo ateina"
+      cause_no_lights: "routeris neįsijungia (lemputės nedega), maitinimas iki galo nepatikrintas"
+      because_line: "linija iki buto veikia, bet routerio linijoje nematyti"
+      because_lights: "routerio lemputės nedega"
+      because_power: "maitinimo laidas įkištas"
+      because_outlet: "rozetė veikia"
+      because_bridge: "kompiuteris, prijungtas tiesiai prie linijos, veikia — linija tvarkinga, gedimas routeryje"
     confirm: "Ar routerio lemputės dabar visai nedega?"
     recent_events:
       label: "įvykiai prieš dingstant"
@@ -1164,6 +1173,7 @@ ticket:
     anamnesis_trigger: "po: {trigger}"
     anamnesis: " Klientas: {text}."
     bridge_router: " Laikinas tiltas per kompiuterį veikia; routeris sugedęs, reikia keisti."
+    because: " Kodėl taip manome: {items}."
     checked: " Patikrinta su klientu: {facts}."
     # Linija rodo, kad veikia, o klientas sako, kad ne (Andrius, 2026-10-22): abu šaltiniai.
     line_vs_client: " Linijos duomenys rodo, kad srautas iki routerio vaikšto, o klientas sako, kad internetas neveikia — telefonu nebeliko, ką patikrinti."

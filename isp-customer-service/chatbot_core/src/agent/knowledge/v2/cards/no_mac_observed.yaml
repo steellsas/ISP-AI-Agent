@@ -132,5 +132,22 @@ escalate:
   # pasiūlytas — „telefonu daugiau nieko nepadarysim". Meistras vis tiek registruojamas, bet
   # pirma vieną kartą pasiūlomas laikinas internetas per kompiuterį.
   offer_before: [offer_bridge]
+  # Tiketo pirmas sakinys — priežastis, kurią patikros paremia (Andrius, 2026-11-24), ir kodėl.
+  cause:
+    - when: [lights=off, power_cable=plugged]
+      say: pack.no_mac_observed.ticket.cause_dead
+    - when: [lights=off]
+      say: pack.no_mac_observed.ticket.cause_no_lights
+  because:
+    - when: [line_link=up]
+      say: pack.no_mac_observed.ticket.because_line
+    - when: [lights=off]
+      say: pack.no_mac_observed.ticket.because_lights
+    - when: [power_cable=plugged]
+      say: pack.no_mac_observed.ticket.because_power
+    - when: [outlet_works=tried]
+      say: pack.no_mac_observed.ticket.because_outlet
+    - when: [bridge_agreed=yes, device_seen=yes, traffic=flowing]
+      say: pack.no_mac_observed.ticket.because_bridge
 
 knowledge: troubleshooting/internet_mires_routeris_tiltas
