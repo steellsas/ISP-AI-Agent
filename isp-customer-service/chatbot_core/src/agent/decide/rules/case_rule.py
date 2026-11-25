@@ -3171,6 +3171,13 @@ def _technician_wanted(state: Any, rt: Any) -> TurnPlan | None:
             return _escalate(state, rt, s.case.fault, why="klientas_praso")
         rt.tracer.emit("case", move="technician_not_wanted", fault=s.case.fault)
         return None  # „pabandom kartu" (or still no choice) — the fix goes on
+    if s.case.technician_offer == "due" and _technician_on_the_way(state):
+        # The card already got to its pre-technician offer („meistrą registruosime, o kol
+        # atvyks — internetas per kompiuterį?"): the inferred wish is moot, and asking it would
+        # cut that offer off (replay of live 2026-11-24: „Ar norite meistro?" in its place).
+        s.case.technician_offer = "answered"
+        rt.tracer.emit("case", move="technician_offer_moot", fault=s.case.fault)
+        return None
     if s.case.technician_offer == "due":
         s.case.technician_offer = "asked"
         rt.tracer.emit("case", move="technician_offer", fault=s.case.fault)
@@ -3182,6 +3189,22 @@ def _technician_wanted(state: Any, rt: Any) -> TurnPlan | None:
             say=Say(kind="phrase", text=phrase("case.technician_offer"), stage="diagnosis"),
         )
     return None
+
+
+def _technician_on_the_way(state: Any) -> bool:
+    """The card is at (or past) a step it offers before the technician — the technician is
+    its own conclusion now, not a question."""
+    s = state
+    if s.case.facts.get("_offered_before"):
+        return True
+    card = catalog.card(s.case.fault) if s.case.fault else None
+    if card is None or card.escalate is None or not card.escalate.offer_before:
+        return False
+    if s.case.solution is None or s.case.step is None:
+        return False
+    steps = card.solution[s.case.solution].steps
+    at = [i for i, call in enumerate(steps) if call.module in card.escalate.offer_before]
+    return bool(at) and s.case.step >= at[0]
 
 
 def technician_choice(heard: str | None) -> str | None:
