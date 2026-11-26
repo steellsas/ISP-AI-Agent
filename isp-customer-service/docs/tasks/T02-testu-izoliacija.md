@@ -17,12 +17,27 @@ Joks testas nerašo į repo žinių/frazių failus; jei parašytų – testų se
 - Nedaroma: kiti testų pakeitimai.
 
 ## Atlikta, kai
-- [ ] po pilno `uv run pytest` `git status` švarus
-- [ ] apsauga tikrai krenta, jei testas pakeičia failą (vienkartinis patikrinimas aprašytas „Sprendimai eigoje“)
-- [ ] testai žali, `ruff check` / `ruff format --check` švarūs (Edge TTS tinklo testas gali kristi – žinomas radinys #1, ne šios užduoties)
+- [x] po pilno `uv run pytest` `git status` švarus
+- [x] apsauga tikrai krenta, jei testas pakeičia failą (vienkartinis patikrinimas aprašytas „Sprendimai eigoje“)
+- [x] testai žali (2391 passed, 13 skipped, 31 xfailed; 1 failed – `test_real_edge_synthesis_smoke`, radinys #1), `ruff check` / `ruff format --check` švarūs (Edge TTS tinklo testas gali kristi – žinomas radinys #1, ne šios užduoties)
 
 ## Sprendimai eigoje
-(pildyk čia)
+- `load_locale(root=None)` → `(root or LOCALES_DIR)`; `language.py` skaito `locale.LOCALES_DIR` per modulį
+  (anksčiau `from .locale import LOCALES_DIR` užšaldydavo reikšmę). `schema.py:856` ir `locale._examples`
+  jau skaitė kvietimo metu – nekeista.
+- Fixture `phrases_file` kopijuoja visą `locales/` (be `__pycache__`), nes `revalidate()` per `check_prompts()`
+  skaito ir `examples/*.md`.
+- Apsauga `repo_files_unchanged` (`tests/conftest.py`): sha256 visiems `src/agent/locales/` ir
+  `src/agent/knowledge/` failams sesijos pradžioje ir pabaigoje; skirtumas → teardown ERROR su sąrašu
+  (`changed` / `added` / `removed`).
+- Vienkartinis patikrinimas: laikinas testas pridėjo eilutę prie `knowledge/limits.yaml` →
+  `ERROR at teardown … Tests changed repo files: src/agent/knowledge/limits.yaml (changed)`, exit 1.
+  Failas atstatytas, testas ištrintas (necommitintas).
+- Paieška (`write_text/write_bytes/open(..,'w')/unlink/copytree/sqlite3.connect` visuose `tests/`): kiti testai
+  rašo tik į `tmp_path`; `observe/test_api.py` `API_CONFIG_FILE` → `tmp_path`; DB kūrimas ir `reset_db()` rašo į
+  `database/isp_database.test.db` (gitignored, testų failas) – tvarkoje. Vienintelis pažeidėjas buvo `phrases_file`.
+- Pagrindiniame checkout'e likęs `probe_wave5` `locales/lt/phrases.yaml` nepaliestas (ten dirba kitos sesijos) –
+  atstatyti rankiniu būdu.
 
 ## Rezultatas
 (commit'ai, compare URL, kas liko)

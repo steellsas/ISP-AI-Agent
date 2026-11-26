@@ -15,14 +15,15 @@ from typing import Any
 
 import yaml
 
-from .locale import LOCALES_DIR, active_language
+from . import locale
+from .locale import active_language
 
 _WORD = re.compile(r"[A-Za-zĄČĘĖĮŠŲŪŽąčęėįšųūž]+")
 
 
 @lru_cache(maxsize=8)
 def _load(language: str) -> dict[str, Any]:
-    path = LOCALES_DIR / language / "kalba.yaml"
+    path = locale.LOCALES_DIR / language / "kalba.yaml"
     if not path.is_file():
         return {}
     data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}

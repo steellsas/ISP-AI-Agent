@@ -104,8 +104,8 @@ def _read_yaml(language: str, path: Path) -> Any:
 
 
 @lru_cache(maxsize=8)
-def load_locale(language: str, root: Path = LOCALES_DIR) -> Locale:
-    folder = root / language
+def load_locale(language: str, root: Path | None = None) -> Locale:
+    folder = (root or LOCALES_DIR) / language
     phrases: dict[str, str] = {}
     errors: list[str] = []
     _flatten(_read_yaml(language, folder / "phrases.yaml"), "", phrases, errors)
