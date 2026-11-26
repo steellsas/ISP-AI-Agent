@@ -2,7 +2,6 @@
 reload() makes file edits take effect; the admin endpoint refuses a broken edit."""
 
 import shutil
-from pathlib import Path
 
 import pytest
 from agent.contract import loader, locale
@@ -97,12 +96,14 @@ def test_revalidate_drops_the_caches_before_validating(monkeypatch):
 
 
 @pytest.fixture
-def phrases_file():
-    """The real lt/phrases.yaml, restored afterwards (teardown runs even on failure)."""
-    path = Path(locale.LOCALES_DIR) / "lt" / "phrases.yaml"
-    before = path.read_text(encoding="utf-8")
-    yield path
-    path.write_text(before, encoding="utf-8")
+def phrases_file(tmp_path, monkeypatch):
+    """lt/phrases.yaml in a copy of the locales; the repo's file is never written."""
+    root = tmp_path / "locales"
+    shutil.copytree(locale.LOCALES_DIR, root, ignore=shutil.ignore_patterns("__pycache__"))
+    monkeypatch.setattr(locale, "LOCALES_DIR", root)
+    loader.reload()
+    yield root / "lt" / "phrases.yaml"
+    monkeypatch.undo()
     loader.reload()
 
 
