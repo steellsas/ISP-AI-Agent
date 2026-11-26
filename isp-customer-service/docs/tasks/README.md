@@ -7,7 +7,7 @@
 
 | ID | Užduotis | Būsena | Šaka | Sesija |
 |---|---|---|---|---|
-| T01 | Tiketo kontaktai tik iš kliento žodžių | vykdoma | fix/ticket-contact-grounding | ISP-T01 tiketo kontaktų grounding |
+| T01 | Tiketo kontaktai tik iš kliento žodžių | peržiūra | fix/ticket-contact-grounding | ISP-T01 tiketo kontaktų grounding |
 
 Būsenos: `planuojama` → `vykdoma` → `peržiūra` (push, laukia PR) → `atlikta` → `retro` (padaryta).
 
