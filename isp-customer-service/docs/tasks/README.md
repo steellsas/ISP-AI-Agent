@@ -7,7 +7,7 @@
 
 | ID | Užduotis | Būsena | Šaka | Sesija |
 |---|---|---|---|---|
-| T02 | Testai neliečia repo failų | vykdoma | fix/test-locale-isolation | ISP-T02 testų izoliacija |
+| T02 | Testai neliečia repo failų | peržiūra | fix/test-locale-isolation | ISP-T02 testų izoliacija |
 
 Būsenos: `planuojama` → `vykdoma` → `peržiūra` (push, laukia PR) → `atlikta` → `retro` (padaryta).
 

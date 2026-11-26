@@ -1,6 +1,6 @@
 # T02 — Testai neliečia repo failų
 
-**Būsena:** vykdoma · **Šaka:** `fix/test-locale-isolation` · **ROADMAP:** Stage 3 (test loop)
+**Būsena:** peržiūra · **Šaka:** `fix/test-locale-isolation` · **ROADMAP:** Stage 3 (test loop)
 
 ## Tikslas
 Joks testas nerašo į repo žinių/frazių failus; jei parašytų – testų sesija tai pagauna.
@@ -43,7 +43,13 @@ Joks testas nerašo į repo žinių/frazių failus; jei parašytų – testų se
   atstatyti rankiniu būdu.
 
 ## Rezultatas
-(commit'ai, compare URL, kas liko)
+- Commit'ai: `45edff0` (užduotis), `1c47aca` (izoliacija + apsauga), `82af8cc` (Edge TTS tinklo testas ištrintas).
+- Compare: https://github.com/steellsas/ISP-AI-Agent/compare/develop...fix/test-locale-isolation
+- Pagrindinio checkout'o `phrases.yaml` (`probe_wave5`) atstatytas.
+- `/code-review high`: blokuojančių nėra. Liko (atskiroms užduotims, jei reikia):
+  - jau buvęs: `loader.reload()` neišvalo `language._load` (`kalba.yaml` keitimas be restarto nematomas);
+  - smulkmenos: apsauga neatskiria rankinio redagavimo testų metu; `monkeypatch.undo()` fixture'e atšaukia
+    visus testo patch'us; `prompts/` neapsaugotas; apsauga veikia tik `chatbot_core/tests`.
 
 ## Darbo taisyklės
 - Eigoje priimtus sprendimus užrašyk skiltyje „Sprendimai eigoje“. Jei testai nepraeina ar atsiranda kelios galimybės – sustok, pateik variantus su rekomendacija ir lauk.
