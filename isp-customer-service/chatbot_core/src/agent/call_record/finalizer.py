@@ -80,9 +80,7 @@ def finalize(state: GraphState, rt: AgentRuntime, transport_end: str | None = No
         )
         _record_hang_up(state, rt)
         if not s.ticket.contact_phone:
-            from ..execute.ticket import NO_NUMBER, caller_id
-
-            s.ticket.contact_phone = caller_id(state) or NO_NUMBER  # #80: never "unknown"
+            s.ticket.contact_phone = _pending_or_default(state)
         if not s.ticket.contact_hours:
             s.ticket.contact_hours = phrase("ticket.default_hours")
         from ..contract.registration import mark
@@ -234,6 +232,16 @@ def build_call_summary(state: GraphState, rt: AgentRuntime) -> dict:
             else None
         ),
     }
+
+
+def _pending_or_default(state) -> str:
+    """The contact for a ticket registered on a hang-up: the number the caller dictated (still
+    waiting for its read-back) beats the caller ID; with neither, the ticket says there is none
+    (#80: never "unknown")."""
+    from ..execute.ticket import NO_NUMBER, caller_id
+
+    ctx = state.ticket.context
+    return (ctx.phone_pending if ctx else None) or caller_id(state) or NO_NUMBER
 
 
 def _registration_decided(s) -> bool:

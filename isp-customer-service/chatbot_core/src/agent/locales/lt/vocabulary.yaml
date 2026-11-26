@@ -1391,6 +1391,10 @@ hours_pm_words: ["vakar", "po pietų", "po pietu", "popiet"]
 hours_workday_words: ["darbo laik", "darbalaik", "darbo valand", "darbo metu"]
 hours_when_words: ["bet kada", "rytais", "ryte", "vakare", "vakarais", "po pietų", "po pietu", "darbo dienomis", "savaitgalį", "savaitgali", "šiandien", "siandien", "rytoj"]
 
+# Joining words the ticket reader may add to the caller's time („per pietus ARBA ryte") — they
+# need not be in the caller's own words for the reading to count as theirs.
+hours_glue_words: ["arba", "ir", "bei", "val"]
+
 contact_hours_marks: ["bet kada", "bet kad", "kada nor", "visada", "ryt", "vakar", "val", "darbo", "diena", "dien", "po ", "iki ", "nuo ", "savait", "pirmad", "antrad", "trečiad", "treciad", "ketvirtad", "penktad", "šeštad", "sestad", "sekmad", "dabar", "šiandien", "siandien"]
 # Wait/consent-only replies to "who is calling?" are not a name ("Taip.", "Laukiu, laukiu").
 not_a_name: ["taip", "ne", "gerai", "laukiu", "aha", "mhm", "jo", "ačiū", "aciu", "ok", "okey", "nesu", "na", "nu", "tai"]
