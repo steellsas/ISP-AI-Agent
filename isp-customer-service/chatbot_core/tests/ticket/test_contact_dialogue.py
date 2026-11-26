@@ -247,6 +247,78 @@ class TestThePhoneComesFromTheCallersWords:
         assert state.ticket.contact_phone is None and plan.rule == "ticket.phone_reask"
 
 
+class TestTheReadBackAnswer:
+    """What the caller may say to „Užrašiau {numeris} — ar teisingai?" besides yes / no."""
+
+    PENDING = {"phone_confirm_out": True, "phone_pending": "861234567"}
+
+    def test_repeating_the_number_is_a_yes(self, make_state, make_runtime):
+        state, _plan_ = _plan(
+            make_state, make_runtime, "phone", "Taip, 8 612 34567", None, **self.PENDING
+        )
+        assert state.ticket.stage == "hours" and state.ticket.contact_phone == "861234567"
+
+    def test_a_goodbye_keeps_the_dictated_number(self, make_state, make_runtime):
+        state, plan = _plan(
+            make_state, make_runtime, "phone", "Ačiū, viso gero", None, **self.PENDING
+        )
+        assert state.ticket.contact_phone == "861234567" and plan.rule == "ticket.register"
+
+    def test_do_not_register_goes_to_the_cancel_confirm(self, make_state, make_runtime):
+        state, plan = _plan(
+            make_state, make_runtime, "phone", "Ne, neregistruokit", None, **self.PENDING
+        )
+        assert plan.rule == "ticket.cancel_confirm" and state.ticket.context.cancel_confirm_out
+
+    def test_resuming_after_the_cancel_confirm_reads_the_number_back(
+        self, make_state, make_runtime
+    ):
+        state, plan = _plan(
+            make_state,
+            make_runtime,
+            "phone",
+            "Registruokit",
+            None,
+            cancel_confirm_out=True,
+            cancel_confirm_asked=True,
+            phone_pending="861234567",
+        )
+        assert plan.rule == "ticket.phone_confirm" and "861234567" in plan.say.text
+
+    def test_a_question_is_answered_and_the_number_stays(self, make_state, make_runtime):
+        state, plan = _plan(
+            make_state, make_runtime, "phone", "O kada meistras atvažiuos?", None, **self.PENDING
+        )
+        assert plan.rule == "ticket.offscript_question"
+        assert state.ticket.context.phone_pending == "861234567"
+        assert state.ticket.context.phone_confirm_out
+
+    def test_a_hang_up_keeps_the_dictated_number(self, make_state):
+        from agent.call_record.finalizer import _pending_or_default
+
+        state = _state(make_state, "phone", "", phone_pending="861234567")
+        assert _pending_or_default(state) == "861234567"
+
+
+class TestGroundingIsWhole:
+    def test_a_fragment_of_the_number_is_not_grounded(self):
+        from agent.decide.rules.ticket import _grounded_phone
+
+        assert _grounded_phone("612345", "Mano numeris 861234567") is None
+        assert _grounded_phone("861234567", "Mano numeris 8 612 34567") == "861234567"
+        assert _grounded_phone("+37061234567", "861234567") == "+37061234567"
+
+    def test_bet_kada_is_not_replaced_by_a_word_that_is_no_time(self, make_state, make_runtime):
+        state, _plan_ = _plan(
+            make_state,
+            make_runtime,
+            "hours",
+            "Bet kada galima",
+            {"value": "galima", "type": "answer"},
+        )
+        assert state.ticket.contact_hours == "bet kada"
+
+
 class TestTheHoursComeFromTheCallersWords:
     def test_a_time_the_caller_did_not_say_is_not_taken(self, make_state, make_runtime):
         state, plan = _plan(

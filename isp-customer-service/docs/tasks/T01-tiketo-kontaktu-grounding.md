@@ -43,6 +43,13 @@ Telefonas ir laikas tikete paimami tik iš to, ką klientas tikrai pasakė; padi
   sugalvotas „vakare“ neįrašomas.
 - Elgsenos pokytis esamuose testuose: „Ne, kitu numeriu: 861234567“ dabar → perklausimas
   (`test_contact_dialogue`, `test_phase::test_another_number_is_read_back`, `test_hidden_number`).
+- `/code-review high` (8 radiniai): Andrius pritarė taisyti 3 svarbius ir 4 smulkius, atskiru commit'u.
+  Perklausimo atsakymas dabar: tas pats numeris = „taip“; klausimas → narratorius atsako, perklausimas lieka;
+  „neregistruokit“ / „sprendžiam toliau“ → esami cancel-confirm / abort keliai (po „registruokit“ numeris
+  perskaitomas vėl); atsisveikinimas → registruojama su padiktuotu numeriu; padėtas ragelis → finalizer ima
+  `phone_pending` prieš caller ID. Grounding: LLM numeris turi sutapti su visu kliento ištartu skaitmenų
+  bloku (ne fragmentu); „bet kada“ keičia tik LLM reikšmė, kuri pati yra laikas. Nepataisyta (už apimties):
+  `closing.py:65` numerio pataisymas po registracijos be perklausimo.
 - Eval: nė vienas scenarijus nediktuoja kito numerio; naujo scenarijaus nedėta (`agent/eval/` liečia T03) – follow-up.
 
 ## Rezultatas

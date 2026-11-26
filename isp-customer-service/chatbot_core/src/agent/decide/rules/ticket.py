@@ -125,7 +125,9 @@ def ticket_capture(state, rt, user_input: str) -> None:
             _q_clear_owner(state, rt, "ticket")
             rt.tracer.emit("decision", intent="ticket_dialogue", action="cancelled")
             return
-        # Anything else resumes the registration — the stage re-asks.
+        # Anything else resumes the registration — the stage re-asks (a number the caller
+        # dictated is read back again rather than forgotten).
+        ctx.ask_phone_confirm = bool(state.ticket.stage == "phone" and ctx.phone_pending)
         rt.tracer.emit("decision", intent="ticket_dialogue", action="cancel_confirm_resumed")
         return
     # #79 (live 2026-11-20): the caller chose the technician, then — while we asked for the
@@ -223,16 +225,7 @@ def ticket_capture(state, rt, user_input: str) -> None:
                 # "Ne." to "ar tiks šis numeris?" may mean "kitu numeriu",
                 # not "neregistruokite" — clarify before dropping the
                 # ticket the caller was just promised.
-                if ctx.cancel_confirm_asked:
-                    state.ticket.stage = "cancelled"
-                    from ...decide.question import clear_owner as _q_clear_owner
-
-                    _q_clear_owner(state, rt, "ticket")
-                    rt.tracer.emit("decision", intent="ticket_dialogue", action="cancelled")
-                    return
-                ctx.cancel_confirm_asked = True
-                ctx.ask_cancel_confirm = True
-                rt.tracer.emit("decision", intent="ticket_dialogue", action="cancel_confirm")
+                _refuse_registration(state, rt, ctx)
                 return
             if not getattr(ctx, f"{state.ticket.stage}_asked", False):
                 return  # trigger-swallow guard (question not asked yet)
@@ -261,9 +254,10 @@ def ticket_capture(state, rt, user_input: str) -> None:
                     said = re.sub(r"[?!]", " ", value).strip(" .,")
                     when = hours_words(own)
                     # A clock time read from the caller's own words is final; „bet kada" or a
-                    # part of the day may be narrowed by a reading made of their words.
+                    # part of the day may be narrowed by a reading made of their words — and
+                    # only by one that is itself a time.
                     if not re.search(r"\d", when) and _hours_grounded(said, user_input):
-                        when = hours_words(said) or _hours_only(said)
+                        when = hours_words(said) or when or _hours_only(said)
                     if when:
                         s.ticket.contact_hours = when[:80]
                         rt.tracer.emit(
@@ -303,16 +297,7 @@ def ticket_capture(state, rt, user_input: str) -> None:
         if wants_to_keep_solving(state, rt, user_input):
             abort_ticket_to_solving(state, rt)
             return
-        if ctx.cancel_confirm_asked:
-            state.ticket.stage = "cancelled"
-            from ...decide.question import clear_owner as _q_clear_owner
-
-            _q_clear_owner(state, rt, "ticket")
-            rt.tracer.emit("decision", intent="ticket_dialogue", action="cancelled")
-            return
-        ctx.cancel_confirm_asked = True
-        ctx.ask_cancel_confirm = True
-        rt.tracer.emit("decision", intent="ticket_dialogue", action="cancel_confirm")
+        _refuse_registration(state, rt, ctx)
         return
     if detect_farewell(user_input):
         state.ticket.stage = "done"
@@ -323,7 +308,6 @@ def ticket_capture(state, rt, user_input: str) -> None:
     # kompiutera" was swallowed as the phone number.
     if not getattr(ctx, f"{state.ticket.stage}_asked", False):
         return
-    clean = user_input.strip().strip(" .?!,")
     if state.ticket.stage == "phone":
         from ...perceive.detectors import is_backchannel
 
@@ -463,12 +447,17 @@ def _clean_hours(text: str) -> str:
     return re.sub(r"\s+", " ", re.sub(r"[?!]", " ", clean)).strip(" .,")
 
 
-def _said_digits(text: str) -> tuple[str, ...]:
-    """The digits the caller said, as written and with spoken number words read as digits."""
+_DIGIT_RUN_RE = re.compile(r"\d[\d\s\-]*\d|\d")
+
+
+def _said_numbers(text: str) -> set[str]:
+    """The numbers the caller said — each run of digits („8 612 34567") as one number, as
+    written and with spoken number words read as digits."""
     from ...contract.locale import lang
 
     raw = text or ""
-    return (re.sub(r"\D", "", raw), re.sub(r"\D", "", lang().normalize_numbers(raw)))
+    runs = _DIGIT_RUN_RE.findall(raw) + _DIGIT_RUN_RE.findall(lang().normalize_numbers(raw))
+    return {re.sub(r"\D", "", run) for run in runs}
 
 
 def _national(digits: str) -> str:
@@ -485,11 +474,11 @@ def _same_phone(a: str, b: str) -> bool:
 
 
 def _grounded_phone(value: str, user_input: str) -> str | None:
-    """The ticket reader's number, when the caller's own words carry its digits; else None."""
+    """The ticket reader's number, when the caller said that whole number; else None."""
     digits = re.sub(r"\D", "", value or "")
     if len(digits) < 6:
         return None
-    if any(_national(digits) in said for said in _said_digits(user_input)):
+    if any(_national(digits) == _national(said) for said in _said_numbers(user_input)):
         return re.sub(r"[^\d+]", "", value)[:20]
     return None
 
@@ -536,14 +525,59 @@ def _take_phone(state: Any, rt: Any, ctx: Any, number: str) -> None:
     rt.tracer.emit("decision", intent="ticket_dialogue", action="phone_confirm")
 
 
+def _refuse_registration(state: Any, rt: Any, ctx: Any) -> None:
+    """„Neregistruokit": one confirm round before the one-way door, then cancelled."""
+    if ctx.cancel_confirm_asked:
+        state.ticket.stage = "cancelled"
+        from ...decide.question import clear_owner as _q_clear_owner
+
+        _q_clear_owner(state, rt, "ticket")
+        rt.tracer.emit("decision", intent="ticket_dialogue", action="cancelled")
+        return
+    ctx.cancel_confirm_asked = True
+    ctx.ask_cancel_confirm = True
+    rt.tracer.emit("decision", intent="ticket_dialogue", action="cancel_confirm")
+
+
+def _take_pending(state: Any, rt: Any, ctx: Any, action: str) -> None:
+    state.ticket.contact_phone = ctx.phone_pending
+    ctx.phone_pending = None
+    ctx.phone_confirm_unclear = False
+    rt.tracer.emit("decision", intent="ticket_dialogue", action=action)
+
+
 def _read_phone_confirm(state: Any, rt: Any, ctx: Any, user_input: str) -> None:
-    """The answer to „Užrašiau {numeris} — ar teisingai?": a new number is read back in turn, a
-    yes takes the number, a no asks for it again; an unclear answer repeats the read-back once."""
-    from ...perceive.detectors import detect_ticket_consent, is_backchannel, is_bare_negation
+    """The answer to „Užrašiau {numeris} — ar teisingai?": the same number again or a yes takes
+    it, a new number is read back in turn, a no asks for it again; a question is answered and the
+    read-back stays; „neregistruokit" goes to the cancel-confirm; a goodbye registers with the
+    number they dictated; an unclear answer repeats the read-back once."""
+    from ...perceive.detectors import (
+        detect_farewell,
+        detect_ticket_consent,
+        is_backchannel,
+        is_bare_negation,
+        is_real_question,
+    )
 
     said = re.sub(r"[^\d+]", "", user_input or "")
     if len(re.sub(r"\D", "", said)) >= 6:
+        if _same_phone(said, ctx.phone_pending):
+            _take_pending(state, rt, ctx, "phone_confirmed")
+            state.ticket.stage = "hours"
+            return
         _take_phone(state, rt, ctx, said[:20])
+        return
+    if is_real_question(user_input):
+        ctx.phone_confirm_out = True  # the next answer is still read against the read-back
+        state.turn.ticket_offscript_question = True
+        rt.tracer.emit("decision", intent="ticket_dialogue", action="question")
+        return
+    low = (user_input or "").lower()
+    if wants_to_keep_solving(state, rt, user_input):
+        abort_ticket_to_solving(state, rt)
+        return
+    if any(m in low for m in vocab("ticket_cancel")):
+        _refuse_registration(state, rt, ctx)
         return
     consent = detect_ticket_consent(user_input)
     if consent == "no" or is_bare_negation(user_input):
@@ -553,11 +587,13 @@ def _read_phone_confirm(state: Any, rt: Any, ctx: Any, user_input: str) -> None:
         rt.tracer.emit("decision", intent="ticket_dialogue", action="phone_reask")
         return
     if consent == "yes" or is_backchannel(user_input):
-        state.ticket.contact_phone = ctx.phone_pending
-        ctx.phone_pending = None
-        ctx.phone_confirm_unclear = False
+        _take_pending(state, rt, ctx, "phone_confirmed")
         state.ticket.stage = "hours"
-        rt.tracer.emit("decision", intent="ticket_dialogue", action="phone_confirmed")
+        return
+    if detect_farewell(user_input):
+        # The caller is done talking: the number they dictated beats the caller ID or none.
+        _take_pending(state, rt, ctx, "phone_taken_on_farewell")
+        state.ticket.stage = "done"
         return
     if not ctx.phone_confirm_unclear:
         ctx.phone_confirm_unclear = True
