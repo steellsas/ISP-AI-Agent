@@ -261,6 +261,14 @@ class TicketContext(BaseModel):
     ask_cancel_confirm: bool = False
     cancel_confirm_out: bool = False
     cancel_confirm_asked: bool = False
+    # A said number that is not the caller ID waits here until „Užrašiau … — ar teisingai?" is
+    # answered; due next reply / out / one unclear answer already repeated it.
+    phone_pending: str | None = None
+    ask_phone_confirm: bool = False
+    phone_confirm_out: bool = False
+    phone_confirm_unclear: bool = False
+    # The caller said the read-back number is wrong — the next reply asks for it again.
+    ask_phone_reask: bool = False
 
 
 class TicketState(BaseModel):

@@ -361,3 +361,26 @@ klausime.
 | Nestabilūs | X_dhcp_silent | X_dhcp_silent, I2 (adreso ėjimas, suvokimas ten nekviečiamas — ne 6b) |
 
 Kiekvienas praleistas kvietimas — ~0,5 s greičiau iki pirmo garso tame ėjime.
+
+---
+
+### T01 Tiketo kontaktai tik iš kliento žodžių (2026-11-26, Andrius pritarė: S1=B)
+
+**Kodėl:** projekto peržiūra P0-1 — `ticket_reader` perskaitytas telefonas ir laikas buvo
+įrašomi į tiketą nelyginant su tuo, ką klientas pasakė; kitą numerį klientas išgirsdavo tik po
+registracijos.
+
+**Kas pakeista** (`decide/rules/ticket.py`, promptai nekeisti):
+
+| | Prieš | Po |
+|---|---|---|
+| Telefonas iš `ticket_reader` | ≥ 6 skaitmenys → į tiketą | tik jei skaitmenys yra kliento frazėje (taip pat po `normalize_numbers`) |
+| Numeris ≠ caller ID | įrašomas iškart | perklausiamas: „Užrašiau {phone} — ar teisingai?" |
+| „Ne" į perklausimą | — | „Gerai — pasakykite numerį dar kartą, skaitmenimis." |
+| Laikas | `ticket_reader` reikšmė | konkretus laikas iš `hours_words(kliento frazė)` laimi; „bet kada“ / dienos dalį gali patikslinti reikšmė, sudaryta iš kliento žodžių (skaičiai ir žodžių kamienai frazėje) |
+
+**Naujos frazės** (`locales/lt/phrases.yaml`, `identification.`): `ticket_phone_confirm`,
+`ticket_phone_reask`. Abi skriptinės (ne narratoriui): pakartojime tikslumas svarbiau už stilių.
+
+**Matavimas:** eval `--only` su tiketo dialogu — rezultatas užduoties faile
+`docs/tasks/T01-tiketo-kontaktu-grounding.md`.

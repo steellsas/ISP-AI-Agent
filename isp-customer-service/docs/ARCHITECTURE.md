@@ -270,6 +270,13 @@ utterance
    └─ 3. ingest (perceive/evidence.py → ledger.py → case.facts)
 ```
 
+**Ticket contacts are grounded.** A ticket-answer value (phone, hours) reaches the ticket only
+when the caller's own words carry it: a phone's digits must be in the utterance (as said or after
+`normalize_numbers`). For the hours, a clock time read from the caller's words (`hours_words`) is
+final; a „bet kada" or part of the day may be narrowed by the reading only when it is made of the
+caller's words (its numbers said, its words sharing their stems). A said number other than the caller ID is read back
+(„Užrašiau {phone} — ar teisingai?") and lands on the ticket only on a yes; a no asks for it again.
+
 **Analyst** (`analyst/`) reads the whole conversation and returns typed **signals** —
 contradiction, already answered, secondary problem, deviation, mood. It never writes facts, never
 changes the hypothesis, never talks to the caller; it can only raise a doubt that decide then
@@ -318,7 +325,7 @@ All go through `services/llm/client.py` (litellm), tagged by role.
 | Role | Where | Prompt | When it runs | Model |
 |---|---|---|---|---|
 | `perception` | `perceive/understand.py` | `prompts/sensors/perception*.md`, `knowledge_route.md`, `ticket_reader_*.md`, `problem_in_perception.md` | turns the engine readers could not read | `PERCEPTION_MODEL` → `LLM_MODEL`, t=0, ≤200 tok |
-| `ticket_reader` | `perceive/understand.py` | `sensors/ticket_reader*.md` | only if the merged read gave no ticket answer | same |
+| `ticket_reader` | `perceive/understand.py` | `sensors/ticket_reader*.md` | called by decide (`decide/rules/ticket.py` capture) only on a turn perceive did not read; its phone / hours value is used only when the caller's own words carry its digits | same |
 | `problem_classifier` | `perceive/nlu.py` → `classifier.py` | `sensors/classifier.md` + `problem_classifier.md` | problem still unknown and keywords failed | same, ≥0.8 commit, ≥0.5 confirm |
 | `analyst` | `analyst/node.py` | `sensors/analyst.md` | when due (§6) | same, t=0.2, ≤700 tok |
 | `speak` | `speak/node.py` | §7 | `say.kind = directive` | `LLM_MODEL`, t=0.2, ≤150 tok, streamed |

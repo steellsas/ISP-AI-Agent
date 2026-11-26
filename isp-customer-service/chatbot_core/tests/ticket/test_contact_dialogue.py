@@ -27,7 +27,10 @@ FUNCTION = "Kontaktų dialogas"
 PHONES = [
     pytest.param("Taip", "+37060012345", "ticket.hours", id="taip → šis numeris"),
     pytest.param(
-        "Ne, kitu numeriu: 861234567", "861234567", "ticket.hours", id="kitas numeris skaitmenimis"
+        "Ne, kitu numeriu: 861234567",
+        None,
+        "ticket.phone_confirm",
+        id="kitas numeris skaitmenimis → perklausia",
     ),
     pytest.param("Hmm", None, "ticket.retry_phone", id="neaišku → paklausia dar kartą"),
     pytest.param(
@@ -133,6 +136,174 @@ def test_confirmed_refusal_cancels(make_state, make_runtime):
     run_action(state, make_runtime(), plan)
     assert state.closing.case_closed and state.closing.closed_reason == "declined"
     assert state.closing.is_complete is True
+
+
+def test_a_dictated_number_is_read_back_then_taken(at_contacts):
+    """Kitas numeris įrašomas tik klientui patvirtinus, kad išgirdome teisingai."""
+    c = at_contacts()
+    reply = c.say("Ne, kitu numeriu: 861234567")
+    assert "Užrašiau" in reply and c.state.ticket.contact_phone is None
+    c.say("Taip")
+    assert c.rule == "ticket.hours" and c.state.ticket.contact_phone == "861234567"
+
+
+class TestThePhoneComesFromTheCallersWords:
+    """P0-1: the ticket reader's number lands on the ticket only when the caller said it, and a
+    number other than the caller ID is read back before it is taken."""
+
+    def test_a_number_the_caller_did_not_say_is_not_taken(self, make_state, make_runtime):
+        state, plan = _plan(
+            make_state,
+            make_runtime,
+            "phone",
+            "Ne, kitu",
+            {"value": "861234567", "type": "answer"},
+        )
+        assert state.ticket.contact_phone is None and state.ticket.stage == "phone"
+        assert plan.rule == "ticket.retry_phone"
+
+    def test_a_said_number_is_read_back_first(self, make_state, make_runtime):
+        state, plan = _plan(
+            make_state,
+            make_runtime,
+            "phone",
+            "Mano numeris 861234567",
+            {"value": "861234567", "type": "answer"},
+        )
+        assert state.ticket.contact_phone is None and state.ticket.stage == "phone"
+        assert plan.rule == "ticket.phone_confirm"
+        assert "Užrašiau" in plan.say.text and "861234567" in plan.say.text
+
+    def test_the_caller_id_said_back_needs_no_confirm(self, make_state, make_runtime):
+        state, _plan_ = _plan(
+            make_state,
+            make_runtime,
+            "phone",
+            "860012353",
+            {"value": "860012353", "type": "answer"},
+        )
+        assert state.ticket.stage == "hours" and state.ticket.contact_phone == "+37060012353"
+
+    def test_yes_takes_the_read_back_number(self, make_state, make_runtime):
+        # The reader would call „Taip" the caller ID — the read-back is answered first.
+        state, _plan_ = _plan(
+            make_state,
+            make_runtime,
+            "phone",
+            "Taip",
+            {"value": "same_number", "type": "answer"},
+            phone_confirm_out=True,
+            phone_pending="861234567",
+        )
+        assert state.ticket.stage == "hours" and state.ticket.contact_phone == "861234567"
+
+    def test_no_asks_for_the_number_again(self, make_state, make_runtime):
+        state, plan = _plan(
+            make_state,
+            make_runtime,
+            "phone",
+            "Ne",
+            None,
+            phone_confirm_out=True,
+            phone_pending="861234567",
+        )
+        assert state.ticket.contact_phone is None and state.ticket.stage == "phone"
+        assert plan.rule == "ticket.phone_reask" and "dar kartą" in plan.say.text
+
+    def test_a_corrected_number_is_read_back_again(self, make_state, make_runtime):
+        state, plan = _plan(
+            make_state,
+            make_runtime,
+            "phone",
+            "Ne, 867777777",
+            None,
+            phone_confirm_out=True,
+            phone_pending="861234567",
+        )
+        assert state.ticket.contact_phone is None
+        assert plan.rule == "ticket.phone_confirm" and "867777777" in plan.say.text
+
+    def test_an_unclear_answer_repeats_the_read_back_once(self, make_state, make_runtime):
+        state, plan = _plan(
+            make_state,
+            make_runtime,
+            "phone",
+            "Hmm",
+            None,
+            phone_confirm_out=True,
+            phone_pending="861234567",
+        )
+        assert state.ticket.contact_phone is None and plan.rule == "ticket.phone_confirm"
+        state, plan = _plan(
+            make_state,
+            make_runtime,
+            "phone",
+            "Hmm",
+            None,
+            phone_confirm_out=True,
+            phone_pending="861234567",
+            phone_confirm_unclear=True,
+        )
+        assert state.ticket.contact_phone is None and plan.rule == "ticket.phone_reask"
+
+
+class TestTheHoursComeFromTheCallersWords:
+    def test_a_time_the_caller_did_not_say_is_not_taken(self, make_state, make_runtime):
+        state, plan = _plan(
+            make_state,
+            make_runtime,
+            "hours",
+            "nežinau",
+            {"value": "nuo 17 iki 18", "type": "answer"},
+        )
+        assert state.ticket.contact_hours is None and plan.rule == "ticket.retry_hours"
+
+    def test_the_callers_own_words_win(self, make_state, make_runtime):
+        state, _plan_ = _plan(
+            make_state,
+            make_runtime,
+            "hours",
+            "po 5 vakare",
+            {"value": "po 5", "type": "answer"},
+        )
+        assert state.ticket.contact_hours == "po 17 val."
+
+    def test_a_reading_narrows_bet_kada_with_the_callers_words(self, make_state, make_runtime):
+        state, _plan_ = _plan(
+            make_state,
+            make_runtime,
+            "hours",
+            "Bet kada galima per pietus iš ryto",
+            {"value": "per pietus arba ryte", "type": "answer"},
+        )
+        assert state.ticket.contact_hours == "per pietus arba ryte"
+
+    def test_a_word_the_caller_did_not_say_is_not_taken(self, make_state, make_runtime):
+        state, _plan_ = _plan(
+            make_state,
+            make_runtime,
+            "hours",
+            "Bet kada",
+            {"value": "vakare", "type": "answer"},
+        )
+        assert state.ticket.contact_hours == "bet kada"
+
+    def test_a_reading_cannot_turn_po_into_iki(self, make_state, make_runtime):
+        from agent.decide.rules.ticket import _hours_grounded
+
+        assert not _hours_grounded("iki 17", "po 17 valandos")
+        assert _hours_grounded("po 17 val.", "po 17 valandos")
+        assert _hours_grounded("po pietų", "bet kada po pietų")
+
+    def test_a_reading_without_numbers_is_kept(self, make_state, make_runtime):
+        state, _plan_ = _plan(
+            make_state,
+            make_runtime,
+            "hours",
+            "na, geriau vėliau kažkada",
+            {"value": "vėliau", "type": "answer"},
+        )
+        assert state.ticket.contact_hours == "vėliau"
 
 
 def test_no_dialogue_is_not_the_ticket_rules(make_state, make_runtime):

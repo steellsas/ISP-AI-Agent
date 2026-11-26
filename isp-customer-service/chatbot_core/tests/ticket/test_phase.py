@@ -45,7 +45,8 @@ def test_a_dead_router_ends_in_a_written_ticket(at_contacts):
 def test_another_number_is_read_back(at_contacts):
     """Kitas numeris — perskaitomas atgal"""
     c = at_contacts()
-    c.say("Ne, kitu numeriu: 861234567")
+    assert "Užrašiau 861234567" in c.say("Ne, kitu numeriu: 861234567")
+    c.say("Taip")
     told = c.say("Bet kada")
     assert "Skambinsime 861234567, bet kada" in told
 

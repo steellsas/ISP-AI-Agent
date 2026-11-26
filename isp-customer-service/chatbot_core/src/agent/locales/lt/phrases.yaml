@@ -88,6 +88,9 @@ identification:
   # #80: paslėptas numeris — jo klausiama, „tiks šis“ nėra ką tikti.
   ticket_phone_hidden: "Jūsų numeris man nerodomas — kokiu numeriu jums paskambinti? Pasakykite skaitmenimis."
   ticket_phone_hidden_retry: "Nesupratau numerio. Pasakykite jį skaitmenimis, po vieną ar poromis."
+  # Padiktuotas numeris, kuris nėra caller ID, perskaitomas prieš įrašant į tiketą.
+  ticket_phone_confirm: "Užrašiau {phone} — ar teisingai?"
+  ticket_phone_reask: "Gerai — pasakykite numerį dar kartą, skaitmenimis."
   ticket_done_no_number: "Užregistravau. Kadangi numerio neturime, kolegos jums paskambinti negalės — paskambinkite mums patys ir pasakykite, kad gedimas užregistruotas. Ar dar kuo padėti?"
   ticket_hours: "Gerai. O kada patogiausia jums skambinti?"
   ticket_hours_retry: "Nesupratau. Pavyzdžiui — „bet kada“ arba „po 17 valandos“?"

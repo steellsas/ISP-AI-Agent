@@ -34,6 +34,9 @@ def test_tiks_is_no_number_when_it_is_hidden(make_state, make_runtime):
     assert state.ticket.contact_phone is None and state.ticket.stage == "phone"
     assert "skaitmenimis" in ticket_stage_reply(state, rt)
     ticket_capture(state, rt, "+370 600 12345")
+    assert state.ticket.contact_phone is None and state.ticket.stage == "phone"
+    assert "Užrašiau" in ticket_stage_reply(state, rt)
+    ticket_capture(state, rt, "Taip")
     assert state.ticket.contact_phone == "+37060012345" and state.ticket.stage == "hours"
 
 

@@ -164,6 +164,12 @@ def ticket_capture(state, rt, user_input: str) -> None:
     # hours answer, but "galima" sat on the keyword question list and
     # diverted it. The model reads the answer against THIS question;
     # keyword logic below stays as the fallback when it is unavailable.
+    # „Užrašiau … — ar teisingai?" is answered before any reading of the contact answer: the
+    # readers would take its „Taip" for „the number I call from".
+    phone_confirm_out, ctx.phone_confirm_out = ctx.phone_confirm_out, False
+    if phone_confirm_out and state.ticket.stage == "phone" and ctx.phone_pending:
+        _read_phone_confirm(state, rt, ctx, user_input)
+        return
     und_handled = False
     from ...perceive import understand as _und
 
@@ -232,26 +238,42 @@ def ticket_capture(state, rt, user_input: str) -> None:
                 return  # trigger-swallow guard (question not asked yet)
             value = ut.get("value")
             if value:
+                # The reading is a value only when the caller's own words carry it; otherwise
+                # the keyword/retry path below reads the answer.
                 if state.ticket.stage == "phone":
-                    digits = re.sub(r"\D", "", value)
                     if value == "same_number" and caller_id(state):
                         s.ticket.contact_phone = caller_id(state)
-                    elif len(digits) >= 6:
-                        s.ticket.contact_phone = re.sub(r"[^\d+]", "", value)[:20]
-                    else:
-                        value = None  # not a usable number — keyword/retry path
-                    if value is not None:
                         rt.tracer.emit(
                             "decision", intent="ticket_dialogue", action="phone_captured"
                         )
                         state.ticket.stage = "hours"
                         return
+                    number = _grounded_phone(value, user_input)
+                    if number:
+                        _take_phone(state, rt, ctx, number)
+                        return
+                    if len(re.sub(r"\D", "", value)) >= 6:
+                        rt.tracer.emit(
+                            "decision", intent="ticket_dialogue", action="phone_not_grounded"
+                        )
                 else:
+                    own = _clean_hours(user_input)
                     said = re.sub(r"[?!]", " ", value).strip(" .,")
-                    s.ticket.contact_hours = (hours_words(said) or _hours_only(said))[:80]
-                    rt.tracer.emit("decision", intent="ticket_dialogue", action="hours_captured")
-                    state.ticket.stage = "done"
-                    return
+                    when = hours_words(own)
+                    # A clock time read from the caller's own words is final; „bet kada" or a
+                    # part of the day may be narrowed by a reading made of their words.
+                    if not re.search(r"\d", when) and _hours_grounded(said, user_input):
+                        when = hours_words(said) or _hours_only(said)
+                    if when:
+                        s.ticket.contact_hours = when[:80]
+                        rt.tracer.emit(
+                            "decision", intent="ticket_dialogue", action="hours_captured"
+                        )
+                        state.ticket.stage = "done"
+                        return
+                    rt.tracer.emit(
+                        "decision", intent="ticket_dialogue", action="hours_not_grounded"
+                    )
             # No value — fall through to the keyword/retry machinery.
     # W0-C (live 2026-08-25): STT turned "patogiausia" into "KODĖL
     # tokiausia skambinti nuo 17-18 val." — the question keyword diverted
@@ -308,7 +330,8 @@ def ticket_capture(state, rt, user_input: str) -> None:
         digits = re.sub(r"[^\d+]", "", user_input)
         own = caller_id(state)
         if len(re.sub(r"\D", "", digits)) >= 6:
-            s.ticket.contact_phone = digits[:20]
+            _take_phone(state, rt, ctx, digits[:20])
+            return
         elif own and (detect_ticket_consent(user_input) == "yes" or is_backchannel(user_input)):
             # "tiks šis" / a garbled yes ("T." — STT of "Taip", observed
             # live as tel. on the ticket) — the number they call from.
@@ -332,10 +355,7 @@ def ticket_capture(state, rt, user_input: str) -> None:
         rt.tracer.emit("decision", intent="ticket_dialogue", action="phone_captured")
         state.ticket.stage = "hours"
     else:
-        # STT sticks "?" mid-string too ("Bet kada? Bet kurio laiko?") —
-        # scrub ALL question/exclamation marks before the ticket/announce.
-        clean = re.sub(r"\s+", " ", re.sub(r"[?!]", " ", clean)).strip(" .,")
-        when = hours_words(clean)
+        when = hours_words(_clean_hours(user_input))
         plausible = bool(when)
         if not plausible and not ctx.hours_retry:
             ctx.hours_retry = True
@@ -434,6 +454,120 @@ def _hours_only(text: str) -> str:
     marks = vocab("contact_hours_marks")
     kept = [p for p in parts if re.search(r"\d", p) or any(m in p.lower() for m in marks)]
     return " ".join(kept) if kept else text
+
+
+def _clean_hours(text: str) -> str:
+    """The hours answer without STT punctuation — „Bet kada? Bet kurio laiko?" carries „?"
+    mid-string, and none of it belongs on the ticket or in the announce."""
+    clean = (text or "").strip().strip(" .?!,")
+    return re.sub(r"\s+", " ", re.sub(r"[?!]", " ", clean)).strip(" .,")
+
+
+def _said_digits(text: str) -> tuple[str, ...]:
+    """The digits the caller said, as written and with spoken number words read as digits."""
+    from ...contract.locale import lang
+
+    raw = text or ""
+    return (re.sub(r"\D", "", raw), re.sub(r"\D", "", lang().normalize_numbers(raw)))
+
+
+def _national(digits: str) -> str:
+    """A Lithuanian number without its country code or trunk prefix (370… / 8…)."""
+    if digits.startswith("370") and len(digits) == 11:
+        return digits[3:]
+    if digits.startswith("8") and len(digits) == 9:
+        return digits[1:]
+    return digits
+
+
+def _same_phone(a: str, b: str) -> bool:
+    return _national(re.sub(r"\D", "", a)) == _national(re.sub(r"\D", "", b))
+
+
+def _grounded_phone(value: str, user_input: str) -> str | None:
+    """The ticket reader's number, when the caller's own words carry its digits; else None."""
+    digits = re.sub(r"\D", "", value or "")
+    if len(digits) < 6:
+        return None
+    if any(_national(digits) in said for said in _said_digits(user_input)):
+        return re.sub(r"[^\d+]", "", value)[:20]
+    return None
+
+
+def _hours_grounded(value: str, user_input: str) -> bool:
+    """The ticket reader's hours are made of the caller's words: every number is one they
+    said, and every word shares its stem with one of theirs (Lithuanian endings change:
+    „ryte" / „ryto", „pietų" / „pietus"); short words („po", „iki") must match whole."""
+    from ...contract.locale import lang
+
+    value_low = lang().normalize_numbers(value or "").lower()
+    said_low = lang().normalize_numbers(user_input or "").lower()
+    if not set(re.findall(r"\d+", value_low)) <= set(re.findall(r"\d+", said_low)):
+        return False
+    said_words = re.findall(r"[^\W\d_]+", said_low)
+    glue = set(vocab("hours_glue_words"))
+    for word in re.findall(r"[^\W\d_]+", value_low):
+        if word in glue:
+            continue
+        if len(word) <= 2:
+            if word not in said_words:
+                return False
+            continue
+        stem = word[: 3 if len(word) <= 4 else 4]
+        if not any(w.startswith(stem) for w in said_words):
+            return False
+    return True
+
+
+def _take_phone(state: Any, rt: Any, ctx: Any, number: str) -> None:
+    """A number the caller said. The caller ID is taken as it is; any other number is read
+    back („Užrašiau … — ar teisingai?") and lands on the ticket only on a yes."""
+    own = caller_id(state)
+    state.ticket.context = ctx
+    ctx.phone_confirm_unclear = False
+    if own and _same_phone(number, own):
+        ctx.phone_pending = None
+        state.ticket.contact_phone = own
+        state.ticket.stage = "hours"
+        rt.tracer.emit("decision", intent="ticket_dialogue", action="phone_captured")
+        return
+    ctx.phone_pending = number
+    ctx.ask_phone_confirm = True
+    rt.tracer.emit("decision", intent="ticket_dialogue", action="phone_confirm")
+
+
+def _read_phone_confirm(state: Any, rt: Any, ctx: Any, user_input: str) -> None:
+    """The answer to „Užrašiau {numeris} — ar teisingai?": a new number is read back in turn, a
+    yes takes the number, a no asks for it again; an unclear answer repeats the read-back once."""
+    from ...perceive.detectors import detect_ticket_consent, is_backchannel, is_bare_negation
+
+    said = re.sub(r"[^\d+]", "", user_input or "")
+    if len(re.sub(r"\D", "", said)) >= 6:
+        _take_phone(state, rt, ctx, said[:20])
+        return
+    consent = detect_ticket_consent(user_input)
+    if consent == "no" or is_bare_negation(user_input):
+        ctx.phone_pending = None
+        ctx.phone_confirm_unclear = False
+        ctx.ask_phone_reask = True
+        rt.tracer.emit("decision", intent="ticket_dialogue", action="phone_reask")
+        return
+    if consent == "yes" or is_backchannel(user_input):
+        state.ticket.contact_phone = ctx.phone_pending
+        ctx.phone_pending = None
+        ctx.phone_confirm_unclear = False
+        state.ticket.stage = "hours"
+        rt.tracer.emit("decision", intent="ticket_dialogue", action="phone_confirmed")
+        return
+    if not ctx.phone_confirm_unclear:
+        ctx.phone_confirm_unclear = True
+        ctx.ask_phone_confirm = True
+        rt.tracer.emit("decision", intent="ticket_dialogue", action="phone_confirm_repeat")
+        return
+    ctx.phone_pending = None
+    ctx.phone_confirm_unclear = False
+    ctx.ask_phone_reask = True
+    rt.tracer.emit("decision", intent="ticket_dialogue", action="phone_reask")
 
 
 def ticket_need(state: Any, rt: Any) -> str:
@@ -592,6 +726,19 @@ def ticket_stage_reply(state: Any, rt: Any) -> str:
         if state.ticket.request_type:
             return phrase("identification.ticket_cancel_confirm_request")
         return phrase("identification.ticket_cancel_confirm")
+    if ctx.ask_phone_confirm:
+        from ...execute.ticket import fmt_phone
+
+        ctx.ask_phone_confirm = False
+        ctx.phone_confirm_out = True
+        ctx.last_kind = "phone_confirm"
+        _q_register(state, rt, "ticket", "ticket_phone_confirm")
+        return phrase("identification.ticket_phone_confirm", phone=fmt_phone(ctx.phone_pending))
+    if ctx.ask_phone_reask:
+        ctx.ask_phone_reask = False
+        ctx.last_kind = "phone_reask"
+        _q_register(state, rt, "ticket", "ticket_phone")
+        return phrase("identification.ticket_phone_reask")
     retry, ctx.ask_retry = ctx.ask_retry, None
     if retry == "phone":
         ctx.last_kind = "retry_phone"
