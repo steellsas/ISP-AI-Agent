@@ -7,7 +7,7 @@
 
 | ID | Užduotis | Būsena | Šaka | Sesija |
 |---|---|---|---|---|
-| T02 | Testai neliečia repo failų | peržiūra | fix/test-locale-isolation | ISP-T02 testų izoliacija |
+| T03 | Eval istorija su versijomis | peržiūra | feat/eval-history | ISP-T03 eval istorija |
 
 Būsenos: `planuojama` → `vykdoma` → `peržiūra` (push, laukia PR) → `atlikta` → `retro` (padaryta).
 
