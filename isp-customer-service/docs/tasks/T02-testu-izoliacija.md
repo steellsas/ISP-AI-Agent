@@ -19,7 +19,7 @@ Joks testas nerašo į repo žinių/frazių failus; jei parašytų – testų se
 ## Atlikta, kai
 - [x] po pilno `uv run pytest` `git status` švarus
 - [x] apsauga tikrai krenta, jei testas pakeičia failą (vienkartinis patikrinimas aprašytas „Sprendimai eigoje“)
-- [x] testai žali (2391 passed, 13 skipped, 31 xfailed; 1 failed – `test_real_edge_synthesis_smoke`, radinys #1), `ruff check` / `ruff format --check` švarūs (Edge TTS tinklo testas gali kristi – žinomas radinys #1, ne šios užduoties)
+- [x] testai žali (2391 passed, 13 skipped, 31 xfailed; vienintelis kritęs `test_real_edge_synthesis_smoke` vėliau ištrintas, voice: 259 passed), `ruff check` / `ruff format --check` švarūs (Edge TTS tinklo testas gali kristi – žinomas radinys #1, ne šios užduoties)
 
 ## Sprendimai eigoje
 - `load_locale(root=None)` → `(root or LOCALES_DIR)`; `language.py` skaito `locale.LOCALES_DIR` per modulį
@@ -36,6 +36,9 @@ Joks testas nerašo į repo žinių/frazių failus; jei parašytų – testų se
 - Paieška (`write_text/write_bytes/open(..,'w')/unlink/copytree/sqlite3.connect` visuose `tests/`): kiti testai
   rašo tik į `tmp_path`; `observe/test_api.py` `API_CONFIG_FILE` → `tmp_path`; DB kūrimas ir `reset_db()` rašo į
   `database/isp_database.test.db` (gitignored, testų failas) – tvarkoje. Vienintelis pažeidėjas buvo `phrases_file`.
+- Andriaus prašymu ištrintas `voice/test_voice_adapters.py::TestEdgeTTS::test_real_edge_synthesis_smoke`
+  (tikras Edge tinklo kvietimas; Edge TTS nebenaudojamas). Kiti `TestEdgeTTS` testai (be tinklo) lieka, kol
+  lieka pats adapteris.
 - Pagrindiniame checkout'e likęs `probe_wave5` `locales/lt/phrases.yaml` nepaliestas (ten dirba kitos sesijos) –
   atstatyti rankiniu būdu.
 
