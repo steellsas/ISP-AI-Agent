@@ -7,7 +7,7 @@
 
 | ID | Užduotis | Būsena | Šaka | Sesija |
 |---|---|---|---|---|
-| T03 | Eval istorija su versijomis | vykdoma | feat/eval-history | ISP-T03 eval istorija |
+| T03 | Eval istorija su versijomis | peržiūra | feat/eval-history | ISP-T03 eval istorija |
 
 Būsenos: `planuojama` → `vykdoma` → `peržiūra` (push, laukia PR) → `atlikta` → `retro` (padaryta).
 
