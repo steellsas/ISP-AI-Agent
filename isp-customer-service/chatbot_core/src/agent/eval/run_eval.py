@@ -421,7 +421,9 @@ def _run_versions() -> dict:
         return {"code": code_version()}
 
 
-def _write_history(results: list[dict], args: argparse.Namespace, code: int) -> None:
+def _write_history(
+    results: list[dict], args: argparse.Namespace, code: int, versions: dict
+) -> None:
     from agent.eval import history
 
     record = history.record_from_results(
@@ -432,7 +434,7 @@ def _write_history(results: list[dict], args: argparse.Namespace, code: int) -> 
             "voice": args.voice,
             "no_db": args.no_db,
         },
-        versions=_run_versions(),
+        versions=versions,
         exit_code=code,
     )
     path = Path(args.history)
@@ -483,6 +485,7 @@ def main() -> int:
             return 2
 
     runs = max(1, args.runs)
+    versions = _run_versions()  # what the scenarios start on, before any can be edited
     results = []
     for run in range(1, runs + 1):
         for scn in scenarios:
@@ -495,7 +498,7 @@ def main() -> int:
             results.append({"scn": scn, "ev": ev, "checks": checks, "run": run})
 
     code = _print_report(results) if runs == 1 else _print_stability(results, runs)
-    _write_history(results, args, code)
+    _write_history(results, args, code, versions)
 
     if args.json:
         Path(args.json).write_text(

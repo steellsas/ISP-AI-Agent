@@ -161,6 +161,32 @@ def test_import_old_reports(tmp_path, capsys):
     assert rec["summary"]["passed"] == 1 and rec["summary"]["results"] == 3
 
 
+def test_odd_times_still_sort(tmp_path):
+    """A time without an offset, or no usable time at all, does not break the order."""
+    path = tmp_path / "history.jsonl"
+    history.append(_record(_fake_run(), "2026-11-26T10:00:00+02:00", code="aware"), path)
+    history.append(_record(_fake_run(), "2026-11-25", code="naive"), path)
+    history.append(_record(_fake_run(), "bad", code="bad"), path)
+    assert [r["versions"]["code"] for r in history.load(path)] == ["bad", "naive", "aware"]
+
+
+def test_import_expands_patterns(tmp_path, capsys):
+    """`import logs/eval_*.json` works where the shell does not expand the pattern."""
+    for name in ("eval_a.json", "eval_b.json"):
+        (tmp_path / name).write_text(
+            json.dumps([{"id": "S1", "run": 1, "checks": [{"name": "v", "pass": True}]}]),
+            encoding="utf-8",
+        )
+    path = tmp_path / "history.jsonl"
+    pattern = str(tmp_path / "eval_*.json")
+    assert history.main(["--file", str(path), "import", pattern, str(tmp_path / "none_*")]) == 0
+    assert "no report matches" in capsys.readouterr().err
+    assert sorted(r["source"] for r in history.load(path)) == [
+        "import:eval_a.json",
+        "import:eval_b.json",
+    ]
+
+
 def test_bad_line_is_skipped(tmp_path, capsys):
     """A broken line does not stop the reader."""
     path = tmp_path / "history.jsonl"

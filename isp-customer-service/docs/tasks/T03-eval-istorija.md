@@ -39,6 +39,13 @@ Kiekvienas eval paleidimas paliekamas su versija; matosi scenarijų nestabilumas
   jo `init_database()` nustato tą patį `_db_connection`, kurį grąžina `agent.tools.get_db()`, tad `_close_db()` uždaro
   teisingą jungtį. mypy iš projekto šaknies mato `database/` duomenų aplanką (namespace package be `connection`).
   Kitos 12 mypy klaidų `run_eval.py` buvo ir anksčiau; `history.py` – be klaidų.
+- **Peržiūra (`/code-review high`), 7 radiniai; Andrius patvirtino taisyti 1–4:**
+  1. `_when` atsarginė reikšmė `datetime.min.astimezone()` Windows'e meta OSError → `datetime.min` su UTC.
+  2. Laikas be laiko juostos + su juosta → `TypeError` rūšiuojant → laikas be juostos skaitomas kaip vietinis.
+  3. PowerShell neišskleidžia `logs/eval_*.json` → `import` šablonus išskleidžia pats, neradęs – įspėja.
+  4. Versijų hash'ai buvo imami po paleidimo → dabar prieš scenarijus.
+  Neatlikti (smulkūs): 5 importo dublių atpažinimas tik pagal failo vardą; 6 rezultato eilutė be `id`/`pass`
+  nulaužia `flaky`/`diff`; 7 eval iš worktree rašo istoriją į worktree `logs/` (naudoti `--history`).
 
 ## Rezultatas
 (commit'ai, compare URL, kas liko)

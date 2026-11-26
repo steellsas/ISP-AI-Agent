@@ -28,7 +28,8 @@ import argparse
 import contextlib
 import json
 import sys
-from datetime import datetime
+from datetime import UTC, datetime
+from glob import glob
 from pathlib import Path
 from typing import Any
 
@@ -141,11 +142,16 @@ def append(record: dict[str, Any], path: Path = HISTORY_PATH) -> None:
 
 
 # --- Reading -------------------------------------------------------------------------
+_NO_TIME = datetime.min.replace(tzinfo=UTC)
+
+
 def _when(rec: dict) -> datetime:
+    """The record's time, always timezone-aware (a bare time is read as local)."""
     try:
-        return datetime.fromisoformat(rec["ts"])
+        when = datetime.fromisoformat(rec["ts"])
     except (KeyError, TypeError, ValueError):
-        return datetime.min.astimezone()
+        return _NO_TIME
+    return when if when.tzinfo else when.astimezone()
 
 
 def load(path: Path = HISTORY_PATH) -> list[dict]:
@@ -295,10 +301,23 @@ def cmd_diff(records: list[dict], a: int, b: int) -> None:
         print(f"\nmissing in B: {', '.join(only_a)}")
 
 
-def cmd_import(paths: list[Path], history: Path) -> None:
+def _expand(patterns: list[str]) -> list[Path]:
+    """The report files the arguments name. Patterns are expanded here because PowerShell
+    passes `logs/eval_*.json` to a native program unexpanded."""
+    paths: list[Path] = []
+    for pattern in patterns:
+        matches = sorted(glob(pattern)) if any(c in pattern for c in "*?[") else [pattern]
+        found = [Path(m) for m in matches if Path(m).is_file()]
+        if not found:
+            print(f"warning: no report matches {pattern}", file=sys.stderr)
+        paths.extend(p for p in found if p not in paths)
+    return paths
+
+
+def cmd_import(patterns: list[str], history: Path) -> None:
     done = {rec.get("source") for rec in load(history)}
     added = 0
-    for p in sorted(paths, key=lambda x: x.stat().st_mtime):
+    for p in sorted(_expand(patterns), key=lambda x: x.stat().st_mtime):
         rec = record_from_report(p)
         if rec["source"] in done:
             print(f"skip {p.name} (already imported)")
@@ -326,7 +345,7 @@ def main(argv: list[str] | None = None) -> int:
     p_diff.add_argument("a", type=int, nargs="?", default=-2)
     p_diff.add_argument("b", type=int, nargs="?", default=-1)
     p_import = sub.add_parser("import", help="add old run_eval.py --json reports")
-    p_import.add_argument("reports", type=Path, nargs="+")
+    p_import.add_argument("reports", nargs="+", help="report files or glob patterns")
     args = ap.parse_args(argv)
 
     if args.cmd == "import":
