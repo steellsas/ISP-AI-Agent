@@ -1,6 +1,6 @@
 # T01 — Tiketo kontaktai tik iš kliento žodžių
 
-**Būsena:** peržiūra · **Šaka:** `fix/ticket-contact-grounding` · **ROADMAP:** Stage 2 (demo kokybė)
+**Būsena:** retro · **Šaka:** `fix/ticket-contact-grounding` · **ROADMAP:** Stage 2 (demo kokybė)
 
 ## Tikslas
 Telefonas ir laikas tikete paimami tik iš to, ką klientas tikrai pasakė; padiktuotas numeris, kuris skiriasi nuo caller ID, perklausiamas prieš registruojant.
@@ -53,8 +53,9 @@ Telefonas ir laikas tikete paimami tik iš to, ką klientas tikrai pasakė; padi
 - Eval: nė vienas scenarijus nediktuoja kito numerio; naujo scenarijaus nedėta (`agent/eval/` liečia T03) – follow-up.
 
 ## Rezultatas
+- Sujungta: PR #144 (`507ca1a`) į `develop`.
 - Commit'ai: `94f884b` užduoties failas · `567f2ce` grounding + perklausimas · `21ae49c` peržiūros pataisos.
 - Compare: https://github.com/steellsas/ISP-AI-Agent/compare/develop...fix/ticket-contact-grounding
 - `/code-review high`: 8 radiniai – 3 svarbūs + 4 smulkūs pataisyti (`21ae49c`), 1 esamas paliktas.
 - Liko (follow-up): `closing.py:65` numerio pataisymas po registracijos be perklausimo; eval scenarijus su
-  padiktuotu kitu numeriu (kai T03 baigs `agent/eval/`); D8d `reply_any „per minutę“` patikrinti ant `develop`.
+  padiktuotu kitu numeriu (T03 sujungtas – galima); D8d `reply_any „per minutę“` patikrinti ant `develop`.
