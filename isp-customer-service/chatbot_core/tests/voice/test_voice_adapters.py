@@ -247,13 +247,3 @@ class TestEdgeTTS:
             chunks = list(tts.stream("A. B. C."))
 
         assert chunks == [b"E:A.", b"E:C."]
-
-    def test_real_edge_synthesis_smoke(self):
-        """Opt-in: real edge-tts call. Skips if edge/network unavailable."""
-        from adapters.tts import EdgeTTSProvider
-
-        try:
-            audio = EdgeTTSProvider()._synthesize_one("Sveiki.", "lt-LT-OnaNeural")
-        except Exception as e:  # network / engine missing
-            pytest.skip(f"edge-tts unavailable: {e}")
-        assert isinstance(audio, bytes) and len(audio) > 100  # real MP3

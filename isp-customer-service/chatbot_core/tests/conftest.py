@@ -8,6 +8,7 @@ Run tests:
     pytest -m diagnosis tests/  # one area (tests/__init__.py)
 """
 
+import hashlib
 import os
 import sqlite3
 import sys
@@ -142,6 +143,39 @@ def ensure_test_database():
     """
     _build_test_database()
     yield
+
+
+# Tests edit knowledge and locale files only in copies under tmp_path. A test that writes the
+# repo's own files leaves them changed when it is interrupted, and the next commit picks it up.
+_GUARDED_DIRS = (
+    _CHATBOT_CORE / "src" / "agent" / "locales",
+    _CHATBOT_CORE / "src" / "agent" / "knowledge",
+)
+
+
+def _hash_guarded_files() -> dict[str, str]:
+    hashes = {}
+    for folder in _GUARDED_DIRS:
+        for path in folder.rglob("*"):
+            if path.is_file() and "__pycache__" not in path.parts:
+                rel = path.relative_to(_CHATBOT_CORE).as_posix()
+                hashes[rel] = hashlib.sha256(path.read_bytes()).hexdigest()
+    return hashes
+
+
+@pytest.fixture(scope="session", autouse=True)
+def repo_files_unchanged():
+    """Fail the session when any test changed, added or removed a locale or knowledge file."""
+    before = _hash_guarded_files()
+    yield
+    after = _hash_guarded_files()
+    changed = sorted(
+        f"{rel} ({'added' if rel not in before else 'removed' if rel not in after else 'changed'})"
+        for rel in before.keys() | after.keys()
+        if before.get(rel) != after.get(rel)
+    )
+    if changed:
+        pytest.fail("Tests changed repo files:\n  " + "\n  ".join(changed), pytrace=False)
 
 
 @pytest.fixture(scope="session")
