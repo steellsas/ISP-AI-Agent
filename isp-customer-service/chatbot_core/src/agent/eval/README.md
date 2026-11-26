@@ -39,10 +39,38 @@ each scenario** (bind/reset stubs mutate it — scenarios must not leak state; s
 trace path.
 
 The recorded pre-refactor results live in
-[`docs/refactoring/baseline/`](../../../../docs/refactoring/baseline/README.md).
+[`docs/archive/refactoring/baseline/`](../../../../docs/archive/refactoring/baseline/).
+
+## Run history (`logs/eval/history.jsonl`)
+Every run — with or without `--json` — appends **one line** to `logs/eval/history.jsonl`
+(gitignored; `--history PATH` writes elsewhere). The line says what the run ran on and how
+each scenario did, so a flaky scenario can be told apart from a regression:
+- `ts`, `source` (`run`, or `import:<file>` for an old report),
+- `versions` — `agent/versions.py` `call_versions()`: the git commit (`+changes` when dirty),
+  the knowledge / locale / prompts / documents hashes and the models; `{"code": "unknown"}`
+  for imported reports,
+- `args` — `only`, `runs`, `voice`, `no_db`,
+- `results` — per scenario × run: `id`, `run`, `known_bug`, `pass`, `checks` (`{name: bool}`;
+  the check details stay in `--json` and the trace),
+- `summary` — scenarios, runs, passed results, checks passed / total, `hard_fails`, `exit_code`.
+
+Read it back with `history.py` (standard library only, no LLM):
+```bash
+uv run python chatbot_core/src/agent/eval/history.py list -n 10      # the last 10 runs
+uv run python chatbot_core/src/agent/eval/history.py flaky            # passed / ran per scenario
+uv run python chatbot_core/src/agent/eval/history.py flaky --last 5 --all
+uv run python chatbot_core/src/agent/eval/history.py diff             # last two runs: broke / fixed
+uv run python chatbot_core/src/agent/eval/history.py diff 3 -1        # run #3 against the latest
+uv run python chatbot_core/src/agent/eval/history.py import logs/eval_*.json
+```
+Run numbers are `list`'s `#` column (1 = oldest; negative counts from the end). `flaky` lists
+only scenarios that failed at least once, unless `--all`. `diff` shows which version tags
+changed, then the scenarios that **broke** (all runs green in A, not in B), got **fixed**, or
+are **still failing**, with the checks that changed. `import` adds old `--json` reports (dated
+by file modification time) and skips a file already imported.
 
 ## Scenarios (`scenarios.json`)
-33 scenarios (2026-09-17). Each scenario = `{id, phone, desc, turns[], expect{}, known_bug?}`.
+50 scenarios. Each scenario = `{id, phone, desc, turns[], expect{}, known_bug?}`.
 The scorer (`_score` in `run_eval.py`) runs these checks:
 - `verdict_in` — the expected verdict reason appears at some point (hypothesis cause,
   procedure verdict or the network verdict, across turns).
