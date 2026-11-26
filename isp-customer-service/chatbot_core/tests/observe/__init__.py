@@ -11,4 +11,5 @@ FUNCTIONS = (
     "Kodėl taip",
     "Skambučių suvestinė",
     "Dashboard",
+    "Eval istorija",
 )

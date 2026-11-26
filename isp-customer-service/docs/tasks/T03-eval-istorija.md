@@ -18,12 +18,27 @@ Kiekvienas eval paleidimas paliekamas su versija; matosi scenarijų nestabilumas
 - Nedaroma: eval paleidimas (T04), CI vartai, stebėsenos puslapis.
 
 ## Atlikta, kai
-- [ ] testas su netikru paleidimu tikrina history eilutės formatą ir `history.py` išvestį (be LLM)
-- [ ] importas atliktas, nestabilumo lentelė rodo I2, S4b, X_dhcp_silent
+- [x] testas su netikru paleidimu tikrina history eilutės formatą ir `history.py` išvestį (be LLM)
+- [x] importas atliktas, nestabilumo lentelė rodo I2, S4b, X_dhcp_silent
 - [ ] `uv run pytest` žalias, `ruff check` / `ruff format --check` švarūs
+  (ruff švarus; pytest 2397 ✓, 1 ✗ – `test_real_edge_synthesis_smoke`, tikras edge-tts tinklo kvietimas grąžino 0 baitų, su T03 nesusijęs)
 
 ## Sprendimai eigoje
-(pildyk čia)
+- **Formatas savo modulyje.** Eilutės formatą kuria ir skaito `eval/history.py` (`record_from_results`,
+  `record_from_report`, `append`, `load`); `run_eval.py` tik jį kviečia. `history.py` – tik stdlib, be `agent` importų.
+- **Istorijoje be check'ų `detail`.** Tik `{name: bool}` – detalės yra `--json` ir trace'e; eilutė lieka maža.
+- **`--history PATH`** naujas `run_eval.py` argumentas (numatytas `logs/eval/history.jsonl`). Nepavykus įrašyti
+  (OSError) – įspėjimas, ataskaita ir `--json` vis tiek išvedami. Nepavykus `call_versions()` – `{"code": code_version()}`.
+- **`hard_fails`** skaičiuojamas kaip `run_eval.py` vartai: scenarijus su bent vienu kritusiu run'u, ne `known_bug`.
+- **Importas:** 25 `logs/eval_*.json` → pagrindinio checkout'o `logs/eval/history.jsonl` (ten vyks T04 paleidimai);
+  data iš mtime (vardai `6a`, `1111` metų/datos nepasako), `versions: {"code": "unknown"}`. `s4_full.json`, `s4d.json`
+  neimportuoti (ne `eval_*`, po 1 scenarijų). Rezultatas: I2 24/61, S4b 44/61, X_dhcp_silent 51/61 – sutampa su peržiūra.
+- **Testas `tests/observe/test_eval_history.py`** (sritis „Stebėsena“, funkcija „Eval istorija“) – nauja sritis
+  reikalautų keisti `function_report.py` MARKS.
+- **mypy `run_eval.py:129` – ne tikra klaida, kodas nekeistas.** Vykdant `database` = `shared/src/database`;
+  jo `init_database()` nustato tą patį `_db_connection`, kurį grąžina `agent.tools.get_db()`, tad `_close_db()` uždaro
+  teisingą jungtį. mypy iš projekto šaknies mato `database/` duomenų aplanką (namespace package be `connection`).
+  Kitos 12 mypy klaidų `run_eval.py` buvo ir anksčiau; `history.py` – be klaidų.
 
 ## Rezultatas
 (commit'ai, compare URL, kas liko)

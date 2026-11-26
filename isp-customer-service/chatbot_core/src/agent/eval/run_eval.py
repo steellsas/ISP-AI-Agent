@@ -32,7 +32,9 @@ Usage (needs LLM API keys in .env):
     uv run python src/agent/eval/run_eval.py --no-db          # skip DB rebuild (faster reruns)
     uv run python src/agent/eval/run_eval.py --json report.json
 
-The pre-refactor results to compare against: docs/refactoring/baseline/.
+Every run also appends one versioned line to logs/eval/history.jsonl; read it back with
+eval/history.py (list / flaky / diff). The pre-refactor results:
+docs/archive/refactoring/baseline/.
 """
 
 from __future__ import annotations
@@ -407,11 +409,53 @@ def _print_stability(results: list[dict], runs: int) -> int:
     return 1 if hard_fails else 0
 
 
+def _run_versions() -> dict:
+    """What this run ran on (agent/versions.py); a missing tag never stops the eval."""
+    from agent.versions import call_versions, code_version
+
+    try:
+        from agent.config import get_config
+
+        return call_versions(get_config())
+    except Exception:
+        return {"code": code_version()}
+
+
+def _write_history(results: list[dict], args: argparse.Namespace, code: int) -> None:
+    from agent.eval import history
+
+    record = history.record_from_results(
+        results,
+        args={
+            "only": args.only,
+            "runs": max(1, args.runs),
+            "voice": args.voice,
+            "no_db": args.no_db,
+        },
+        versions=_run_versions(),
+        exit_code=code,
+    )
+    path = Path(args.history)
+    try:
+        history.append(record, path)
+    except OSError as e:  # the report and --json must still come out
+        print(f"History NOT written ({path}): {e}")
+        return
+    print(f"History line appended to {path}")
+
+
 def main() -> int:
+    from agent.eval.history import HISTORY_PATH
+
     ap = argparse.ArgumentParser(description="Conversation eval — Golden Dataset")
     ap.add_argument("--only", help="run a single scenario by id")
     ap.add_argument("--no-db", action="store_true", help="skip DB rebuild between scenarios")
     ap.add_argument("--json", help="write the raw report to this path")
+    ap.add_argument(
+        "--history",
+        default=str(HISTORY_PATH),
+        help="append this run's versioned summary to this JSONL file",
+    )
     ap.add_argument(
         "--voice",
         action="store_true",
@@ -451,6 +495,7 @@ def main() -> int:
             results.append({"scn": scn, "ev": ev, "checks": checks, "run": run})
 
     code = _print_report(results) if runs == 1 else _print_stability(results, runs)
+    _write_history(results, args, code)
 
     if args.json:
         Path(args.json).write_text(
