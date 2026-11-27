@@ -1,6 +1,6 @@
 # T02 — Testai neliečia repo failų
 
-**Būsena:** peržiūra · **Šaka:** `fix/test-locale-isolation` · **ROADMAP:** Stage 3 (test loop)
+**Būsena:** retro · **Šaka:** `fix/test-locale-isolation` · **ROADMAP:** Stage 3 (test loop)
 
 ## Tikslas
 Joks testas nerašo į repo žinių/frazių failus; jei parašytų – testų sesija tai pagauna.
@@ -50,6 +50,9 @@ Joks testas nerašo į repo žinių/frazių failus; jei parašytų – testų se
   - jau buvęs: `loader.reload()` neišvalo `language._load` (`kalba.yaml` keitimas be restarto nematomas);
   - smulkmenos: apsauga neatskiria rankinio redagavimo testų metu; `monkeypatch.undo()` fixture'e atšaukia
     visus testo patch'us; `prompts/` neapsaugotas; apsauga veikia tik `chatbot_core/tests`.
+- Sujungta: PR #143 (`6e4dc66`).
+- Retro: pamokos `docs/lessons.md` (užšaldyti keliai ir monkeypatch; lygiagrečių užduočių README eilutės).
+  Liko: `kalba.yaml` cache per `loader.reload()`; Edge TTS adapterio pašalinimas; peržiūros smulkmenos.
 
 ## Darbo taisyklės
 - Eigoje priimtus sprendimus užrašyk skiltyje „Sprendimai eigoje“. Jei testai nepraeina ar atsiranda kelios galimybės – sustok, pateik variantus su rekomendacija ir lauk.
