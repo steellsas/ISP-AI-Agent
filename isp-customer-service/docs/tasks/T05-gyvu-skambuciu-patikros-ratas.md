@@ -1,6 +1,6 @@
 # T05 — Gyvų skambučių patikros ratas
 
-**Būsena:** peržiūra · **Šaka:** `docs/live-check-round` · **ROADMAP:** P0 (projekto peržiūra 2026-11-26) · **Modelis:** Opus
+**Būsena:** retro · **Šaka:** `docs/live-check-round` · **ROADMAP:** P0 (projekto peržiūra 2026-11-26) · **Modelis:** Opus
 
 ## Tikslas
 Uždaryti atvirus gyvų skambučių patikros radinius (23 „taisomas“ + 9 „laukia gyvo“) ir gauti pirmą eval bazę su versijomis.
@@ -122,12 +122,12 @@ Anksčiau nestabilūs I2, S4b, X_dhcp_silent — dabar 3/3.
 
 ## Rezultatas
 - Commit'ai: `ac0e006` užduotis · `9ee1be8` T03 būsena README · `04193f5` radinių patikra, eval bazė, gyvų skambučių
-  sąrašas · `293e3b1` peržiūros pataisos (1, 3–6) · šis — būsena `peržiūra`.
-- Compare: https://github.com/steellsas/ISP-AI-Agent/compare/develop...docs/live-check-round
+  sąrašas · `293e3b1` peržiūros pataisos (1, 3–6) · `820af91` būsena `peržiūra`. Sujungta: PR #150 (`57083ff`).
 - Eval bazė: pagrindinio checkout'o `logs/eval/history.jsonl`, 2026-11-27T14:15, `code 968be2f`, 147/153.
 - Liko: 9 gyvi skambučiai (`docs/testing/GYVI_SKAMBUCIAI_T05.md`) — Andrius; pasiūlytos užduotys (D8d/D8e laukimai,
   R4 frazės ilgis, #15 paieška pagal pavardę, #33 sargas variklyje); R4 eval stenogramoje LLM frazė
   „Kolgių nesakau, bet kolegų paskambins“ — galimas naujas kalbos radinys.
+- Retro: 4 pamokos `docs/lessons.md`; eval iš worktree → ISP `CLAUDE.md`, README eilutė prieš sesiją → `/plan-task`.
 
 ## Darbo taisyklės
 - Eigoje priimtus sprendimus užrašyk skiltyje „Sprendimai eigoje“. Jei testai nepraeina ar atsiranda kelios galimybės – sustok, pateik variantus su rekomendacija ir lauk.

@@ -32,6 +32,9 @@ The venv's editable `.pth` files point at the main checkout. In a worktree:
    `W=$(cygpath -w "$PWD")`;
    `PYTHONPATH="$W\chatbot_core;$W\crm_service\src;$W\shared\src;$W\network_diagnostic_service\src"`.
    Without it the two copies mix (`No module named repository.customer_repo`).
+3. The eval needs `.env` (API keys), which a worktree does not have; never copy or print it.
+   To measure `develop`, run the eval from the main checkout while it is on `develop` and clean.
+   To measure a branch's own code, ask Andrius how to run it.
 
 ## Design rules
 - **The engine decides, the LLM only speaks.** Every action (register, inform, close) is an engine

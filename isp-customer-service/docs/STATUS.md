@@ -69,7 +69,7 @@ network, in the browser, with cloud LLM and ASR.
 | D4 | **Gemma Lithuanian quality** — grammar and word errors | a native listener hears them | S–M — prompts, examples, `kalba.yaml`; fine-tuning only after eval |
 | D5 | **Phases owned in one place** (v3) | the remaining live-call bugs come from scattered ownership | M |
 | D6 | Demo script refresh | [demo/DEMO_PRISTATYMAS.md](demo/DEMO_PRISTATYMAS.md) dates from 2026-09-28 | S |
-| D7 | Stable eval: `X_dhcp_silent`, `I2` flaky (pass rates per run: `eval/history.py flaky`) | confidence before a show | S |
+| D7 | Stable eval: baseline 2026-11-27 (`968be2f`, `--runs 3`) 147/153 — `X_dhcp_silent`, `I2`, `S4b` now 3/3; steady fails `D8d` (stale expectation after #86) and `R4` (`reply_len`, engine phrase 301 > 280) — see `tasks/T05` | confidence before a show | S |
 
 ## 5. What production needs
 
@@ -125,7 +125,7 @@ speaks. Rated against that practice:
 | Telemetry over the caller's words | yes | ★★★ |
 | Knowledge as validated data | yes | ★★★ |
 | Explainability (one plan per turn, traces) | yes | ★★★ |
-| Tests without LLM + eval with LLM | 1 390 + 48 | ★★☆ no voice/noise eval |
+| Tests without LLM + eval with LLM | 2 445 + 51 | ★★☆ no voice/noise eval |
 | Latency | ~3 s | ★☆☆ industry < 1 s |
 | Turn-taking, barge-in | own code | ★★☆ works, but reinvented |
 | Production infrastructure | almost none | ☆☆☆ |
