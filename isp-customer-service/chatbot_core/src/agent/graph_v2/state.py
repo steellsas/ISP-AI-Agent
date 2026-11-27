@@ -267,6 +267,9 @@ class TicketContext(BaseModel):
     ask_phone_confirm: bool = False
     phone_confirm_out: bool = False
     phone_confirm_unclear: bool = False
+    # A question came instead of the answer: the next yes counts only if the reply repeated
+    # the read-back (the number was said again).
+    phone_confirm_after_question: bool = False
     # The caller said the read-back number is wrong — the next reply asks for it again.
     ask_phone_reask: bool = False
 

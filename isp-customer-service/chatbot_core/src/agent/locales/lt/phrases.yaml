@@ -1153,6 +1153,10 @@ ticket:
     stuck: "Pokalbis užstrigo — agentas kelis kartus nesuprato kliento."
   details:
     request: "Kliento klausimas ({type}): {text}."
+    # A number given after the registration: confirmed after its read-back, or left unconfirmed
+    # (a goodbye or a hang-up at the read-back).
+    phone_amend: "Skambinti kitu numeriu: {phone}"
+    phone_amend_unconfirmed: "Klientas paminėjo kitą numerį (nepatvirtintas): {phone}"
     # Skolos ginčas buhalterijai (Andrius, 2026-10-30): sistemos faktai, kliento teiginys, klausimai.
     debt_system: "Skolos ginčas. Klientas atjungtas už skolą {amount} už {months}. Sistemoje paskutinis mokėjimas — {last_payment}."
     debt_claim: " Kliento teiginys: mokėjo {claim}; sistemoje šio mokėjimo nematyti."

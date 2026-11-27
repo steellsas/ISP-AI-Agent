@@ -158,7 +158,7 @@ class TestClosingNode:
     returns the whole state as its update and reaches tools only via the gateway."""
 
     def test_number_correction_is_noted_through_the_gateway(self, make_state, make_runtime):
-        from agent.graph_v2.state import ClosingState, TicketState, TurnScratch
+        from agent.graph_v2.state import ClosingState, TicketContext, TicketState, TurnScratch
         from langgraph.runtime import Runtime
 
         from tests.calls import run_turn_nodes
@@ -166,9 +166,12 @@ class TestClosingNode:
         rt = make_runtime(lambda name, args: {"success": True})
         state = make_state(
             "+37060012353",
-            ticket=TicketState(ticket_id="TCK-1"),
+            ticket=TicketState(
+                ticket_id="TCK-1",
+                context=TicketContext(phone_pending="868321007", phone_confirm_out=True),
+            ),
             closing=ClosingState(case_closed=True),
-            turn=TurnScratch(user_input="Skambinkite kitu numeriu 868321007"),
+            turn=TurnScratch(user_input="Taip"),
         )
         upd = run_turn_nodes(state, Runtime(context=rt))
         assert "Užsirašiau" in upd["turn"].reply
@@ -560,12 +563,17 @@ class TestD5WaitAckAndClosing:
         agent.state.ticket.ticket_id = res["ticket_id"]
         agent.state.closing.case_closed = True
         runtime = Runtime(context=agent.runtime)
-        # 1) number correction: acknowledged aloud AND noted on the ticket
+        # 1) number correction: read back first, then acknowledged aloud AND noted on the ticket
         upd = run_turn_nodes(
             agent.state.model_copy(
                 update={"turn": TurnScratch(user_input="Skambinkite kitu numeriu 868321007")}
             ),
             runtime,
+        )
+        assert "Užrašiau 868321007" in upd["turn"].reply
+        agent.state = GraphState(**upd)
+        upd = run_turn_nodes(
+            agent.state.model_copy(update={"turn": TurnScratch(user_input="Taip")}), runtime
         )
         assert "Užsirašiau" in upd["turn"].reply
         assert upd["messages"][-1]["content"] == upd["turn"].reply

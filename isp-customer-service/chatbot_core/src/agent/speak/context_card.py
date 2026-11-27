@@ -469,13 +469,23 @@ def _ticket_dialogue(state, rt) -> list[str]:
     from ..execute.ticket import caller_id, fmt_phone
 
     out: list[str] = []
+    ctx = state.ticket.context
+    read_back = (
+        phrase("identification.ticket_phone_confirm", phone=fmt_phone(ctx.phone_pending))
+        if ctx is not None and ctx.phone_confirm_out and ctx.phone_pending
+        else None
+    )
     if state.ticket.stage in ("phone", "hours"):
         from ..decide.rules.ticket import ticket_need
 
-        pending = phrase(
-            "identification.ticket_phone"
-            if state.ticket.stage == "phone"
-            else "identification.ticket_hours"
+        pending = (
+            read_back
+            if state.ticket.stage == "phone" and read_back
+            else phrase(
+                "identification.ticket_phone"
+                if state.ticket.stage == "phone"
+                else "identification.ticket_hours"
+            )
         )
         out.append(
             "TICKET DIALOGUE: we are registering the fault (reason: "
@@ -483,6 +493,12 @@ def _ticket_dialogue(state, rt) -> list[str]:
             f"{fmt_phone(caller_id(state)) or 'hidden — ask for it'}. The ticket is NOT "
             "registered yet — never say „užregistravau“. Answer the caller's question in "
             f"ONE sentence and then repeat the question: „{pending}“"
+        )
+    elif read_back and state.ticket.ticket_id:
+        out.append(
+            "NUMBER READ-BACK: the fault is registered; the caller gave another number to call "
+            "and has not confirmed it yet. Answer the caller's question in ONE sentence, then "
+            f"repeat word for word: „{read_back}“"
         )
     # A refusal WITH solving content: the dialogue was dropped, the call stays open.
     if state.ticket.resume_fix_note:
@@ -1376,7 +1392,10 @@ def _open_question(state, lines: list[str]) -> list[str]:
     """
     if not getattr(state.case, "fault", None):
         return []
-    if any(line.startswith(("PLAN GOAL", "SAY THIS STEP", "THE STEP WAITS")) for line in lines):
+    if any(
+        line.startswith(("PLAN GOAL", "SAY THIS STEP", "THE STEP WAITS", "NUMBER READ-BACK"))
+        for line in lines
+    ):
         return []
     asked = state.case.awaiting and state.case.step_said == state.case.step
     words = _next_step_words(state) if asked else ""

@@ -70,7 +70,7 @@ are **still failing**, with the checks that changed. `import` adds old `--json` 
 by file modification time) and skips a file already imported.
 
 ## Scenarios (`scenarios.json`)
-50 scenarios. Each scenario = `{id, phone, desc, turns[], expect{}, known_bug?}`.
+51 scenarios. Each scenario = `{id, phone, desc, turns[], expect{}, known_bug?}`.
 The scorer (`_score` in `run_eval.py`) runs these checks:
 - `verdict_in` — the expected verdict reason appears at some point (hypothesis cause,
   procedure verdict or the network verdict, across turns).
@@ -78,6 +78,8 @@ The scorer (`_score` in `run_eval.py`) runs these checks:
   (`ticket` = a `create_ticket` tool call ran; `inform` also accepts `open`/`outage`;
   `any` is not scored).
 - `identified` — `true`/`false`: whether the call ended with a committed customer id.
+- `ticket_phone` — the ticket's contact number when the call ended (`state.ticket.contact_phone`):
+  the number the caller confirmed at its read-back, never one they only said.
 - `reply_any` — at least ONE of the listed substrings appears (synonyms / OR-group).
 - `reply_none` — NO reply contains ANY listed substring (regression guard for a bug).
 - `tool_used` — each listed tool call actually ran (read from the session trace); one
@@ -89,7 +91,7 @@ The scorer (`_score` in `run_eval.py`) runs these checks:
   when present in `expect` and a record exists.
 - `reply_len` — **always on**: voice-length guard, longest reply ≤ 280 chars, average ≤ 160.
 
-The first six and `record_outcome` run only when present in `expect`. A full run scores
+The first seven and `record_outcome` run only when present in `expect`. A full run scores
 ~178 checks (2026-09-17); every new scenario adds 2 (`contact_record`, `reply_len`) plus one
 per `expect` key and one per `tool_used` entry.
 
