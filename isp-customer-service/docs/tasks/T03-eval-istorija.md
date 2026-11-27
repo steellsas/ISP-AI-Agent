@@ -1,6 +1,6 @@
 # T03 — Eval istorija su versijomis
 
-**Būsena:** peržiūra · **Šaka:** `feat/eval-history` · **ROADMAP:** Stage 3 (P3 test loop)
+**Būsena:** retro · **Šaka:** `feat/eval-history` · **ROADMAP:** Stage 3 (P3 test loop)
 
 ## Tikslas
 Kiekvienas eval paleidimas paliekamas su versija; matosi scenarijų nestabilumas ir kas pasikeitė tarp dviejų paleidimų.
@@ -49,10 +49,11 @@ Kiekvienas eval paleidimas paliekamas su versija; matosi scenarijų nestabilumas
 
 ## Rezultatas
 - Commit'ai: `9ac5642` užduotis, `7b17baf` istorija + `history.py` + testai + README, `b4dad81` peržiūros pataisos 1–4.
-- Compare: https://github.com/steellsas/ISP-AI-Agent/compare/develop...feat/eval-history
+- Sujungta: PR #142 (`752849a`), 2026-11-26.
 - Importuota 25 senų ataskaitų į pagrindinio checkout'o `logs/eval/history.jsonl`.
 - Liko: peržiūros radiniai 5–7 (smulkūs); `test_real_edge_synthesis_smoke` krenta dėl tinklo (ne T03);
-  pirmas versijuotas eval paleidimas – T04.
+  pirmas versijuotas eval etalono paleidimas – nauja užduotis (T04 numeris atiteko kitai užduočiai).
+- Retro: pamokos `docs/lessons.md` (PowerShell bandymas CLI įrankiams; importas ir jo naudojimas tame pačiame Edit'e).
 
 ## Darbo taisyklės
 - Eigoje priimtus sprendimus užrašyk skiltyje „Sprendimai eigoje“. Jei testai nepraeina ar atsiranda kelios galimybės – sustok, pateik variantus su rekomendacija ir lauk.
