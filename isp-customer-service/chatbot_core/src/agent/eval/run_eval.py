@@ -216,6 +216,7 @@ def _run_scenario(scn: dict, voice: bool = False) -> dict:
         "case_closed": st.closing.case_closed,
         "closed_reason": st.closing.closed_reason,
         "customer_id": st.identity.customer_id,
+        "ticket_phone": st.ticket.contact_phone,
         "outage_reported": getattr(st.diagnosis, "outage_reported", False),
         "ticket_created": "create_ticket" in tools,
         "tools_used": tools,
@@ -297,6 +298,12 @@ def _score(scn: dict, ev: dict) -> list[tuple[str, bool, str]]:
         checks.append(
             ("identified", got == want, f"want={want} customer={ev.get('customer_id') or '-'}")
         )
+
+    # ticket_phone = the ticket's contact at the end of the call: the number the caller
+    # confirmed at its read-back, never one they only said.
+    if "ticket_phone" in exp:
+        want, got = exp["ticket_phone"], ev.get("ticket_phone")
+        checks.append(("ticket_phone", got == want, f"want={want} got={got or '-'}"))
 
     # reply_any = at least ONE of the listed substrings appears (an OR-group / synonyms).
     any_list = exp.get("reply_any", [])

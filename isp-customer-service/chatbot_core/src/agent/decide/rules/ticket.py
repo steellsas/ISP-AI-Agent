@@ -546,11 +546,12 @@ def _take_pending(state: Any, rt: Any, ctx: Any, action: str) -> None:
     rt.tracer.emit("decision", intent="ticket_dialogue", action=action)
 
 
-def _read_phone_confirm(state: Any, rt: Any, ctx: Any, user_input: str) -> None:
-    """The answer to „Užrašiau {numeris} — ar teisingai?": the same number again or a yes takes
-    it, a new number is read back in turn, a no asks for it again; a question is answered and the
-    read-back stays; „neregistruokit" goes to the cancel-confirm; a goodbye registers with the
-    number they dictated; an unclear answer repeats the read-back once."""
+def phone_confirm_answer(state: Any, rt: Any, pending: str, user_input: str) -> tuple[str, str]:
+    """What the caller answered to „Užrašiau {numeris} — ar teisingai?": (kind, number).
+
+    kind is "same" (the read-back number again), "new" (another number, given as `number`),
+    "question", "keep_solving", "cancel", "no", "yes", "farewell" or "unclear". Read in this
+    order: a number beats every word around it, a question beats a yes inside it."""
     from ...perceive.detectors import (
         detect_farewell,
         detect_ticket_consent,
@@ -561,36 +562,58 @@ def _read_phone_confirm(state: Any, rt: Any, ctx: Any, user_input: str) -> None:
 
     said = re.sub(r"[^\d+]", "", user_input or "")
     if len(re.sub(r"\D", "", said)) >= 6:
-        if _same_phone(said, ctx.phone_pending):
-            _take_pending(state, rt, ctx, "phone_confirmed")
-            state.ticket.stage = "hours"
-            return
-        _take_phone(state, rt, ctx, said[:20])
-        return
+        return ("same", pending) if _same_phone(said, pending) else ("new", said[:20])
     if is_real_question(user_input):
+        return "question", ""
+    if wants_to_keep_solving(state, rt, user_input):
+        return "keep_solving", ""
+    if any(m in (user_input or "").lower() for m in vocab("ticket_cancel")):
+        return "cancel", ""
+    consent = detect_ticket_consent(user_input)
+    if consent == "no" or is_bare_negation(user_input):
+        return "no", ""
+    if consent == "yes" or is_backchannel(user_input):
+        return "yes", ""
+    if detect_farewell(user_input):
+        return "farewell", ""
+    return "unclear", ""
+
+
+def _read_phone_confirm(state: Any, rt: Any, ctx: Any, user_input: str) -> None:
+    """The answer to „Užrašiau {numeris} — ar teisingai?": the same number again or a yes takes
+    it, a new number is read back in turn, a no asks for it again; a question is answered and the
+    read-back stays; „neregistruokit" goes to the cancel-confirm; a goodbye registers with the
+    number they dictated; an unclear answer repeats the read-back once."""
+    kind, number = phone_confirm_answer(state, rt, ctx.phone_pending, user_input)
+    if kind == "same":
+        _take_pending(state, rt, ctx, "phone_confirmed")
+        state.ticket.stage = "hours"
+        return
+    if kind == "new":
+        _take_phone(state, rt, ctx, number)
+        return
+    if kind == "question":
         ctx.phone_confirm_out = True  # the next answer is still read against the read-back
         state.turn.ticket_offscript_question = True
         rt.tracer.emit("decision", intent="ticket_dialogue", action="question")
         return
-    low = (user_input or "").lower()
-    if wants_to_keep_solving(state, rt, user_input):
+    if kind == "keep_solving":
         abort_ticket_to_solving(state, rt)
         return
-    if any(m in low for m in vocab("ticket_cancel")):
+    if kind == "cancel":
         _refuse_registration(state, rt, ctx)
         return
-    consent = detect_ticket_consent(user_input)
-    if consent == "no" or is_bare_negation(user_input):
+    if kind == "no":
         ctx.phone_pending = None
         ctx.phone_confirm_unclear = False
         ctx.ask_phone_reask = True
         rt.tracer.emit("decision", intent="ticket_dialogue", action="phone_reask")
         return
-    if consent == "yes" or is_backchannel(user_input):
+    if kind == "yes":
         _take_pending(state, rt, ctx, "phone_confirmed")
         state.ticket.stage = "hours"
         return
-    if detect_farewell(user_input):
+    if kind == "farewell":
         # The caller is done talking: the number they dictated beats the caller ID or none.
         _take_pending(state, rt, ctx, "phone_taken_on_farewell")
         state.ticket.stage = "done"

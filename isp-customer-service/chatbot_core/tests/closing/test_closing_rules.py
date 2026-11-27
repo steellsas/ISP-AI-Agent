@@ -18,7 +18,7 @@ def _state(make_state, text, **groups):
         (
             "Skambinkite kitu numeriu 868321007",
             {"ticket": TicketState(ticket_id="TCK-1")},
-            "closing.ticket_phone_amend",
+            "closing.ticket_phone_confirm",  # read back before it lands on the ticket
         ),
         ("Gerai, ačiū", {"ticket": TicketState(ticket_id="TCK-1")}, "closing.goodbye_after_ticket"),
         # Wave 10, S3: a v2 Case call reopens into the contact dialogue.

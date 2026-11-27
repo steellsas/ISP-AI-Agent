@@ -384,3 +384,27 @@ registracijos.
 
 **Matavimas:** eval `--only` su tiketo dialogu — rezultatas užduoties faile
 `docs/tasks/T01-tiketo-kontaktu-grounding.md`.
+
+---
+
+### T04 Numeris po registracijos tik perklausus (2026-11-27, Andrius pritarė planui)
+
+**Kodėl:** T01 peržiūros radinys — po „Užregistravau“ bet kokia frazė su ≥ 6 skaitmenimis iškart
+keitė tiketo kontaktą ir pridėdavo pastabą be perklausimo.
+
+**Kas pakeista** (`decide/rules/closing.py`, promptai nekeisti):
+
+| | Prieš | Po |
+|---|---|---|
+| Kitas numeris po registracijos | iškart `contact_phone` + pastaba | „Užrašiau {phone} — ar teisingai?“ (T01 frazė); į tiketą tik po „taip“ |
+| „Ne“ į perklausimą | — | „Gerai — pasakykite numerį dar kartą, skaitmenimis.“ (T01 frazė) |
+| Numeris = esamas kontaktas / caller ID | pastaba vis tiek | jokios pastabos, „Užsirašiau — skambinsime numeriu {phone}.“ |
+| Atsisveikinimas / ragelis per perklausimą | — | pastaba „nepatvirtintas“, kontaktas nekeičiamas |
+
+**Naujos ištariamos frazės:** nėra. **Tiketo pastabų tekstai** perkelti iš kodo į
+`locales/lt/phrases.yaml`: `ticket.details.phone_amend` („Skambinti kitu numeriu: {phone}“, kaip
+buvo) ir naujas `ticket.details.phone_amend_unconfirmed` („Klientas paminėjo kitą numerį
+(nepatvirtintas): {phone}“) — jį skaito meistras, ne klientas.
+
+**Matavimas:** eval `--only` scenarijai su registracija — užduoties faile
+`docs/tasks/T04-numeris-po-registracijos.md`.

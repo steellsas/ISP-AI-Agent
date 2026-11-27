@@ -48,6 +48,12 @@ def plan(state: Any, rt: Any) -> TurnPlan | None:
     ):
         reopen_call(state, rt, "still_down")
         return _escalate(state, rt, "closing.still_down_reopen")
+    # A POST-registration contact correction ("skambinkite kitu numeriu 868…") must land on
+    # the ticket, not vanish into the goodbye — read back first, before the goodbye logic can
+    # hang up on it.
+    amend = _post_registration_phone(state, rt, user_input)
+    if amend is not None:
+        return amend
     maybe_finish(state, rt, user_input)
     from ...perceive.detectors import is_real_question
 
@@ -55,25 +61,6 @@ def plan(state: Any, rt: Any) -> TurnPlan | None:
     # After a REGISTRATION the goodbye is scripted (live 2026-08-21: the closing LLM
     # re-asked the call-back hours after the ticket was done).
     if s.ticket.ticket_id and not question:
-        # A POST-registration contact correction ("skambinkite kitu numeriu 868…")
-        # must land on the ticket, not vanish into the goodbye (D5, live 2026-08-25).
-        digits = re.sub(r"\D", "", user_input or "")
-        if len(digits) >= 6 and not s.closing.is_complete:
-            from ...execute.ticket import fmt_phone
-
-            nr = re.sub(r"[^\d+]", "", user_input or "")[:20]
-            s.ticket.contact_phone = nr
-            return TurnPlan(
-                owner="closing",
-                rule="closing.ticket_phone_amend",
-                action=Action(type="append_ticket", args={"note": f"Skambinti kitu numeriu: {nr}"}),
-                say=Say(
-                    kind="phrase",
-                    key="identification.ticket_phone_fixed",
-                    vars={"phone": fmt_phone(nr)},
-                    stage=STAGE,
-                ),
-            )
         if s.intake.secondary_problems and not s.closing.secondary_problems_asked:
             s.closing.secondary_problems_asked = True  # the facts directive carries the list
         else:
@@ -86,6 +73,146 @@ def plan(state: Any, rt: Any) -> TurnPlan | None:
         return _goodbye("closing.goodbye")
     return TurnPlan(
         owner="closing", rule="closing.free_reply", say=Say(kind="directive", stage=STAGE)
+    )
+
+
+def _post_registration_phone(state: Any, rt: Any, user_input: str | None) -> TurnPlan | None:
+    """A number said after the registration goes on the ticket only once it is read back
+    („Užrašiau … — ar teisingai?") and confirmed — the contact dialogue's read-back, kept in
+    a `TicketContext` while `ticket.stage` stays None. None = not this rule's turn."""
+    from ...perceive.detectors import is_real_question
+
+    s = state
+    if not s.ticket.ticket_id or s.closing.is_complete:
+        return None
+    ctx = s.ticket.context
+    if ctx is not None and ctx.phone_confirm_out and ctx.phone_pending:
+        ctx.phone_confirm_out = False
+        return _read_back_answer(state, rt, ctx, user_input or "")
+    reask = ctx is not None and ctx.last_kind == "phone_reask"
+    number = _said_number(user_input)
+    if number and (reask or not is_real_question(user_input)):
+        return _offer_number(state, rt, number)
+    if reask:
+        s.ticket.context = None  # no number after „pasakykite dar kartą" — the ticket stays
+        rt.tracer.emit("decision", intent="ticket_amend", action="phone_dropped")
+    return None
+
+
+def _said_number(user_input: str | None) -> str | None:
+    said = re.sub(r"[^\d+]", "", user_input or "")
+    return said[:20] if len(re.sub(r"\D", "", said)) >= 6 else None
+
+
+def _offer_number(state: Any, rt: Any, number: str) -> TurnPlan:
+    """A said number: the one already on the ticket (or the caller ID) changes nothing; any
+    other is read back and waits for the answer."""
+    from ...execute.ticket import caller_id
+    from ...graph_v2.state import TicketContext
+    from .ticket import _same_phone
+
+    s = state
+    known = [p for p in (s.ticket.contact_phone, caller_id(state)) if p]
+    if any(_same_phone(number, p) for p in known):
+        s.ticket.context = None
+        rt.tracer.emit("decision", intent="ticket_amend", action="phone_already_on_ticket")
+        return _phone_fixed("closing.ticket_phone_kept", s.ticket.contact_phone or known[0])
+    s.ticket.context = TicketContext(phone_pending=number)
+    rt.tracer.emit("decision", intent="ticket_amend", action="phone_confirm")
+    return _read_back(s.ticket.context)
+
+
+def _read_back_answer(state: Any, rt: Any, ctx: Any, user_input: str) -> TurnPlan | None:
+    """The answer to the read-back, read as in the contact dialogue: a yes or the same number
+    writes it on the ticket, a new number is read back, a no asks for it again, a question is
+    answered and the read-back stays, a goodbye ends the call with the number left
+    unconfirmed (the finalizer notes it), an unclear answer repeats the read-back once."""
+    from ...contract.locale import phrase
+    from .ticket import phone_confirm_answer
+
+    s = state
+    kind, number = phone_confirm_answer(state, rt, ctx.phone_pending, user_input)
+    if kind in ("same", "yes"):
+        confirmed = ctx.phone_pending
+        s.ticket.contact_phone = confirmed
+        s.ticket.context = None
+        plan = _phone_fixed("closing.ticket_phone_amend", confirmed)
+        plan.action = Action(
+            type="append_ticket",
+            args={"note": phrase("ticket.details.phone_amend", phone=confirmed)},
+        )
+        return plan
+    if kind == "new":
+        return _offer_number(state, rt, number)
+    if kind == "question":
+        ctx.phone_confirm_out = True  # the next answer is still read against the read-back
+        return TurnPlan(
+            owner="closing", rule="closing.free_reply", say=Say(kind="directive", stage=STAGE)
+        )
+    if kind == "farewell":
+        rt.tracer.emit("decision", intent="ticket_amend", action="phone_unconfirmed")
+        return _goodbye("closing.goodbye_after_ticket")
+    if kind == "cancel":
+        s.ticket.context = None
+        rt.tracer.emit("decision", intent="ticket_amend", action="phone_dropped")
+        return None
+    if kind != "no" and not ctx.phone_confirm_unclear:
+        ctx.phone_confirm_unclear = True
+        rt.tracer.emit("decision", intent="ticket_amend", action="phone_confirm_repeat")
+        return _read_back(ctx)
+    ctx.phone_pending = None
+    ctx.phone_confirm_unclear = False
+    ctx.last_kind = "phone_reask"
+    rt.tracer.emit("decision", intent="ticket_amend", action="phone_reask")
+    return TurnPlan(
+        owner="closing",
+        rule="closing.ticket_phone_reask",
+        say=Say(kind="phrase", key="identification.ticket_phone_reask", stage=STAGE),
+    )
+
+
+def _read_back(ctx: Any) -> TurnPlan:
+    """„Užrašiau {phone} — ar teisingai?" — the next answer is read against it."""
+    ctx.phone_confirm_out = True
+    return _phone_say("closing.ticket_phone_confirm", "ticket_phone_confirm", ctx.phone_pending)
+
+
+def _phone_fixed(rule: str, phone: str) -> TurnPlan:
+    return _phone_say(rule, "ticket_phone_fixed", phone)
+
+
+def _phone_say(rule: str, key: str, phone: str) -> TurnPlan:
+    from ...execute.ticket import fmt_phone
+
+    return TurnPlan(
+        owner="closing",
+        rule=rule,
+        say=Say(
+            kind="phrase",
+            key=f"identification.{key}",
+            vars={"phone": fmt_phone(phone)},
+            stage=STAGE,
+        ),
+    )
+
+
+def note_unconfirmed_phone(state: Any, rt: Any) -> None:
+    """The call ended while a post-registration number waited for its read-back answer (a
+    goodbye, a hang-up): the ticket gets it as an unconfirmed note, its contact stays."""
+    from ...contract.locale import phrase
+    from ...execute.ticket import append_ticket_note
+
+    ctx = state.ticket.context
+    if not state.ticket.ticket_id or ctx is None or not ctx.phone_pending:
+        return
+    pending, ctx.phone_pending = ctx.phone_pending, None
+    noted = append_ticket_note(
+        state, rt, phrase("ticket.details.phone_amend_unconfirmed", phone=pending)
+    )
+    rt.tracer.emit(
+        "decision",
+        intent="ticket_amend",
+        action="phone_noted_unconfirmed" if noted else "note_failed",
     )
 
 

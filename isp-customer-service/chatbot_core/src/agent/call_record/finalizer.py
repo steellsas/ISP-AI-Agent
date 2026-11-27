@@ -93,6 +93,9 @@ def finalize(state: GraphState, rt: AgentRuntime, transport_end: str | None = No
         if s.ticket.ticket_id:
             close_call(state, rt, "registered")
             rt.tracer.emit("decision", intent="hangup_net", action="register")
+    from ..decide.rules.closing import note_unconfirmed_phone
+
+    note_unconfirmed_phone(state, rt)
     from .outcome import derive, outage_id
 
     record = derive(state, technical_error=_technical_error(rt.tracer))

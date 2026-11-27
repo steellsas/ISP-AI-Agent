@@ -480,6 +480,41 @@
       }
     },
     {
+      "id": "T3_other_number_read_back",
+      "phone": "+37060012353",
+      "desc": "T01 + T04: kitas numeris kontaktų dialoge ir po registracijos į tiketą patenka tik perklausus („Užrašiau … — ar teisingai?“) ir klientui patvirtinus.",
+      "turns": [
+        "Labą dieną, neveikia internetas, kaip galit padėt?",
+        "Taip",
+        "Giedrius",
+        "Taip",
+        "Taip, jau prie routerio",
+        "Nė viena lemputė nedega",
+        "Tuoje palaukite, tvirtai įkištas",
+        "Mhm.",
+        "Neturiu kompiuterio, tik telefoną",
+        "Gerai",
+        "Ne, skambinkite numeriu 861234567",
+        "Taip, teisingai",
+        "Bet kada",
+        "Dar vienas dalykas — geriau skambinkite numeriu 868321007",
+        "Taip",
+        "Ačiū, viso gero"
+      ],
+      "expect": {
+        "disposition": "ticket",
+        "tool_used": [
+          "create_ticket",
+          "append_ticket_note"
+        ],
+        "reply_any": [
+          "Užrašiau 868321007"
+        ],
+        "ticket_phone": "868321007",
+        "record_outcome": "ticket"
+      }
+    },
+    {
       "id": "S3_switch_unreachable_inform",
       "phone": "+37060020103",
       "desc": "Switch nepasiekiamas (avarija neregistruota) — informuoti (nieko daryti nereikia, informuosime), variklis PATS sukuria tiketą (Andrius 2026-09-11)",
