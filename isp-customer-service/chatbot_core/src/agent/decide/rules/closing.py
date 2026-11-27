@@ -128,10 +128,13 @@ def _read_back_answer(state: Any, rt: Any, ctx: Any, user_input: str) -> TurnPla
     answered and the read-back stays, a goodbye ends the call with the number left
     unconfirmed (the finalizer notes it), an unclear answer repeats the read-back once."""
     from ...contract.locale import phrase
-    from .ticket import phone_confirm_answer
+    from .ticket import answers_read_back, phone_confirm_answer
 
     s = state
     kind, number = phone_confirm_answer(state, rt, ctx.phone_pending, user_input)
+    if not answers_read_back(state, ctx, kind):
+        rt.tracer.emit("decision", intent="ticket_amend", action="phone_confirm_repeat")
+        return _read_back(ctx)
     if kind in ("same", "yes"):
         confirmed = ctx.phone_pending
         s.ticket.contact_phone = confirmed
@@ -146,6 +149,7 @@ def _read_back_answer(state: Any, rt: Any, ctx: Any, user_input: str) -> TurnPla
         return _offer_number(state, rt, number)
     if kind == "question":
         ctx.phone_confirm_out = True  # the next answer is still read against the read-back
+        ctx.phone_confirm_after_question = True
         return TurnPlan(
             owner="closing", rule="closing.free_reply", say=Say(kind="directive", stage=STAGE)
         )
@@ -198,16 +202,23 @@ def _phone_say(rule: str, key: str, phone: str) -> TurnPlan:
 
 def note_unconfirmed_phone(state: Any, rt: Any) -> None:
     """The call ended while a post-registration number waited for its read-back answer (a
-    goodbye, a hang-up): the ticket gets it as an unconfirmed note, its contact stays."""
+    goodbye, a hang-up): the ticket gets it as an unconfirmed note, its contact stays. A
+    number the ticket already carries (the hang-up net registered with it) needs no note."""
     from ...contract.locale import phrase
     from ...execute.ticket import append_ticket_note
+    from .ticket import _same_phone
 
     ctx = state.ticket.context
     if not state.ticket.ticket_id or ctx is None or not ctx.phone_pending:
         return
     pending, ctx.phone_pending = ctx.phone_pending, None
+    if state.ticket.contact_phone and _same_phone(pending, state.ticket.contact_phone):
+        return
     noted = append_ticket_note(
-        state, rt, phrase("ticket.details.phone_amend_unconfirmed", phone=pending)
+        state,
+        rt,
+        phrase("ticket.details.phone_amend_unconfirmed", phone=pending),
+        kind="unconfirmed",
     )
     rt.tracer.emit(
         "decision",

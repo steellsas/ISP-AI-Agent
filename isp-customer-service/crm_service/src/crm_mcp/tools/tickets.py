@@ -321,6 +321,7 @@ def update_ticket_status(
 # is new information.
 NOTE_KINDS = {
     "correction": "PATIKSLINTA",
+    "unconfirmed": "NEPATVIRTINTA",
     "just_checking": "PAKARTOTINIS SKAMBUTIS — teiraujasi eigos",
     "nobody_came": "PAKARTOTINIS SKAMBUTIS — niekas neatvyko / nesusisiekė",
     "new_info": "PAKARTOTINIS SKAMBUTIS — nauja informacija",

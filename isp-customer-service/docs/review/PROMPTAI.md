@@ -406,5 +406,15 @@ keitė tiketo kontaktą ir pridėdavo pastabą be perklausimo.
 buvo) ir naujas `ticket.details.phone_amend_unconfirmed` („Klientas paminėjo kitą numerį
 (nepatvirtintas): {phone}“) — jį skaito meistras, ne klientas.
 
+**Peržiūros pataisos** (`/code-review high`, Andrius pritarė 1–3):
+- Narratoriaus kortelė (`speak/context_card.py` `_ticket_dialogue`): kai klientas per perklausimą
+  paklausia, kortelė liepia po atsakymo pakartoti **perklausimą** „Užrašiau {phone} — ar teisingai?“
+  (kontaktų dialoge anksčiau – „Ar tiks numeris, iš kurio skambinate?“). Po registracijos – nauja
+  eilutė `NUMBER READ-BACK: …`; `_open_question` jos nebeperrašo „NO QUESTION of your own“.
+- Variklio sargas: jei atsakymas į klausimą perklausimo nepakartojo (numerio nėra paskutinėje
+  agento frazėje), kitas „taip / ne / neaiškus“ nelaikomas atsakymu – perklausimas kartojamas skriptu.
+- Tiketo pastaba „nepatvirtintas“ žymima `[NEPATVIRTINTA]` (CRM `NOTE_KINDS.unconfirmed`), ne
+  `[PATIKSLINTA]`.
+
 **Matavimas:** eval `--only` scenarijai su registracija — užduoties faile
 `docs/tasks/T04-numeris-po-registracijos.md`.

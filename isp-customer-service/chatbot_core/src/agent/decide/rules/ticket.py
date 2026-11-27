@@ -579,12 +579,35 @@ def phone_confirm_answer(state: Any, rt: Any, pending: str, user_input: str) -> 
     return "unclear", ""
 
 
+def read_back_repeated(state: Any, pending: str) -> bool:
+    """The agent's last reply said the read-back number — a yes after it answers the read-back,
+    not the answer to the caller's question."""
+    last = next(
+        (m.get("content") or "" for m in reversed(state.messages) if m.get("role") == "assistant"),
+        "",
+    )
+    return any(len(n) >= 6 and _same_phone(n, pending) for n in _said_numbers(last))
+
+
+def answers_read_back(state: Any, ctx: Any, kind: str) -> bool:
+    """After a question, a yes / no / unclear word answers the read-back only when the reply
+    repeated it; otherwise the read-back is asked again."""
+    after_question, ctx.phone_confirm_after_question = ctx.phone_confirm_after_question, False
+    if not after_question or kind not in ("yes", "no", "unclear"):
+        return True
+    return read_back_repeated(state, ctx.phone_pending)
+
+
 def _read_phone_confirm(state: Any, rt: Any, ctx: Any, user_input: str) -> None:
     """The answer to „Užrašiau {numeris} — ar teisingai?": the same number again or a yes takes
     it, a new number is read back in turn, a no asks for it again; a question is answered and the
     read-back stays; „neregistruokit" goes to the cancel-confirm; a goodbye registers with the
     number they dictated; an unclear answer repeats the read-back once."""
     kind, number = phone_confirm_answer(state, rt, ctx.phone_pending, user_input)
+    if not answers_read_back(state, ctx, kind):
+        ctx.ask_phone_confirm = True
+        rt.tracer.emit("decision", intent="ticket_dialogue", action="phone_confirm_repeat")
+        return
     if kind == "same":
         _take_pending(state, rt, ctx, "phone_confirmed")
         state.ticket.stage = "hours"
@@ -594,6 +617,7 @@ def _read_phone_confirm(state: Any, rt: Any, ctx: Any, user_input: str) -> None:
         return
     if kind == "question":
         ctx.phone_confirm_out = True  # the next answer is still read against the read-back
+        ctx.phone_confirm_after_question = True
         state.turn.ticket_offscript_question = True
         rt.tracer.emit("decision", intent="ticket_dialogue", action="question")
         return

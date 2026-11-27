@@ -279,7 +279,9 @@ caller's words (its numbers said, its words sharing their stems). A said number 
 The same read-back runs after the registration (`decide/rules/closing.py`): a new number
 said after „Užregistravau" is appended to the ticket only on a yes; the number already on the
 ticket (or the caller ID) changes nothing; a goodbye or a hang-up at the read-back leaves it on the
-ticket as an unconfirmed note (the finalizer writes it) and the contact stays.
+ticket as an unconfirmed note (the finalizer writes it) and the contact stays. A question at
+either read-back is answered and the read-back repeated (the context card carries it); a yes
+counts only if the last reply said the number again, otherwise the read-back is asked once more.
 
 **Analyst** (`analyst/`) reads the whole conversation and returns typed **signals** —
 contradiction, already answered, secondary problem, deviation, mood. It never writes facts, never

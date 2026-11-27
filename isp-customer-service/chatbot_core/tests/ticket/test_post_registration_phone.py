@@ -132,15 +132,49 @@ def test_a_new_number_equal_to_the_ticket_contact_at_the_read_back_changes_nothi
     assert c.notes == [] and c.state.ticket.contact_phone == OWN and c.pending is None
 
 
+def _model_said(c, text):
+    """What the narrator answered to the question (the turn's last assistant message)."""
+    last = next(m for m in reversed(c.state.messages) if m.get("role") == "assistant")
+    last["content"] = text
+
+
 def test_a_question_keeps_the_read_back_open(closing_call):
-    """Klausimas per perklausimą → atsako LLM, kitas „Taip“ vis dar priimamas"""
+    """Klausimas per perklausimą → atsako LLM ir perklausia, kitas „Taip“ priimamas"""
     c = closing_call()
     c.say(f"Skambinkite kitu numeriu {NEW}")
     c.say("O kada atvažiuos meistras?")
     assert c.rule == "closing.free_reply"
     assert c.notes == [] and c.pending == NEW and not c.state.closing.is_complete
+    _model_said(c, f"Per dvi dienas. Užrašiau {NEW} — ar teisingai?")
     c.say("Taip")
     assert c.rule == "closing.ticket_phone_amend" and c.state.ticket.contact_phone == NEW
+
+
+def test_a_yes_to_the_answer_is_not_a_yes_to_the_read_back(closing_call):
+    """Klausimas → LLM atsakė be perklausimo → „Gerai“ nepatvirtina, perklausiama vėl"""
+    c = closing_call()
+    c.say(f"Skambinkite kitu numeriu {NEW}")
+    c.say("O kada atvažiuos meistras?")
+    _model_said(c, "Meistras paskambins per dvi darbo dienas.")
+    reply = c.say("Gerai")
+    assert c.rule == "closing.ticket_phone_confirm" and f"Užrašiau {NEW}" in reply
+    assert c.notes == [] and c.state.ticket.contact_phone == OWN and c.pending == NEW
+    c.say("Taip")
+    assert c.rule == "closing.ticket_phone_amend" and c.state.ticket.contact_phone == NEW
+
+
+def test_the_read_back_is_on_the_card_after_a_question(closing_call):
+    """Po klausimo narratoriaus kortelė liepia pakartoti perklausimą"""
+    from agent.speak.context_card import context_card
+
+    c = closing_call()
+    c.say(f"Skambinkite kitu numeriu {NEW}")
+    c.state.turn = TurnScratch(user_input="O kada atvažiuos meistras?")
+    from agent.decide.rules import closing
+
+    closing.plan(c.state, c.rt)
+    card = context_card(c.state, c.rt) or ""
+    assert f"Užrašiau {NEW} — ar teisingai?" in card
 
 
 def test_a_goodbye_at_the_read_back_notes_the_number_unconfirmed(closing_call):
@@ -190,9 +224,21 @@ def test_a_hang_up_at_the_read_back_notes_the_number_unconfirmed(make_state, mak
     rt = make_runtime(lambda name, args: {"success": True})
     state = _registered(make_state, phone_pending=NEW, phone_confirm_out=True)
     finalize(state, rt, transport_end="client_closed")
-    notes = [a["note"] for n, a in rt.tools.provider.calls if n == "append_ticket_note"]
-    assert len(notes) == 1 and NEW in notes[0] and "nepatvirtint" in notes[0]
+    calls = [a for n, a in rt.tools.provider.calls if n == "append_ticket_note"]
+    assert len(calls) == 1 and NEW in calls[0]["note"] and "nepatvirtint" in calls[0]["note"]
+    assert calls[0]["kind"] == "unconfirmed"  # never „[PATIKSLINTA]"
     assert state.ticket.contact_phone == OWN
+
+
+def test_no_unconfirmed_note_for_the_number_already_on_the_ticket(make_state, make_runtime):
+    """Ragelis per T01 perklausimą: tiketas užregistruotas su tuo numeriu → jokios pastabos"""
+    from agent.call_record.finalizer import finalize
+
+    rt = make_runtime(lambda name, args: {"success": True})
+    state = _registered(make_state, phone_pending=NEW, phone_confirm_out=True)
+    state.ticket.contact_phone = NEW
+    finalize(state, rt, transport_end="client_closed")
+    assert [n for n, _ in rt.tools.provider.calls if n == "append_ticket_note"] == []
 
 
 # --- the whole call: the real graph and the real ticket row ------------------------------
@@ -233,3 +279,36 @@ def test_a_hang_up_at_the_read_back_reaches_the_ticket(at_contacts):
     c.session.end_session("client_closed")
     details = _details(c.state.ticket.ticket_id)
     assert NEW in details and "nepatvirtint" in details
+
+
+def test_a_hang_up_at_the_contact_read_back_adds_no_unconfirmed_note(at_contacts):
+    """T01: ragelis per kontaktų perklausimą → tiketas su padiktuotu numeriu, be „nepatvirtintas“"""
+    c = at_contacts()
+    assert "Užrašiau 861234567" in c.say("Ne, kitu numeriu: 861234567")
+    c.session.end_session("client_closed")
+    assert c.state.ticket.ticket_id and c.state.ticket.contact_phone == "861234567"
+    assert "nepatvirtint" not in _details(c.state.ticket.ticket_id)
+
+
+def test_a_yes_after_a_question_at_the_contact_read_back_needs_the_read_back(at_contacts):
+    """T01: klausimas per perklausimą, LLM neperklausė → „Gerai“ nepatvirtina numerio"""
+    c = at_contacts()
+    c.say("Ne, kitu numeriu: 861234567")
+    c.say("O kada atvažiuos meistras?", llm="Per dvi darbo dienas.")
+    reply = c.say("Gerai")
+    assert "Užrašiau 861234567" in reply
+    assert c.state.ticket.stage == "phone" and c.state.ticket.contact_phone is None
+    c.say("Taip")
+    assert c.state.ticket.stage == "hours" and c.state.ticket.contact_phone == "861234567"
+
+
+def test_a_question_at_the_contact_read_back_puts_the_read_back_on_the_card(at_contacts):
+    """T01: po klausimo kortelė liepia kartoti perklausimą, ne „Ar tiks numeris…“"""
+    from agent.speak.context_card import context_card
+
+    c = at_contacts()
+    c.say("Ne, kitu numeriu: 861234567")
+    c.say("O kada atvažiuos meistras?")
+    card = context_card(c.state, c.session._runtime) or ""
+    assert "Užrašiau 861234567 — ar teisingai?" in card
+    assert "Ar tiks numeris" not in card

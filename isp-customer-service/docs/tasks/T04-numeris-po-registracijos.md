@@ -38,5 +38,13 @@ Po „Užregistravau“ kliento padiktuotas kitas numeris į tiketą patenka tik
 - Elgsenos pokytis esamuose testuose: `test_closing_rules` ir `test_closing` (2 testai) – numeris po
   registracijos dabar pirma perklausiamas.
 
+- `/code-review high` (7 radiniai): Andrius 2026-11-27 – taisyti 1, 2, 3, o 4–7 įrašyti į
+  `docs/ROADMAP.md` (Stage 2, E6), kad nepasimirštų:
+  - #1 ragelis per T01 perklausimą: pastaba „nepatvirtintas“ rašoma tik kai numeris ≠ `contact_phone`;
+  - #2 klausimas per perklausimą (T01 ir po registracijos): kortelė liepia pakartoti perklausimą;
+    variklis „taip / ne / neaiškus“ priima tik jei paskutinėje agento frazėje buvo tas numeris,
+    kitaip perklausimas kartojamas skriptu (`TicketContext.phone_confirm_after_question`);
+  - #3 pastaba žymima `[NEPATVIRTINTA]` (CRM `NOTE_KINDS.unconfirmed`).
+
 ## Rezultatas
 (commit'ai, compare URL, kas liko)
