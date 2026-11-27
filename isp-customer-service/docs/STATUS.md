@@ -69,7 +69,7 @@ network, in the browser, with cloud LLM and ASR.
 | D4 | **Gemma Lithuanian quality** — grammar and word errors | a native listener hears them | S–M — prompts, examples, `kalba.yaml`; fine-tuning only after eval |
 | D5 | **Phases owned in one place** (v3) | the remaining live-call bugs come from scattered ownership | M |
 | D6 | Demo script refresh | [demo/DEMO_PRISTATYMAS.md](demo/DEMO_PRISTATYMAS.md) dates from 2026-09-28 | S |
-| D7 | Stable eval: `X_dhcp_silent`, `I2` flaky | confidence before a show | S |
+| D7 | Stable eval: `X_dhcp_silent`, `I2` flaky (pass rates per run: `eval/history.py flaky`) | confidence before a show | S |
 
 ## 5. What production needs
 
@@ -106,8 +106,7 @@ network, in the browser, with cloud LLM and ASR.
     instructor guide.
   - [instructor/ZINIU_BAZE.md](instructor/ZINIU_BAZE.md) mentions an `ont` equipment level that
     does not exist.
-  - `agent/eval/README.md` says 33 scenarios (48 now); `scenarios.json` `_doc` mentions the
-    removed verdict tree.
+  - `scenarios.json` `_doc` mentions the removed verdict tree.
 - **Repo**: `.env.exemple` (typo; mentions MCP stdio); manual tools at package root
   (`chatbot_core/replay_stt.py`, `smoke_voice.py`); ad-hoc tests outside pytest
   (`crm_service/test_phone_lookup.py`, `scripts/test_shared.py`); `scripts/refactor_acceptance.py`

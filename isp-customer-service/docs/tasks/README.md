@@ -9,7 +9,7 @@
 |---|---|---|---|---|
 | T01 | Tiketo kontaktai tik iš kliento žodžių | retro | fix/ticket-contact-grounding | ISP-T01 tiketo kontaktų grounding |
 | T02 | Testai neliečia repo failų | peržiūra | fix/test-locale-isolation | ISP-T02 testų izoliacija |
-| T03 | Eval istorija su versijomis | peržiūra | feat/eval-history | ISP-T03 eval istorija |
+| T03 | Eval istorija su versijomis | retro | feat/eval-history | ISP-T03 eval istorija |
 | T04 | Numeris po registracijos tik perklausus | peržiūra | fix/post-registration-phone-readback | ISP-T04 numeris po registracijos |
 
 Būsenos: `planuojama` → `vykdoma` → `peržiūra` (push, laukia PR) → `atlikta` → `retro` (padaryta).
