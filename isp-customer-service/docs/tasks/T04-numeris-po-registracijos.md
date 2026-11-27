@@ -1,6 +1,6 @@
 # T04 — Numeris po registracijos tik perklausus
 
-**Būsena:** peržiūra · **Šaka:** `fix/post-registration-phone-readback` · **ROADMAP:** Stage 2 (demo kokybė)
+**Būsena:** retro · **Šaka:** `fix/post-registration-phone-readback` · **ROADMAP:** Stage 2 (demo kokybė)
 
 ## Tikslas
 Po „Užregistravau“ kliento padiktuotas kitas numeris į tiketą patenka tik jį perskaičius atgal ir klientui patvirtinus – taip pat, kaip kontaktų dialoge po T01.
@@ -50,4 +50,6 @@ Po „Užregistravau“ kliento padiktuotas kitas numeris į tiketą patenka tik
 - Commit'ai: `0306e23` užduoties failas · `8858305` perklausimas po registracijos + eval scenarijus · `d05e353` peržiūros pataisos (1–3) + ROADMAP E6.
 - Compare: https://github.com/steellsas/ISP-AI-Agent/compare/develop...fix/post-registration-phone-readback
 - `/code-review high`: 7 radiniai – 2 svarbūs + 1 smulkus pataisyti (`d05e353`), 4 atidėti į `docs/ROADMAP.md` E6 (vienas jų – buvęs ir anksčiau).
-- Liko: ROADMAP E6.
+- PR #146 sujungtas į `develop` (`b9b8fd3`).
+- Retro: 2 pamokos `docs/lessons.md` (sekantis ėjimas po atsakymo rūšies → CLAUDE.md; push leidimas toje pačioje sesijoje → skill `patarejas`).
+- Liko: ROADMAP E6 (peržiūros radiniai #4–7, prieš pradedant patikrinti aktualumą); D8d – T05.

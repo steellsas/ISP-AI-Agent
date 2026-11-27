@@ -39,6 +39,9 @@ The venv's editable `.pth` files point at the main checkout. In a worktree:
   as an analyst signal; it never becomes an action.
 - **Confirm, do not guess.** An unclear caller answer gets a clarifying question
   („… — ar teisingai?“), read through `case.confirm`.
+- **A new engine question lists its answers.** Before building it, list every answer kind the
+  dialogue already handles (yes, no, new value, question, refusal, farewell, hang-up) and test
+  each one plus the turn after it.
 - **Code = mechanics, files = behaviour.** Cards, modules, equipment and phrases are YAML.
 - **Prompt changes** are proposed with what and why, agreed with the owner, then logged in
   `docs/review/PROMPTAI.md`.
