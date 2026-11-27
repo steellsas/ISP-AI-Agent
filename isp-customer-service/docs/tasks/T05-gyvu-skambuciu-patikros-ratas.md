@@ -36,7 +36,18 @@ Be bazės nežinome, ar agentas gerėja, ar blogėja. Radiniai: [`docs/demo/DERI
 - **Būsenos `DERINIMO_RADINIAI.md`.** 22 radiniai „taisomas“ → „ištaisytas“ su pastaba „T05: kodas ir testas
   patikrinti (PR #…)“; #15 lieka „taisomas“. Pastaba „laukia gyvo“ eilutėse paliekama.
 - **Agento pranešti 6 kritę `identification/test_phase.py` testai — aplinkos, ne regresija.** Paleisti be worktree
-  `PYTHONPATH`, kol eval perrašinėjo DB; su `PYTHONPATH` 25 ✓, 2 xfail.
+  `PYTHONPATH` (tada importuojama pagrindinio checkout'o kopija); su `PYTHONPATH` 25 ✓, 2 xfail. Ar prisidėjo tuo
+  pat metu vykęs eval, netikrinta.
+- **#17/#19 gyvas skambutis — be miesto žingsnio.** Testas `test_the_warning_asks_only_for_the_missing_flat`
+  rodo, kad „Dainų gatvėje“ be miesto randama iškart (Šiauliai), tad miesto klausimo scenarijuje nėra
+  (peržiūros radinys 2 — nepasitvirtino).
+- **Peržiūra (`/code-review high`), 6 radiniai dokumentuose; Andrius patvirtino taisyti visus:**
+  1. #19 scenarijus nepasiekė įspėjimo kelio → du ėjimai be adreso dalies, kaip teste.
+  2. #17/#19 be miesto žingsnio → nepasitvirtino (žr. aukščiau), nekeista.
+  3. #58 be vardo perklausimo → pridėtas „Išgirdau — Tomas. Ar teisingai?“.
+  4. #66 klausimas → „kokią sumą ir kokiu būdu“.
+  5. Nepatikrinta 6 testų kritimo priežastis → perrašyta.
+  6. `DERINIMO_RADINIAI.md` eval suvestinė → pridėta 11-27 bazė.
 
 ## Radinių patikra
 Tikrinta ant `develop` 968be2f. Keliai nuo `chatbot_core/`. Testai paleisti worktree'e su `PYTHONPATH`

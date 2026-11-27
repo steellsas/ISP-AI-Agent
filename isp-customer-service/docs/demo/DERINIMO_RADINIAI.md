@@ -172,3 +172,7 @@ WiFi įjungtas“ perskaitytas (#55), keisto patikslinimo nebėra (#56), „Taip
 (#57), bet „Prisijungiau iš naujo“ vis dar gauna instrukciją prisijungti iš naujo. Liko kalba:
 #58 („Malonu, Tomai/Lina!“ po žinios — skola, tinklo gedimas), #59 („Ar internetas jau atsirado?“
 po žinios apie gedimą tinkle; „Maistai“ nebėra), #70.
+
+Eval 2026-11-27 (T05, visas rinkinys `--runs 3`, `develop` 968be2f): 147/153, 49 iš 51 scenarijų 3/3.
+Krenta 3/3: `D8d` (pasenęs laukimas „per minutę“ po #86 frazės pakeitimo) ir `R4` (`debt_offer_claim` 301 > 280
+simbolių). Radinių patikra ir išvados — [T05](../tasks/T05-gyvu-skambuciu-patikros-ratas.md).

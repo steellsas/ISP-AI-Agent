@@ -33,18 +33,24 @@ CRM nesantis numeris (pvz. `+37000000000`), kad agentas ieškotų pagal adresą.
 
 ## #17 ir #19 — adresas iš nežinomo numerio (vienas skambutis)
 
-- **Tu:** „Neveikia internetas.“ → kai paklausia adreso: „Dainų gatvė, penki.“ (sakyk „penki“ greitai,
-  neaiškiai — kaip „pinki“).
-- **Agentas turi:** rasti Dainų g. 5 ir paklausti **tik buto** („Koks buto numeris?“ ar panašiai),
-  nekartoti „kokį namo numerį?“ antrą kartą.
-- **Tu:** „Penki.“ (vien skaičius).
-- **Agentas turi:** „penki“ laikyti butu → „Šiauliai, Dainų g. 5, butas 5?“.
-- **Nepavyko, jei:** namo klausiama du kartus (#17); „nežinodamas adreso negalėsiu…“ arba viso adreso iš naujo,
-  arba „penki“ paimtas kaip abonento kodas (#19).
+Eiga kaip testo `tests/identification/test_phase.py::test_the_warning_asks_only_for_the_missing_flat`.
+
+- **Tu:** „Neveikia internetas.“ → kai paklausia adreso: „Dainų gatvėje.“
+- **Tu:** „Mano namo numeris penki.“ (sakyk „penki“ greitai, neaiškiai — kaip „pinki“).
+- **Agentas turi (#17):** namą 5 suprasti iš pirmo karto ir klausti toliau, ne „kokį namo numerį?“ antrą kartą.
+- **Tu (#19):** du ėjimai be adreso dalies: „Ir ką?“ → „Nežinau.“
+- **Agentas turi:** po antrojo — „Adresą Dainų g. 5 jau turiu, dar reikia buto numerio. Pasakykite jį — arba
+  abonento kodą iš sąskaitos.“
+- **Tu:** „Penki.“ (vien skaičius, vėl neaiškiai).
+- **Agentas turi:** „penki“ laikyti butu → „Ar teisingai supratau — Šiauliai, Dainų g. 5, butas 5?“
+- **Nepavyko, jei:** namo klausiama du kartus (#17); įspėjimas „nežinodamas adreso negalėsiu…“ ir viso adreso
+  iš naujo, arba „penki“ po įspėjimo paimtas kaip abonento kodas (#19).
 
 ## #58 — „Malonu, Tomai!“ žinioje apie skolą
 
 - **Tu:** „Neveikia internetas.“ → „Taip“ (adresas) → „Tomas.“
+- **Agentas turi:** „Išgirdau — Tomas. Ar teisingai?“
+- **Tu:** „Taip.“
 - **Agentas turi:** žinia prasideda „Malonu, Tomai!“ ir toliau apie sustabdytą paslaugą.
 - **Tu:** „O kiek tiksliai skolingas?“
 - **Nepavyko, jei:** „Malonu, Tomai!“ pasakoma antrą kartą (kitame atsakyme) arba jos nėra, o vėliau atsiranda.
@@ -61,7 +67,7 @@ CRM nesantis numeris (pvz. `+37000000000`), kad agentas ieškotų pagal adresą.
 ## #66 — suma be „eurų“
 
 - **Tu:** „Neveikia internetas.“ → adresas → vardas „Petras“ → po žinios apie skolą: „Bet aš mokėjau.“
-- **Agentas turi:** klausti, kada ir kiek mokėjote.
+- **Agentas turi:** paklausti „…pasakykite — kokią sumą ir kokiu būdu — banku, savitarnoje ar grynais?“
 - **Tu:** „Trisdešimt devyni.“ (be „eurų“)
 - **Agentas turi:** „Ar teisingai supratau — mokėjote 39 €?“ → „Taip“ → suma tikete.
 - **Nepavyko, jei:** suma praleidžiama, tiketas be sumos.
