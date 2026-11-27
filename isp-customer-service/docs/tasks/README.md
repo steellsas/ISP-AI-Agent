@@ -7,6 +7,8 @@
 
 | ID | Užduotis | Būsena | Šaka | Sesija |
 |---|---|---|---|---|
+| T01 | Tiketo kontaktai tik iš kliento žodžių | retro | fix/ticket-contact-grounding | ISP-T01 tiketo kontaktų grounding |
+| T02 | Testai neliečia repo failų | peržiūra | fix/test-locale-isolation | ISP-T02 testų izoliacija |
 | T03 | Eval istorija su versijomis | peržiūra | feat/eval-history | ISP-T03 eval istorija |
 
 Būsenos: `planuojama` → `vykdoma` → `peržiūra` (push, laukia PR) → `atlikta` → `retro` (padaryta).
