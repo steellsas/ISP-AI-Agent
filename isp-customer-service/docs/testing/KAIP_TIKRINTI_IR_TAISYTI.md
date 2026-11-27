@@ -21,7 +21,8 @@ kur žiūrėti, kaip rasti priežastį, ką keisti.
   priklausančias frazes žodis į žodį. Modelio žodžiai pakeisti `‹LLM›`.
 - **Eval** paleidžia scenarijų su tikru modeliu ir tikrina rezultatą: kortelę (verdict),
   baigtį, kontakto įrašą, ar atsakymuose yra (nėra) tam tikrų žodžių.
-- **Gyvas skambutis** parodo, kaip tai skamba ir atrodo.
+- **Gyvas skambutis** parodo, kaip tai skamba ir atrodo. Radiniai, kurie laukia gyvo patikrinimo, ir ką
+  juose sakyti — [GYVI_SKAMBUCIAI_T05.md](GYVI_SKAMBUCIAI_T05.md).
 
 Taisant eini iš kairės į dešinę: pirma testai (greitai), tada eval, tada gyvas skambutis.
 
